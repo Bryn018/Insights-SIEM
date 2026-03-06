@@ -1,0 +1,64 @@
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.15.0
+    container_name: insights-opensearch
+    environment:
+      - discovery.type=single-node
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "127.0.0.1:9200:9200"
+    restart: unless-stopped
+
+  dashboards:
+    image: opensearchproject/opensearch-dashboards:2.15.0
+    container_name: insights-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "127.0.0.1:5601:5601"
+    depends_on:
+      - opensearch
+    restart: unless-stopped
+
+  fluent-bit:
+    image: cr.fluentbit.io/fluent/fluent-bit:3.1
+    container_name: insights-fluent-bit
+    user: root
+    volumes:
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - /var/log:/var/log:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - ./data/suricata:/data/suricata:ro
+    depends_on:
+      - opensearch
+      - suricata
+    restart: unless-stopped
+
+  suricata:
+    image: jasonish/suricata:7.0
+    container_name: insights-suricata
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    command: ["-i", "${INSIGHTS_IFACE:-any}", "-l", "/var/log/suricata"]
+    volumes:
+      - ./data/suricata:/var/log/suricata
+    restart: unless-stopped
+
+volumes:
+  opensearch-data:
