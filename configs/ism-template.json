@@ -1,0 +1,9 @@
+{
+  "index_patterns": ["insights-host-logs-*"],
+  "template": {
+    "settings": {
+      "plugins.index_state_management.policy_id": "insights-hot-delete-30d"
+    }
+  },
+  "priority": 90
+}

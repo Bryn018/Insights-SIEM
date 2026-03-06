@@ -1,0 +1,10 @@
+{
+  "name": "Insights SIEM starter detections",
+  "queries": [
+    { "id": "ssh_bruteforce", "kql": "message:(\"Failed password\" or \"authentication failure\" or \"Invalid user\")" },
+    { "id": "ssh_success", "kql": "message:(\"Accepted password\" or \"Accepted publickey\")" },
+    { "id": "sudo_abuse", "kql": "message:(\"sudo:\" and (\"COMMAND=\" or \"session opened for user root\"))" },
+    { "id": "new_user", "kql": "message:(\"useradd\" or \"new user\" or \"adduser\")" },
+    { "id": "persistence_changes", "kql": "message:(\"systemctl\" and (\"enable\" or \"daemon-reload\" or \"start\"))" }
+  ]
+}
