@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import {
+     6→  Search,
+     7→  X,
+     8→  ChevronDown,
+     9→  ChevronUp,
+    10→  ArrowRight,
+    11→  ArrowUp,
+    12→  Check,
+    13→  Plus,
+    14→  MoreHorizontal,
+    15→  RefreshCw,
+    16→  Filter,
+    17→  Clock,
+    18→  MessageSquare,
+    19→  Send,
+    20→  Code,
+    21→  Tag,
+    22→  AlertTriangle,
+    23→  FileText,
+    24→  Layers,
+    25→  Bell,
+    26→  Pause,
+    27→  Play,
+    28→} from 'lucide-react'
+    29→import { formatDistanceToNow } from 'date-fns'
+    30→import { Card, CardContent } from '@/components/ui/card'
+    31→import { Button } from '@/components/ui/button'
+    32→import { Input } from '@/components/ui/input'
+    33→import { Badge } from '@/components/ui/badge'
+    34→import { Checkbox } from '@/components/ui/checkbox'
+    35→import {
+    36→  Select,
+    37→  SelectContent,
+    38→  SelectItem,
+    39→  SelectTrigger,
+    40→  SelectValue,
+    41→} from '@/components/ui/select'
+    42→import {
+    43→  Popover,
+    44→  PopoverContent,
+    45→  PopoverTrigger,
+    46→} from '@/components/ui/popover'
+    47→import {
+    48→  DropdownMenu,
+    49→  DropdownMenuContent,
+    50→  DropdownMenuItem,
+    51→  DropdownMenuSeparator,
+    52→  DropdownMenuTrigger,
+    53→} from '@/components/ui/dropdown-menu'
+    54→import {
+    55→  Dialog,
+    56→  DialogContent,
+    57→  DialogDescription,
+    58→  DialogFooter,
+    59→  DialogHeader,
+    60→  DialogTitle,
+    61→} from '@/components/ui/dialog'
+    62→import { ScrollArea } from '@/components/ui/scroll-area'
+    63→import { Separator } from '@/components/ui/separator'
+    64→import { Skeleton } from '@/components/ui/skeleton'
+    65→import { Label } from '@/components/ui/label'
+    66→import {
+    67→  Table,
+    68→  TableBody,
+    69→  TableCell,
+    70→  TableHead,
+    71→  TableHeader,
+    72→  TableRow,
+    73→} from '@/components/ui/table'
+    74→import {
+    75→  useSIEMStore,
+    76→  type Severity,
+    77→  type AlertStatus,
+    78→  type AlertFilters,
+    79→} from '@/lib/store'
+    80→import type { Alert, PaginatedResponse, Comment } from '@/lib/types'
+    81→import { SeverityBadge, StatusBadge } from '@/components/siem/status-badge'
+    82→import { ExportButton } from '@/components/siem/export-button'
+    83→import { AlertDetailDrawer } from '@/components/siem/alert-detail-drawer'
+    84→import { cn } from '@/lib/utils'
+    85→import { toast } from 'sonner'
+    86→
+    87→// ===== Constants =====
+    88→
+    89→const SEVERITY_OPTIONS: { value: Severity; label: string; color: string }[] = [
+    90→  { value: 'critical', label: 'Critical', color: 'bg-red-500' },
+    91→  { value: 'high', label: 'High', color: 'bg-amber-500' },
+    92→  { value: 'medium', label: 'Medium', color: 'bg-yellow-500' },
+    93→  { value: 'low', label: 'Low', color: 'bg-emerald-500' },
+    94→  { value: 'informational', label: 'Info', color: 'bg-zinc-400' },
+    95→]
+    96→
+    97→const STATUS_OPTIONS: { value: AlertStatus; label: string }[] = [
+    98→  { value: 'new', label: 'New' },
+    99→  { value: 'acknowledged', label: 'Acknowledged' },
+   100→  { value: 'investigating', label: 'Investigating' },
+   101→  { value: 'resolved', label: 'Resolved' },
+   102→  { value: 'suppressed', label: 'Suppressed' },
+   103→  { value: 'escalated', label: 'Escalated' },
+   104→]
+   105→
+   106→const CATEGORY_OPTIONS = [
+   107→  { value: 'Brute Force', label: 'Brute Force' },
+   108→  { value: 'Malware', label: 'Malware' },
+   109→  { value: 'Policy Violation', label: 'Policy Violation' },
+   110→  { value: 'Anomaly', label: 'Anomaly' },
+   111→  { value: 'Compliance', label: 'Compliance' },
+   112→  { value: 'Other', label: 'Other' },
+   113→]
+   114→
+   115→const SOURCE_OPTIONS = [
+   116→  { value: 'Suricata', label: 'Suricata' },
+   117→  { value: 'Prometheus', label: 'Prometheus' },
+   118→  { value: 'OpenSearch', label: 'OpenSearch' },
+   119→  { value: 'Custom', label: 'Custom' },
+   120→]
+   121→
+   122→const DATE_RANGE_OPTIONS = [
+   123→  { value: '1h', label: '1h', hours: 1 },
+   124→  { value: '6h', label: '6h', hours: 6 },
+   125→  { value: '24h', label: '24h', hours: 24 },
+   126→  { value: '7d', label: '7d', hours: 168 },
+   127→  { value: '30d', label: '30d', hours: 720 },
+   128→]
+   129→
+   130→// ===== Create Alert Form =====
+   131→
+   132→interface CreateAlertForm {
+   133→  title: string
+   134→  description: string
+   135→  severity: Severity
+   136→  category: string
+   137→  source: string
+   138→  sourceIp: string
+   139→  destIp: string
+   140→  protocol: string
+   141→}
+   142→
+   143→const emptyForm: CreateAlertForm = {
+   144→  title: '',
+   145→  description: '',
+   146→  severity: 'medium',
+   147→  category: 'Other',
+   148→  source: 'Custom',
+   149→  sourceIp: '',
+   150→  destIp: '',
+   151→  protocol: '',
+   152→}
+   153→
+   154→// ===== Severity Color Map for Filter Buttons =====
+   155→
+   156→const severityButtonColors: Record<Severity, { active: string; dot: string }> = {
+   157→  critical: { active: 'bg-red-500/20 text-red-400 border-red-500/50', dot: 'bg-red-500' },
+   158→  high: { active: 'bg-amber-500/20 text-amber-400 border-amber-500/50', dot: 'bg-amber-500' },
+   159→  medium: { active: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50', dot: 'bg-yellow-500' },
+   160→  low: { active: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50', dot: 'bg-emerald-500' },
+   161→  informational: { active: 'bg-zinc-400/20 text-zinc-400 border-zinc-400/50', dot: 'bg-zinc-400' },
+   162→}
+   163→
+   164→// ===== 10-3: Severity tint class lookup =====
+   165→const severityTintClass: Record<Severity, string> = {
+   166→  critical: 'siem-severity-tint-critical',
+   167→  high: 'siem-severity-tint-high',
+   168→  medium: 'siem-severity-tint-medium',
+   169→  low: 'siem-severity-tint-low',
+   170→  informational: '',
+   171→}
+   172→
+   173→// ===== 10-3: Group-by options for the header dropdown =====
+   174→const GROUP_BY_OPTIONS = [
+   175→  { value: 'none', label: 'None' },
+   176→  { value: 'severity', label: 'Severity' },
+   177→  { value: 'source', label: 'Source' },
+   178→  { value: 'category', label: 'Category' },
+   179→  { value: 'status', label: 'Status' },
+   180→] as const
+   181→
+   182→// ===== 10-3: Snooze durations (ms + human label) =====
+   183→const SNOOZE_DURATIONS = [
+   184→  { value: 15 * 60 * 1000, label: '15 minutes' },
+   185→  { value: 60 * 60 * 1000, label: '1 hour' },
+   186→  { value: 4 * 60 * 60 * 1000, label: '4 hours' },
+   187→  { value: 24 * 60 * 60 * 1000, label: '24 hours' },
+   188→]
+   189→
+   190→// ===== 10-3: CountUp helper — animates from previous value to new value =====
+   191→function CountUp({ value, className }: { value: number; className?: string }) {
+   192→  const [display, setDisplay] = useState(value)
+   193→  const fromRef = useRef(value)
+   194→  const rafRef = useRef<number | null>(null)
+   195→
+   196→  useEffect(() => {
+   197→    const from = fromRef.current
+   198→    const to = value
+   199→    if (from === to) return
+   200→    const duration = 600
+   201→    const startTs = performance.now()
+   202→    const tick = (now: number) => {
+   203→      const t = Math.min(1, (now - startTs) / duration)
+   204→      // easeOutCubic
+   205→      const eased = 1 - Math.pow(1 - t, 3)
+   206→      setDisplay(Math.round(from + (to - from) * eased))
+   207→      if (t < 1) {
+   208→        rafRef.current = requestAnimationFrame(tick)
+   209→      } else {
+   210→        fromRef.current = to
+   211→        rafRef.current = null
+   212→      }
+   213→    }
+   214→    rafRef.current = requestAnimationFrame(tick)
+   215→    return () => {
+   216→      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+   217→      fromRef.current = value
+   218→    }
+   219→  }, [value])
+   220→
+   221→  return <span className={className}>{display.toLocaleString()}</span>
+   222→}
+   223→
+   224→// ===== Main Component =====
+   225→
+   226→export function AlertsView() {
+   227→  const {
+   228→    alertFilters,
+   229→    setAlertFilters,
+   230→    setAlertFilter,
+   231→    resetAlertFilters,
+   232→    toggleAlertSelection,
+   233→    selectAllAlerts,
+   234→    clearAlertSelection,
+   235→    expandedAlert,
+   236→    setExpandedAlert,
+   237→    liveMode,
+   238→    toggleLiveMode,
+   239→  } = useSIEMStore()
+   240→
+   241→  const [alerts, setAlerts] = useState<Alert[]>([])
+   242→  const [total, setTotal] = useState(0)
+   243→  const [loading, setLoading] = useState(true)
+   244→  const [detailData, setDetailData] = useState<Alert | null>(null)
+   245→  const [detailLoading, setDetailLoading] = useState(false)
+   246→  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+   247→  const [createForm, setCreateForm] = useState<CreateAlertForm>(emptyForm)
+   248→  const [creating, setCreating] = useState(false)
+   249→  const [dateRange, setDateRange] = useState<string>('24h')
+   250→  const [commentText, setCommentText] = useState<Record<string, string>>({})
+   251→  const [rawLogExpanded, setRawLogExpanded] = useState<Record<string, boolean>>({})
+   252→  const [drawerAlertId, setDrawerAlertId] = useState<string | null>(null)
+   253→  // 10-3 polish: group-by selector, snoozed alert tracking, prev-total for count-up flash
+   254→  const [groupBy, setGroupBy] = useState<'none' | 'severity' | 'source' | 'category' | 'status'>('none')
+   255→  const [snoozedAlerts, setSnoozedAlerts] = useState<Record<string, number>>({})
+   256→  const [prevTotal, setPrevTotal] = useState(0)
+   257→  const [newAlertIds, setNewAlertIds] = useState<Set<string>>(new Set())
+   258→  // Refs that don't drive render directly — keep fetchAlerts deps minimal
+   259→  const totalRef = useRef(0)
+   260→  const alertsRef = useRef<Alert[]>([])
+   261→
+   262→  const totalPages = Math.ceil(total / alertFilters.pageSize)
+   263→
+   264→  // ===== Compute active filter count =====
+   265→  const activeFilterCount = useMemo(() => {
+   266→    let count = 0
+   267→    if (alertFilters.severity.length > 0) count++
+   268→    if (alertFilters.status.length > 0) count++
+   269→    if (alertFilters.category.length > 0) count++
+   270→    if (alertFilters.source.length > 0) count++
+   271→    if (alertFilters.search) count++
+   272→    if (dateRange !== '24h') count++
+   273→    return count
+   274→  }, [alertFilters, dateRange])
+   275→
+   276→  // ===== Data Fetching =====
+   277→  const fetchAlerts = useCallback(async () => {
+   278→    setLoading(true)
+   279→    try {
+   280→      const params = new URLSearchParams()
+   281→      params.set('page', String(alertFilters.page))
+   282→      params.set('pageSize', String(alertFilters.pageSize))
+   283→      params.set('sortBy', alertFilters.sortBy)
+   284→      params.set('sortOrder', alertFilters.sortOrder)
+   285→      if (alertFilters.severity.length)
+   286→        params.set('severity', alertFilters.severity.join(','))
+   287→      if (alertFilters.status.length)
+   288→        params.set('status', alertFilters.status.join(','))
+   289→      if (alertFilters.category.length)
+   290→        params.set('category', alertFilters.category.join(','))
+   291→      if (alertFilters.source.length)
+   292→        params.set('source', alertFilters.source.join(','))
+   293→      if (alertFilters.search) params.set('search', alertFilters.search)
+   294→      if (alertFilters.dateFrom)
+   295→        params.set('dateFrom', alertFilters.dateFrom)
+   296→      if (alertFilters.dateTo) params.set('dateTo', alertFilters.dateTo)
+   297→
+   298→      const res = await fetch(`/api/alerts?${params}`)
+   299→      if (res.ok) {
+   300→        const json: PaginatedResponse<Alert> = await res.json()
+   301→        const newAlertsList: Alert[] = json.data || []
+   302→        // 10-3: detect newly-inserted alerts vs the previous render so we can
+   303→        // apply siem-new-pulse only to genuinely new rows.
+   304→        const prevAlerts = alertsRef.current
+   305→        if (prevAlerts.length > 0 && newAlertsList.length > 0) {
+   306→          const prevIds = new Set(prevAlerts.map((a) => a.id))
+   307→          const fresh = newAlertsList.filter((a) => !prevIds.has(a.id)).map((a) => a.id)
+   308→          if (fresh.length > 0) {
+   309→            setNewAlertIds(new Set(fresh))
+   310→            // Clear the pulse markers after the animation finishes (~1.8s)
+   311→            window.setTimeout(() => setNewAlertIds(new Set()), 2000)
+   312→          }
+   313→        }
+   314→        alertsRef.current = newAlertsList
+   315→        setAlerts(newAlertsList)
+   316→        // 10-3: trigger count-up flash when total grows
+   317→        const fetchedTotal = json.pagination?.total || 0
+   318→        if (fetchedTotal !== totalRef.current) {
+   319→          setPrevTotal(totalRef.current)
+   320→          totalRef.current = fetchedTotal
+   321→        }
+   322→        setTotal(fetchedTotal)
+   323→      }
+   324→    } catch {
+   325→      // ignore
+   326→    } finally {
+   327→      setLoading(false)
+   328→    }
+   329→  }, [
+   330→    alertFilters.page,
+   331→    alertFilters.pageSize,
+   332→    alertFilters.sortBy,
+   333→    alertFilters.sortOrder,
+   334→    alertFilters.severity,
+   335→    alertFilters.status,
+   336→    alertFilters.category,
+   337→    alertFilters.source,
+   338→    alertFilters.search,
+   339→    alertFilters.dateFrom,
+   340→    alertFilters.dateTo,
+   341→  ])
+   342→
+   343→  useEffect(() => {
+   344→    fetchAlerts()
+   345→  }, [fetchAlerts])
+   346→
+   347→  // ===== Fetch Alert Detail =====
+   348→  const fetchDetail = useCallback(async (id: string) => {
+   349→    setDetailLoading(true)
+   350→    try {
+   351→      const res = await fetch(`/api/alerts/${id}`)
+   352→      if (res.ok) {
+   353→        const json = await res.json()
+   354→        setDetailData(json)
+   355→      }
+   356→    } catch {
+   357→      // ignore
+   358→    } finally {
+   359→      setDetailLoading(false)
+   360→    }
+   361→  }, [])
+   362→
+   363→  // ===== Handlers =====
+   364→  const handleExpand = useCallback(
+   365→    (id: string) => {
+   366→      if (expandedAlert === id) {
+   367→        setExpandedAlert(null)
+   368→      } else {
+   369→        setExpandedAlert(id)
+   370→        fetchDetail(id)
+   371→      }
+   372→    },
+   373→    [expandedAlert, setExpandedAlert, fetchDetail]
+   374→  )
+   375→
+   376→  const handleStatusChange = useCallback(
+   377→    async (alertId: string, status: string) => {
+   378→      try {
+   379→        const res = await fetch(`/api/alerts/${alertId}`, {
+   380→          method: 'PATCH',
+   381→          headers: { 'Content-Type': 'application/json' },
+   382→          body: JSON.stringify({ status }),
+   383→        })
+   384→        if (res.ok) {
+   385→          toast.success(`Alert status updated to ${status}`)
+   386→          fetchAlerts()
+   387→          if (expandedAlert === alertId) fetchDetail(alertId)
+   388→        }
+   389→      } catch {
+   390→        toast.error('Failed to update alert status')
+   391→      }
+   392→    },
+   393→    [fetchAlerts, fetchDetail, expandedAlert]
+   394→  )
+   395→
+   396→  const handleBulkAction = useCallback(
+   397→    async (action: 'acknowledge' | 'escalate' | 'suppress' | 'create_incident') => {
+   398→      const ids = alertFilters.selectedIds
+   399→      if (ids.length === 0) return
+   400→
+   401→      let successCount = 0
+   402→      for (const id of ids) {
+   403→        try {
+   404→          if (action === 'acknowledge') {
+   405→            const res = await fetch(`/api/alerts/${id}`, {
+   406→              method: 'PATCH',
+   407→              headers: { 'Content-Type': 'application/json' },
+   408→              body: JSON.stringify({ status: 'acknowledged' }),
+   409→            })
+   410→            if (res.ok) successCount++
+   411→          } else if (action === 'escalate') {
+   412→            const res = await fetch(`/api/alerts/${id}`, {
+   413→              method: 'PATCH',
+   414→              headers: { 'Content-Type': 'application/json' },
+   415→              body: JSON.stringify({ status: 'escalated' }),
+   416→            })
+   417→            if (res.ok) successCount++
+   418→          } else if (action === 'suppress') {
+   419→            const res = await fetch(`/api/alerts/${id}`, {
+   420→              method: 'PATCH',
+   421→              headers: { 'Content-Type': 'application/json' },
+   422→              body: JSON.stringify({ status: 'suppressed' }),
+   423→            })
+   424→            if (res.ok) successCount++
+   425→          } else if (action === 'create_incident') {
+   426→            // Open create incident dialog from store
+   427→            useSIEMStore.getState().setCreateIncidentOpen(true)
+   428→            return
+   429→          }
+   430→        } catch {
+   431→          // ignore individual failures
+   432→        }
+   433→      }
+   434→      if (action !== 'create_incident') {
+   435→        toast.success(`${successCount} alerts ${action}d`)
+   436→        clearAlertSelection()
+   437→        fetchAlerts()
+   438→      }
+   439→    },
+   440→    [alertFilters.selectedIds, clearAlertSelection, fetchAlerts]
+   441→  )
+   442→
+   443→  const toggleSeverityFilter = useCallback(
+   444→    (sev: Severity) => {
+   445→      const current = alertFilters.severity
+   446→      setAlertFilters({
+   447→        severity: current.includes(sev)
+   448→          ? current.filter((s) => s !== sev)
+   449→          : [...current, sev],
+   450→        page: 1,
+   451→      })
+   452→    },
+   453→    [alertFilters.severity, setAlertFilters]
+   454→  )
+   455→
+   456→  const toggleStatusFilter = useCallback(
+   457→    (status: AlertStatus) => {
+   458→      const current = alertFilters.status
+   459→      setAlertFilters({
+   460→        status: current.includes(status)
+   461→          ? current.filter((s) => s !== status)
+   462→          : [...current, status],
+   463→        page: 1,
+   464→      })
+   465→    },
+   466→    [alertFilters.status, setAlertFilters]
+   467→  )
+   468→
+   469→  const toggleCategoryFilter = useCallback(
+   470→    (category: string) => {
+   471→      const current = alertFilters.category
+   472→      setAlertFilters({
+   473→        category: current.includes(category)
+   474→          ? current.filter((c) => c !== category)
+   475→          : [...current, category],
+   476→        page: 1,
+   477→      })
+   478→    },
+   479→    [alertFilters.category, setAlertFilters]
+   480→  )
+   481→
+   482→  const toggleSourceFilter = useCallback(
+   483→    (source: string) => {
+   484→      const current = alertFilters.source
+   485→      setAlertFilters({
+   486→        source: current.includes(source)
+   487→          ? current.filter((s) => s !== source)
+   488→          : [...current, source],
+   489→        page: 1,
+   490→      })
+   491→    },
+   492→    [alertFilters.source, setAlertFilters]
+   493→  )
+   494→
+   495→  const handleDateRange = useCallback(
+   496→    (range: string) => {
+   497→      setDateRange(range)
+   498→      const option = DATE_RANGE_OPTIONS.find((o) => o.value === range)
+   499→      if (option) {
+   500→        const now = new Date()
+   501→        const from = new Date(now.getTime() - option.hours * 60 * 60 * 1000)
+   502→        setAlertFilters({
+   503→          dateFrom: from.toISOString(),
+   504→          dateTo: now.toISOString(),
+   505→          page: 1,
+   506→        })
+   507→      }
+   508→    },
+   509→    [setAlertFilters]
+   510→  )
+   511→
+   512→  const handleCreateAlert = useCallback(async () => {
+   513→    if (!createForm.title || !createForm.description || !createForm.source) {
+   514→      toast.error('Please fill in all required fields')
+   515→      return
+   516→    }
+   517→    setCreating(true)
+   518→    try {
+   519→      const res = await fetch('/api/alerts', {
+   520→        method: 'POST',
+   521→        headers: { 'Content-Type': 'application/json' },
+   522→        body: JSON.stringify({
+   523→          title: createForm.title,
+   524→          description: createForm.description,
+   525→          severity: createForm.severity,
+   526→          category: createForm.category,
+   527→          source: createForm.source,
+   528→          sourceIp: createForm.sourceIp || undefined,
+   529→          destIp: createForm.destIp || undefined,
+   530→          protocol: createForm.protocol || undefined,
+   531→        }),
+   532→      })
+   533→      if (res.ok) {
+   534→        toast.success('Alert created successfully')
+   535→        setCreateDialogOpen(false)
+   536→        setCreateForm(emptyForm)
+   537→        fetchAlerts()
+   538→      } else {
+   539→        toast.error('Failed to create alert')
+   540→      }
+   541→    } catch {
+   542→      toast.error('Failed to create alert')
+   543→    } finally {
+   544→      setCreating(false)
+   545→    }
+   546→  }, [createForm, fetchAlerts])
+   547→
+   548→  const handleAddComment = useCallback(
+   549→    async (alertId: string) => {
+   550→      const text = commentText[alertId]?.trim()
+   551→      if (!text) return
+   552→
+   553→      try {
+   554→        const res = await fetch(`/api/alerts/${alertId}`, {
+   555→          method: 'PATCH',
+   556→          headers: { 'Content-Type': 'application/json' },
+   557→          body: JSON.stringify({ comment: text }),
+   558→        })
+   559→        if (res.ok) {
+   560→          toast.success('Comment added')
+   561→          setCommentText((prev) => ({ ...prev, [alertId]: '' }))
+   562→          fetchDetail(alertId)
+   563→        }
+   564→      } catch {
+   565→        toast.error('Failed to add comment')
+   566→      }
+   567→    },
+   568→    [commentText, fetchDetail]
+   569→  )
+   570→
+   571→  // 10-3: Snooze handler — marks the alert as snoozed in local state with a
+   572→  // resume timestamp. The PATCH is best-effort (suppressed status); the
+   573→  // local timestamp drives the snooze badge countdown shown on the row.
+   574→  const handleSnooze = useCallback(
+   575→    async (alertId: string, durationMs: number) => {
+   576→      const resumeAt = Date.now() + durationMs
+   577→      setSnoozedAlerts((prev) => ({ ...prev, [alertId]: resumeAt }))
+   578→      const durationLabel =
+   579→        SNOOZE_DURATIONS.find((d) => d.value === durationMs)?.label || `${durationMs}ms`
+   580→      try {
+   581→        await fetch(`/api/alerts/${alertId}`, {
+   582→          method: 'PATCH',
+   583→          headers: { 'Content-Type': 'application/json' },
+   584→          body: JSON.stringify({ status: 'suppressed' }),
+   585→        })
+   586→      } catch {
+   587→        // ignore — local snooze state still applies
+   588→      }
+   589→      toast.success(`Alert snoozed for ${durationLabel}`)
+   590→    },
+   591→    []
+   592→  )
+   593→
+   594→  const handleUnsnooze = useCallback((alertId: string) => {
+   595→    setSnoozedAlerts((prev) => {
+   596→      const next = { ...prev }
+   597→      delete next[alertId]
+   598→      return next
+   599→    })
+   600→  }, [])
+   601→
+   602→  // 10-3: Compute grouped alerts when groupBy !== 'none'.
+   603→  // Returns an array of { key, label, items } in stable display order.
+   604→  const groupedAlerts = useMemo(() => {
+   605→    if (groupBy === 'none') {
+   606→      return [{ key: 'all', label: '', items: alerts }]
+   607→    }
+   608→    const buckets = new Map<string, Alert[]>()
+   609→    for (const a of alerts) {
+   610→      const key = String(
+   611→        groupBy === 'severity'
+   612→          ? a.severity
+   613→          : groupBy === 'source'
+   614→            ? a.source
+   615→            : groupBy === 'category'
+   616→              ? a.category || 'Uncategorized'
+   617→              : a.status
+   618→      )
+   619→      if (!buckets.has(key)) buckets.set(key, [])
+   620→      buckets.get(key)!.push(a)
+   621→    }
+   622→    // Stable ordering: severity (critical→low), else alphabetical
+   623→    const severityOrder = ['critical', 'high', 'medium', 'low', 'informational']
+   624→    const keys = Array.from(buckets.keys()).sort((x, y) => {
+   625→      if (groupBy === 'severity') {
+   626→        return severityOrder.indexOf(x) - severityOrder.indexOf(y)
+   627→      }
+   628→      return x.localeCompare(y)
+   629→    })
+   630→    return keys.map((k) => ({ key: k, label: k, items: buckets.get(k)! }))
+   631→  }, [alerts, groupBy])
+   632→
+   633→  // Select all on current page
+   634→  const allSelected =
+   635→    alerts.length > 0 && alerts.every((a) => alertFilters.selectedIds.includes(a.id))
+   636→  const someSelected =
+   637→    alerts.some((a) => alertFilters.selectedIds.includes(a.id)) && !allSelected
+   638→
+   639→  // ===== Render =====
+   640→  return (
+   641→    <motion.div
+   642→      initial={{ opacity: 0 }}
+   643→      animate={{ opacity: 1 }}
+   644→      className="flex flex-col gap-4 p-4 md:p-6"
+   645→    >
+   646→      {/* Header Row */}
+   647→      <div className="flex items-center justify-between">
+   648→        <div className="flex items-center gap-2">
+   649→          <h2 className="text-lg font-semibold">Alerts</h2>
+   650→          {/* 10-3: Live indicator + total count-up */}
+   651→          <button
+   652→            onClick={toggleLiveMode}
+   653→            className={cn(
+   654→              'inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors',
+   655→              liveMode
+   656→                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+   657→                : 'border-zinc-700 bg-zinc-800/40 text-zinc-500 hover:text-zinc-300'
+   658→            )}
+   659→            aria-pressed={liveMode}
+   660→            title={liveMode ? 'Live mode is on — click to pause' : 'Live mode is paused — click to resume'}
+   661→          >
+   662→            <span className={liveMode ? 'siem-live-dot' : 'siem-paused-dot'} aria-hidden />
+   663→            {liveMode ? (
+   664→              <span className="inline-flex items-center gap-1">
+   665→                <Play className="h-2.5 w-2.5" />
+   666→                Live
+   667→              </span>
+   668→            ) : (
+   669→              <span className="inline-flex items-center gap-1">
+   670→                <Pause className="h-2.5 w-2.5" />
+   671→                Paused
+   672→              </span>
+   673→            )}
+   674→          </button>
+   675→          <span
+   676→            className={cn(
+   677→              'inline-flex items-center gap-1 rounded-md bg-zinc-800/60 border border-zinc-700 px-2 py-0.5 text-[10px] font-medium text-zinc-300 tabular-nums',
+   678→              total !== prevTotal && prevTotal !== 0 && 'siem-count-up-flash'
+   679→            )}
+   680→          >
+   681→            <CountUp value={total} />
+   682→            <span className="text-zinc-500">total</span>
+   683→          </span>
+   684→          {activeFilterCount > 0 && (
+   685→            <Badge
+   686→              variant="secondary"
+   687→              className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-[10px] h-5 gap-1"
+   688→            >
+   689→              <Filter className="h-2.5 w-2.5" />
+   690→              {activeFilterCount} active
+   691→            </Badge>
+   692→          )}
+   693→        </div>
+   694→        <div className="flex items-center gap-2">
+   695→          <ExportButton
+   696→            filename="siem-alerts"
+   697→            fetchData={async () => {
+   698→              // Reuse the same query params as the current view, but request
+   699→              // a large page size to get all matching rows in one shot.
+   700→              const params = new URLSearchParams()
+   701→              params.set('page', '1')
+   702→              params.set('pageSize', '10000')
+   703→              params.set('sortBy', alertFilters.sortBy)
+   704→              params.set('sortOrder', alertFilters.sortOrder)
+   705→              if (alertFilters.severity.length)
+   706→                params.set('severity', alertFilters.severity.join(','))
+   707→              if (alertFilters.status.length)
+   708→                params.set('status', alertFilters.status.join(','))
+   709→              if (alertFilters.category.length)
+   710→                params.set('category', alertFilters.category.join(','))
+   711→              if (alertFilters.source.length)
+   712→                params.set('source', alertFilters.source.join(','))
+   713→              if (alertFilters.search) params.set('search', alertFilters.search)
+   714→              const res = await fetch(`/api/alerts?${params.toString()}`)
+   715→              if (!res.ok) throw new Error('Failed to fetch alerts for export')
+   716→              const json = await res.json()
+   717→              const rows = (json.data ?? json.alerts ?? []) as Record<string, unknown>[]
+   718→              return rows.map((r) => ({
+   719→                id: r.id,
+   720→                title: r.title,
+   721→                severity: r.severity,
+   722→                status: r.status,
+   723→                category: r.category,
+   724→                source: r.source,
+   725→                sourceIp: r.sourceIp,
+   726→                destIp: r.destIp,
+   727→                hostname: r.hostname,
+   728→                createdAt: r.createdAt,
+   729→                updatedAt: r.updatedAt,
+   730→              }))
+   731→            }}
+   732→          />
+   733→          <Button
+   734→            size="sm"
+   735→            className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white siem-btn-glow"
+   736→            onClick={() => setCreateDialogOpen(true)}
+   737→          >
+   738→            <Plus className="h-3.5 w-3.5" />
+   739→            Create Alert
+   740→          </Button>
+   741→        </div>
+   742→      </div>
+   743→
+   744→      {/* Filter Bar */}
+   745→      <Card className="border-border bg-card">
+   746→        <CardContent className="p-3">
+   747→          <div className="flex flex-wrap items-center gap-2">
+   748→            {/* Severity Multi-Select Buttons */}
+   749→            {SEVERITY_OPTIONS.map((opt) => {
+   750→              const isSelected = alertFilters.severity.includes(opt.value)
+   751→              return (
+   752→                <button
+   753→                  key={opt.value}
+   754→                  onClick={() => toggleSeverityFilter(opt.value)}
+   755→                  className={cn(
+   756→                    'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-all siem-filter-glow',
+   757→                    isSelected
+   758→                      ? severityButtonColors[opt.value].active
+   759→                      : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/20'
+   760→                  )}
+   761→                  style={isSelected ? { '--siem-filter-glow-color': opt.color === 'bg-red-500' ? 'rgba(239, 68, 68, 0.2)' : opt.color === 'bg-amber-500' ? 'rgba(249, 115, 22, 0.2)' : opt.color === 'bg-yellow-500' ? 'rgba(234, 179, 8, 0.2)' : opt.color === 'bg-emerald-500' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(113, 113, 122, 0.2)' } as React.CSSProperties : undefined}
+   762→                >
+   763→                  <span
+   764→                    className={cn(
+   765→                      'h-2 w-2 rounded-full',
+   766→                      isSelected ? opt.color : 'bg-current opacity-30'
+   767→                    )}
+   768→                  />
+   769→                  {opt.label}
+   770→                </button>
+   771→              )
+   772→            })}
+   773→
+   774→            <Separator orientation="vertical" className="h-6 mx-1" />
+   775→
+   776→            {/* Status Dropdown with Checkboxes */}
+   777→            <Popover>
+   778→              <PopoverTrigger asChild>
+   779→                <Button
+   780→                  variant="outline"
+   781→                  size="sm"
+   782→                  className="h-8 gap-1.5 text-xs"
+   783→                >
+   784→                  <AlertTriangle className="h-3 w-3" />
+   785→                  Status
+   786→                  {alertFilters.status.length > 0 && (
+   787→                    <Badge className="ml-0.5 h-4 min-w-4 rounded-full p-0 text-[9px] flex items-center justify-center">
+   788→                      {alertFilters.status.length}
+   789→                    </Badge>
+   790→                  )}
+   791→                </Button>
+   792→              </PopoverTrigger>
+   793→              <PopoverContent className="w-52 bg-popover border-border p-2">
+   794→                <div className="space-y-0.5">
+   795→                  {STATUS_OPTIONS.map((opt) => (
+   796→                    <label
+   797→                      key={opt.value}
+   798→                      className={cn(
+   799→                        'flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm hover:bg-accent',
+   800→                        alertFilters.status.includes(opt.value) && 'bg-accent/50'
+   801→                      )}
+   802→                    >
+   803→                      <Checkbox
+   804→                        checked={alertFilters.status.includes(opt.value)}
+   805→                        onCheckedChange={() => toggleStatusFilter(opt.value)}
+   806→                      />
+   807→                      <StatusBadge status={opt.value} type="alert" />
+   808→                    </label>
+   809→                  ))}
+   810→                </div>
+   811→              </PopoverContent>
+   812→            </Popover>
+   813→
+   814→            {/* Category Dropdown with Checkboxes */}
+   815→            <Popover>
+   816→              <PopoverTrigger asChild>
+   817→                <Button
+   818→                  variant="outline"
+   819→                  size="sm"
+   820→                  className="h-8 gap-1.5 text-xs"
+   821→                >
+   822→                  <FileText className="h-3 w-3" />
+   823→                  Category
+   824→                  {alertFilters.category.length > 0 && (
+   825→                    <Badge className="ml-0.5 h-4 min-w-4 rounded-full p-0 text-[9px] flex items-center justify-center">
+   826→                      {alertFilters.category.length}
+   827→                    </Badge>
+   828→                  )}
+   829→                </Button>
+   830→              </PopoverTrigger>
+   831→              <PopoverContent className="w-52 bg-popover border-border p-2">
+   832→                <div className="space-y-0.5">
+   833→                  {CATEGORY_OPTIONS.map((opt) => (
+   834→                    <label
+   835→                      key={opt.value}
+   836→                      className={cn(
+   837→                        'flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm hover:bg-accent',
+   838→                        alertFilters.category.includes(opt.value) && 'bg-accent/50'
+   839→                      )}
+   840→                    >
+   841→                      <Checkbox
+   842→                        checked={alertFilters.category.includes(opt.value)}
+   843→                        onCheckedChange={() => toggleCategoryFilter(opt.value)}
+   844→                      />
+   845→                      <span className="text-xs">{opt.label}</span>
+   846→                    </label>
+   847→                  ))}
+   848→                </div>
+   849→              </PopoverContent>
+   850→            </Popover>
+   851→
+   852→            {/* Source Dropdown with Checkboxes */}
+   853→            <Popover>
+   854→              <PopoverTrigger asChild>
+   855→                <Button
+   856→                  variant="outline"
+   857→                  size="sm"
+   858→                  className="h-8 gap-1.5 text-xs"
+   859→                >
+   860→                  <RefreshCw className="h-3 w-3" />
+   861→                  Source
+   862→                  {alertFilters.source.length > 0 && (
+   863→                    <Badge className="ml-0.5 h-4 min-w-4 rounded-full p-0 text-[9px] flex items-center justify-center">
+   864→                      {alertFilters.source.length}
+   865→                    </Badge>
+   866→                  )}
+   867→                </Button>
+   868→              </PopoverTrigger>
+   869→              <PopoverContent className="w-52 bg-popover border-border p-2">
+   870→                <div className="space-y-0.5">
+   871→                  {SOURCE_OPTIONS.map((opt) => (
+   872→                    <label
+   873→                      key={opt.value}
+   874→                      className={cn(
+   875→                        'flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm hover:bg-accent',
+   876→                        alertFilters.source.includes(opt.value) && 'bg-accent/50'
+   877→                      )}
+   878→                    >
+   879→                      <Checkbox
+   880→                        checked={alertFilters.source.includes(opt.value)}
+   881→                        onCheckedChange={() => toggleSourceFilter(opt.value)}
+   882→                      />
+   883→                      <span className="text-xs">{opt.label}</span>
+   884→                    </label>
+   885→                  ))}
+   886→                </div>
+   887→              </PopoverContent>
+   888→            </Popover>
+   889→
+   890→            <Separator orientation="vertical" className="h-6 mx-1" />
+   891→
+   892→            {/* Search Input */}
+   893→            <div className="relative min-w-[180px] flex-1 max-w-[280px]">
+   894→              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+   895→              <Input
+   896→                placeholder="Search alerts..."
+   897→                value={alertFilters.search}
+   898→                onChange={(e) =>
+   899→                  setAlertFilters({ search: e.target.value, page: 1 })
+   900→                }
+   901→                className="h-8 pl-8 text-xs"
+   902→              />
+   903→            </div>
+   904→
+   905→            {/* Date Range Button Group */}
+   906→            <div className="flex items-center rounded-md border border-border overflow-hidden">
+   907→              {DATE_RANGE_OPTIONS.map((opt) => (
+   908→                <button
+   909→                  key={opt.value}
+   910→                  onClick={() => handleDateRange(opt.value)}
+   911→                  className={cn(
+   912→                    'px-2.5 py-1.5 text-xs font-medium transition-colors border-r border-border last:border-r-0',
+   913→                    dateRange === opt.value
+   914→                      ? 'bg-emerald-600 text-white'
+   915→                      : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+   916→                  )}
+   917→                >
+   918→                  {opt.label}
+   919→                </button>
+   920→              ))}
+   921→            </div>
+   922→
+   923→            {/* 10-3: Group By dropdown */}
+   924→            <DropdownMenu>
+   925→              <DropdownMenuTrigger asChild>
+   926→                <Button
+   927→                  variant="outline"
+   928→                  size="sm"
+   929→                  className={cn(
+   930→                    'h-8 gap-1.5 text-xs',
+   931→                    groupBy !== 'none' && 'border-emerald-500/40 text-emerald-400'
+   932→                  )}
+   933→                >
+   934→                  <Layers className="h-3 w-3" />
+   935→                  Group
+   936→                  {groupBy !== 'none' && (
+   937→                    <Badge className="ml-0.5 h-4 min-w-4 rounded-full p-0 text-[9px] flex items-center justify-center bg-emerald-500/20 text-emerald-400">
+   938→                      {GROUP_BY_OPTIONS.find((o) => o.value === groupBy)?.label}
+   939→                    </Badge>
+   940→                  )}
+   941→                </Button>
+   942→              </DropdownMenuTrigger>
+   943→              <DropdownMenuContent align="end" className="w-44">
+   944→                {GROUP_BY_OPTIONS.map((opt) => (
+   945→                  <DropdownMenuItem
+   946→                    key={opt.value}
+   947→                    onClick={() => setGroupBy(opt.value)}
+   948→                    className={cn(
+   949→                      'gap-2 text-xs',
+   950→                      groupBy === opt.value && 'bg-emerald-500/10 text-emerald-400'
+   951→                    )}
+   952→                  >
+   953→                    {groupBy === opt.value && <Check className="h-3 w-3" />}
+   954→                    {groupBy !== opt.value && <span className="w-3" />}
+   955→                    {opt.label}
+   956→                  </DropdownMenuItem>
+   957→                ))}
+   958→              </DropdownMenuContent>
+   959→            </DropdownMenu>
+   960→
+   961→            {/* Refresh */}
+   962→            <Button
+   963→              variant="ghost"
+   964→              size="icon"
+   965→              className="h-8 w-8"
+   966→              onClick={fetchAlerts}
+   967→            >
+   968→              <RefreshCw
+   969→                className={cn('h-3.5 w-3.5', loading && 'animate-spin')}
+   970→              />
+   971→            </Button>
+   972→
+   973→            {/* Clear Filters */}
+   974→            {activeFilterCount > 0 && (
+   975→              <Button
+   976→                variant="ghost"
+   977→                size="sm"
+   978→                className="h-8 gap-1.5 text-xs text-muted-foreground"
+   979→                onClick={() => {
+   980→                  resetAlertFilters()
+   981→                  setDateRange('24h')
+   982→                }}
+   983→              >
+   984→                <X className="h-3 w-3" />
+   985→                Clear filters
+   986→              </Button>
+   987→            )}
+   988→          </div>
+   989→        </CardContent>
+   990→      </Card>
+   991→
+   992→      {/* Bulk Action Toolbar */}
+   993→      <AnimatePresence>
+   994→        {alertFilters.selectedIds.length > 0 && (
+   995→          <motion.div
+   996→            initial={{ opacity: 0, height: 0 }}
+   997→            animate={{ opacity: 1, height: 'auto' }}
+   998→            exit={{ opacity: 0, height: 0 }}
+   999→            transition={{ duration: 0.15 }}
+  1000→            className="siem-bulk-bar"
+  1001→          >
+  1002→            <Card className="border-emerald-500/30 bg-emerald-500/5">
+  1003→              <CardContent className="flex items-center gap-2 p-2">
+  1004→                <span className="text-sm font-medium text-emerald-400">
+  1005→                  {alertFilters.selectedIds.length} alert
+  1006→                  {alertFilters.selectedIds.length !== 1 ? 's' : ''} selected
+  1007→                </span>
+  1008→                <Separator orientation="vertical" className="h-5" />
+  1009→                <Button
+  1010→                  variant="ghost"
+  1011→                  size="sm"
+  1012→                  className="h-7 gap-1.5 text-xs"
+  1013→                  onClick={() => handleBulkAction('acknowledge')}
+  1014→                >
+  1015→                  <Check className="h-3.5 w-3.5" />
+  1016→                  Acknowledge
+  1017→                </Button>
+  1018→                <Button
+  1019→                  variant="ghost"
+  1020→                  size="sm"
+  1021→                  className="h-7 gap-1.5 text-xs text-orange-400"
+  1022→                  onClick={() => handleBulkAction('escalate')}
+  1023→                >
+  1024→                  <ArrowUp className="h-3.5 w-3.5" />
+  1025→                  Escalate
+  1026→                </Button>
+  1027→                <Button
+  1028→                  variant="ghost"
+  1029→                  size="sm"
+  1030→                  className="h-7 gap-1.5 text-xs text-muted-foreground"
+  1031→                  onClick={() => handleBulkAction('suppress')}
+  1032→                >
+  1033→                  <X className="h-3.5 w-3.5" />
+  1034→                  Suppress
+  1035→                </Button>
+  1036→                <Button
+  1037→                  variant="ghost"
+  1038→                  size="sm"
+  1039→                  className="h-7 gap-1.5 text-xs text-emerald-400"
+  1040→                  onClick={() => handleBulkAction('create_incident')}
+  1041→                >
+  1042→                  <Plus className="h-3.5 w-3.5" />
+  1043→                  Create Incident
+  1044→                </Button>
+  1045→                <Separator orientation="vertical" className="h-5" />
+  1046→                <Button
+  1047→                  variant="ghost"
+  1048→                  size="sm"
+  1049→                  className="h-7 text-xs text-muted-foreground"
+  1050→                  onClick={clearAlertSelection}
+  1051→                >
+  1052→                  Clear Selection
+  1053→                </Button>
+  1054→              </CardContent>
+  1055→            </Card>
+  1056→          </motion.div>
+  1057→        )}
+  1058→      </AnimatePresence>
+  1059→
+  1060→      {/* Alerts Table */}
+  1061→      <Card className="border-border bg-card overflow-hidden">
+  1062→        <div className="overflow-x-auto">
+  1063→          <Table>
+  1064→            <TableHeader className="sticky top-0 z-10 bg-card">
+  1065→              <TableRow className="hover:bg-transparent">
+  1066→                <TableHead className="w-10">
+  1067→                  <Checkbox
+  1068→                    checked={allSelected}
+  1069→                    ref={(el) => {
+  1070→                      if (el) {
+  1071→                        (el as HTMLButtonElement & { indeterminate?: boolean }).indeterminate = someSelected
+  1072→                      }
+  1073→                    }}
+  1074→                    onCheckedChange={(checked) => {
+  1075→                      if (checked) selectAllAlerts(alerts.map((a) => a.id))
+  1076→                      else clearAlertSelection()
+  1077→                    }}
+  1078→                  />
+  1079→                </TableHead>
+  1080→                <TableHead className="w-8" />
+  1081→                <TableHead className="min-w-[200px]">Title</TableHead>
+  1082→                <TableHead className="hidden md:table-cell w-28">
+  1083→                  Category
+  1084→                </TableHead>
+  1085→                <TableHead className="hidden md:table-cell w-24">
+  1086→                  Source
+  1087→                </TableHead>
+  1088→                <TableHead className="hidden lg:table-cell w-44">
+  1089→                  Source → Dest
+  1090→                </TableHead>
+  1091→                <TableHead className="w-28">Status</TableHead>
+  1092→                <TableHead className="hidden sm:table-cell w-28">
+  1093→                  Last Seen
+  1094→                </TableHead>
+  1095→                <TableHead className="w-10" />
+  1096→              </TableRow>
+  1097→            </TableHeader>
+  1098→            <TableBody>
+  1099→              {loading ? (
+  1100→                // Skeleton rows
+  1101→                Array.from({ length: 8 }).map((_, i) => (
+  1102→                  <TableRow key={`skeleton-${i}`}>
+  1103→                    <TableCell>
+  1104→                      <Skeleton className="h-4 w-4" />
+  1105→                    </TableCell>
+  1106→                    <TableCell>
+  1107→                      <Skeleton className="h-2 w-2 rounded-full" />
+  1108→                    </TableCell>
+  1109→                    <TableCell>
+  1110→                      <Skeleton className="h-4 w-full max-w-[180px]" />
+  1111→                    </TableCell>
+  1112→                    <TableCell className="hidden md:table-cell">
+  1113→                      <Skeleton className="h-4 w-20" />
+  1114→                    </TableCell>
+  1115→                    <TableCell className="hidden md:table-cell">
+  1116→                      <Skeleton className="h-4 w-16" />
+  1117→                    </TableCell>
+  1118→                    <TableCell className="hidden lg:table-cell">
+  1119→                      <Skeleton className="h-4 w-36" />
+  1120→                    </TableCell>
+  1121→                    <TableCell>
+  1122→                      <Skeleton className="h-5 w-20 rounded-full" />
+  1123→                    </TableCell>
+  1124→                    <TableCell className="hidden sm:table-cell">
+  1125→                      <Skeleton className="h-4 w-20" />
+  1126→                    </TableCell>
+  1127→                    <TableCell>
+  1128→                      <Skeleton className="h-4 w-4" />
+  1129→                    </TableCell>
+  1130→                  </TableRow>
+  1131→                ))
+  1132→              ) : alerts.length === 0 ? (
+  1133→                <TableRow>
+  1134→                  <TableCell
+  1135→                    colSpan={9}
+  1136→                    className="h-48 text-center text-sm text-muted-foreground"
+  1137→                  >
+  1138→                    <div className="flex flex-col items-center gap-2">
+  1139→                      <AlertTriangle className="h-8 w-8 text-muted-foreground/50" />
+  1140→                      <p>No alerts found matching your filters</p>
+  1141→                      {activeFilterCount > 0 && (
+  1142→                        <Button
+  1143→                          variant="outline"
+  1144→                          size="sm"
+  1145→                          className="mt-2"
+  1146→                          onClick={() => {
+  1147→                            resetAlertFilters()
+  1148→                            setDateRange('24h')
+  1149→                          }}
+  1150→                        >
+  1151→                          Clear filters
+  1152→                        </Button>
+  1153→                      )}
+  1154→                    </div>
+  1155→                  </TableCell>
+  1156→                </TableRow>
+  1157→              ) : (
+  1158→                groupedAlerts.map((group, gIdx) => (
+  1159→                  <Fragment key={group.key}>
+  1160→                    {/* 10-3: Group header row when grouping is active */}
+  1161→                    {groupBy !== 'none' && (
+  1162→                      <TableRow className="hover:bg-transparent bg-zinc-900/60">
+  1163→                        <TableCell colSpan={9} className="py-1.5 px-4">
+  1164→                          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+  1165→                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+  1166→                            {group.label}
+  1167→                            <span className="text-zinc-500 normal-case font-normal">
+  1168→                              ({group.items.length})
+  1169→                            </span>
+  1170→                          </div>
+  1171→                        </TableCell>
+  1172→                      </TableRow>
+  1173→                    )}
+  1174→                    {group.items.map((alert, idx) => {
+  1175→                      const flatIdx = gIdx * 100 + idx
+  1176→                      return (
+  1177→                        <AlertRowComponent
+  1178→                          key={alert.id}
+  1179→                          alert={alert}
+  1180→                          isSelected={alertFilters.selectedIds.includes(alert.id)}
+  1181→                          isExpanded={expandedAlert === alert.id}
+  1182→                          isOdd={idx % 2 === 1}
+  1183→                          staggerIndex={Math.min(flatIdx, 8)}
+  1184→                          isNew={newAlertIds.has(alert.id)}
+  1185→                          snoozedUntil={snoozedAlerts[alert.id]}
+  1186→                          detailData={
+  1187→                            expandedAlert === alert.id ? detailData : null
+  1188→                          }
+  1189→                          detailLoading={detailLoading}
+  1190→                          onToggleSelect={() => toggleAlertSelection(alert.id)}
+  1191→                          onExpand={() => handleExpand(alert.id)}
+  1192→                          onOpenDrawer={() => setDrawerAlertId(alert.id)}
+  1193→                          onStatusChange={(status) =>
+  1194→                            handleStatusChange(alert.id, status)
+  1195→                          }
+  1196→                          onSnooze={(durationMs) => handleSnooze(alert.id, durationMs)}
+  1197→                          onUnsnooze={() => handleUnsnooze(alert.id)}
+  1198→                          commentText={commentText[alert.id] || ''}
+  1199→                          onCommentTextChange={(text) =>
+  1200→                            setCommentText((prev) => ({
+  1201→                              ...prev,
+  1202→                              [alert.id]: text,
+  1203→                            }))
+  1204→                          }
+  1205→                          onAddComment={() => handleAddComment(alert.id)}
+  1206→                          rawLogExpanded={rawLogExpanded[alert.id] || false}
+  1207→                          onToggleRawLog={() =>
+  1208→                            setRawLogExpanded((prev) => ({
+  1209→                              ...prev,
+  1210→                              [alert.id]: !prev[alert.id],
+  1211→                            }))
+  1212→                          }
+  1213→                          onFetchDetail={() => fetchDetail(alert.id)}
+  1214→                          onRefresh={fetchAlerts}
+  1215→                        />
+  1216→                      )
+  1217→                    })}
+  1218→                  </Fragment>
+  1219→                ))
+  1220→              )}
+  1221→            </TableBody>
+  1222→          </Table>
+  1223→        </div>
+  1224→      </Card>
+  1225→
+  1226→      {/* Pagination */}
+  1227→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  1228→        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+  1229→          <span>
+  1230→            Showing{' '}
+  1231→            <span className="font-medium text-zinc-300 tabular-nums">
+  1232→              {total === 0
+  1233→                ? '0'
+  1234→                : `${(alertFilters.page - 1) * alertFilters.pageSize + 1}–${Math.min(alertFilters.page * alertFilters.pageSize, total)}`}
+  1235→            </span>{' '}
+  1236→            of <span className="font-medium text-zinc-300 tabular-nums">{total}</span> alerts
+  1237→          </span>
+  1238→          <Select
+  1239→            value={String(alertFilters.pageSize)}
+  1240→            onValueChange={(v) => setAlertFilters({ pageSize: Number(v), page: 1 })}
+  1241→          >
+  1242→            <SelectTrigger className="h-7 w-[70px] text-[11px]">
+  1243→              <SelectValue />
+  1244→            </SelectTrigger>
+  1245→            <SelectContent>
+  1246→              {[25, 50, 100].map((s) => (
+  1247→                <SelectItem key={s} value={String(s)} className="text-xs">
+  1248→                  {s}/page
+  1249→                </SelectItem>
+  1250→              ))}
+  1251→            </SelectContent>
+  1252→          </Select>
+  1253→          <div className="flex items-center gap-1.5">
+  1254→            <span className="text-muted-foreground">Page</span>
+  1255→            <Input
+  1256→              type="number"
+  1257→              min={1}
+  1258→              max={Math.max(totalPages, 1)}
+  1259→              value={alertFilters.page}
+  1260→              onChange={(e) => {
+  1261→                const p = Math.max(1, Math.min(Number(e.target.value) || 1, totalPages || 1))
+  1262→                setAlertFilters({ page: p })
+  1263→              }}
+  1264→              className="h-7 w-14 text-xs text-center"
+  1265→            />
+  1266→            <span className="text-muted-foreground">of {Math.max(totalPages, 1)}</span>
+  1267→          </div>
+  1268→        </div>
+  1269→        <div className="flex items-center gap-1.5">
+  1270→          <Button
+  1271→            variant="outline"
+  1272→            size="sm"
+  1273→            className="h-7 text-xs gap-1"
+  1274→            disabled={alertFilters.page <= 1}
+  1275→            onClick={() => setAlertFilters({ page: alertFilters.page - 1 })}
+  1276→          >
+  1277→            Previous
+  1278→          </Button>
+  1279→          <Button
+  1280→            variant="outline"
+  1281→            size="sm"
+  1282→            className="h-7 text-xs gap-1"
+  1283→            disabled={alertFilters.page >= totalPages}
+  1284→            onClick={() => setAlertFilters({ page: alertFilters.page + 1 })}
+  1285→          >
+  1286→            Next
+  1287→          </Button>
+  1288→        </div>
+  1289→      </div>
+  1290→
+  1291→      {/* Create Alert Dialog */}
+  1292→      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+  1293→        <DialogContent className="sm:max-w-lg bg-card border-border">
+  1294→          <DialogHeader>
+  1295→            <DialogTitle>Create Alert</DialogTitle>
+  1296→            <DialogDescription>
+  1297→              Manually create a new security alert.
+  1298→            </DialogDescription>
+  1299→          </DialogHeader>
+  1300→          <div className="grid gap-4 py-4">
+  1301→            <div className="grid gap-2">
+  1302→              <Label htmlFor="alert-title">Title *</Label>
+  1303→              <Input
+  1304→                id="alert-title"
+  1305→                value={createForm.title}
+  1306→                onChange={(e) =>
+  1307→                  setCreateForm((f) => ({ ...f, title: e.target.value }))
+  1308→                }
+  1309→                placeholder="Alert title"
+  1310→                className="text-sm"
+  1311→              />
+  1312→            </div>
+  1313→            <div className="grid gap-2">
+  1314→              <Label htmlFor="alert-desc">Description *</Label>
+  1315→              <Input
+  1316→                id="alert-desc"
+  1317→                value={createForm.description}
+  1318→                onChange={(e) =>
+  1319→                  setCreateForm((f) => ({ ...f, description: e.target.value }))
+  1320→                }
+  1321→                placeholder="Describe the alert"
+  1322→                className="text-sm"
+  1323→              />
+  1324→            </div>
+  1325→            <div className="grid grid-cols-2 gap-4">
+  1326→              <div className="grid gap-2">
+  1327→                <Label>Severity</Label>
+  1328→                <Select
+  1329→                  value={createForm.severity}
+  1330→                  onValueChange={(v) =>
+  1331→                    setCreateForm((f) => ({ ...f, severity: v as Severity }))
+  1332→                  }
+  1333→                >
+  1334→                  <SelectTrigger className="text-sm">
+  1335→                    <SelectValue />
+  1336→                  </SelectTrigger>
+  1337→                  <SelectContent>
+  1338→                    {SEVERITY_OPTIONS.map((opt) => (
+  1339→                      <SelectItem key={opt.value} value={opt.value}>
+  1340→                        {opt.label}
+  1341→                      </SelectItem>
+  1342→                    ))}
+  1343→                  </SelectContent>
+  1344→                </Select>
+  1345→              </div>
+  1346→              <div className="grid gap-2">
+  1347→                <Label>Category</Label>
+  1348→                <Select
+  1349→                  value={createForm.category}
+  1350→                  onValueChange={(v) =>
+  1351→                    setCreateForm((f) => ({ ...f, category: v }))
+  1352→                  }
+  1353→                >
+  1354→                  <SelectTrigger className="text-sm">
+  1355→                    <SelectValue />
+  1356→                  </SelectTrigger>
+  1357→                  <SelectContent>
+  1358→                    {CATEGORY_OPTIONS.map((opt) => (
+  1359→                      <SelectItem key={opt.value} value={opt.value}>
+  1360→                        {opt.label}
+  1361→                      </SelectItem>
+  1362→                    ))}
+  1363→                  </SelectContent>
+  1364→                </Select>
+  1365→              </div>
+  1366→            </div>
+  1367→            <div className="grid grid-cols-2 gap-4">
+  1368→              <div className="grid gap-2">
+  1369→                <Label>Source *</Label>
+  1370→                <Select
+  1371→                  value={createForm.source}
+  1372→                  onValueChange={(v) =>
+  1373→                    setCreateForm((f) => ({ ...f, source: v }))
+  1374→                  }
+  1375→                >
+  1376→                  <SelectTrigger className="text-sm">
+  1377→                    <SelectValue />
+  1378→                  </SelectTrigger>
+  1379→                  <SelectContent>
+  1380→                    {SOURCE_OPTIONS.map((opt) => (
+  1381→                      <SelectItem key={opt.value} value={opt.value}>
+  1382→                        {opt.label}
+  1383→                      </SelectItem>
+  1384→                    ))}
+  1385→                  </SelectContent>
+  1386→                </Select>
+  1387→              </div>
+  1388→              <div className="grid gap-2">
+  1389→                <Label>Protocol</Label>
+  1390→                <Input
+  1391→                  value={createForm.protocol}
+  1392→                  onChange={(e) =>
+  1393→                    setCreateForm((f) => ({ ...f, protocol: e.target.value }))
+  1394→                  }
+  1395→                  placeholder="e.g. TCP, UDP"
+  1396→                  className="text-sm"
+  1397→                />
+  1398→              </div>
+  1399→            </div>
+  1400→            <div className="grid grid-cols-2 gap-4">
+  1401→              <div className="grid gap-2">
+  1402→                <Label>Source IP</Label>
+  1403→                <Input
+  1404→                  value={createForm.sourceIp}
+  1405→                  onChange={(e) =>
+  1406→                    setCreateForm((f) => ({ ...f, sourceIp: e.target.value }))
+  1407→                  }
+  1408→                  placeholder="e.g. 10.0.0.1"
+  1409→                  className="text-sm"
+  1410→                />
+  1411→              </div>
+  1412→              <div className="grid gap-2">
+  1413→                <Label>Destination IP</Label>
+  1414→                <Input
+  1415→                  value={createForm.destIp}
+  1416→                  onChange={(e) =>
+  1417→                    setCreateForm((f) => ({ ...f, destIp: e.target.value }))
+  1418→                  }
+  1419→                  placeholder="e.g. 192.168.1.1"
+  1420→                  className="text-sm"
+  1421→                />
+  1422→              </div>
+  1423→            </div>
+  1424→          </div>
+  1425→          <DialogFooter>
+  1426→            <Button
+  1427→              variant="outline"
+  1428→              size="sm"
+  1429→              onClick={() => setCreateDialogOpen(false)}
+  1430→            >
+  1431→              Cancel
+  1432→            </Button>
+  1433→            <Button
+  1434→              size="sm"
+  1435→              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+  1436→              onClick={handleCreateAlert}
+  1437→              disabled={creating}
+  1438→            >
+  1439→              {creating && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+  1440→              Create Alert
+  1441→            </Button>
+  1442→          </DialogFooter>
+  1443→        </DialogContent>
+  1444→      </Dialog>
+  1445→
+  1446→      {/* Alert Detail Drawer */}
+  1447→      <AlertDetailDrawer
+  1448→        alertId={drawerAlertId}
+  1449→        open={drawerAlertId !== null}
+  1450→        onOpenChange={(open) => {
+  1451→          if (!open) setDrawerAlertId(null)
+  1452→        }}
+  1453→        onRefresh={fetchAlerts}
+  1454→      />
+  1455→    </motion.div>
+  1456→  )
+  1457→}
+  1458→
+  1459→// ===== Alert Row Component (extracted for efficiency) =====
+  1460→
+  1461→interface AlertRowProps {
+  1462→  alert: Alert
+  1463→  isSelected: boolean
+  1464→  isExpanded: boolean
+  1465→  isOdd: boolean
+  1466→  // 10-3 polish props
+  1467→  staggerIndex: number
+  1468→  isNew: boolean
+  1469→  snoozedUntil?: number
+  1470→  detailData: Alert | null
+  1471→  detailLoading: boolean
+  1472→  onToggleSelect: () => void
+  1473→  onExpand: () => void
+  1474→  onOpenDrawer: () => void
+  1475→  onStatusChange: (status: string) => void
+  1476→  onSnooze: (durationMs: number) => void
+  1477→  onUnsnooze: () => void
+  1478→  commentText: string
+  1479→  onCommentTextChange: (text: string) => void
+  1480→  onAddComment: () => void
+  1481→  rawLogExpanded: boolean
+  1482→  onToggleRawLog: () => void
+  1483→  onFetchDetail: () => void
+  1484→  onRefresh: () => void
+  1485→}
+  1486→
+  1487→const severityDotColor: Record<string, string> = {
+  1488→  critical: 'bg-red-500',
+  1489→  high: 'bg-amber-500',
+  1490→  medium: 'bg-yellow-500',
+  1491→  low: 'bg-emerald-500',
+  1492→  informational: 'bg-zinc-400',
+  1493→}
+  1494→
+  1495→function AlertRowComponent({
+  1496→  alert,
+  1497→  isSelected,
+  1498→  isExpanded,
+  1499→  isOdd,
+  1500→  staggerIndex,
+  1501→  isNew,
+  1502→  snoozedUntil,
+  1503→  detailData,
+  1504→  detailLoading,
+  1505→  onToggleSelect,
+  1506→  onExpand,
+  1507→  onOpenDrawer,
+  1508→  onStatusChange,
+  1509→  onSnooze,
+  1510→  onUnsnooze,
+  1511→  commentText,
+  1512→  onCommentTextChange,
+  1513→  onAddComment,
+  1514→  rawLogExpanded,
+  1515→  onToggleRawLog,
+  1516→  onFetchDetail,
+  1517→  onRefresh,
+  1518→}: AlertRowProps) {
+  1519→  const handleAction = useCallback(
+  1520→    async (action: string) => {
+  1521→      if (action === 'acknowledge') {
+  1522→        onStatusChange('acknowledged')
+  1523→      } else if (action === 'escalate') {
+  1524→        try {
+  1525→          const res = await fetch(`/api/alerts/${alert.id}/escalate`, {
+  1526→            method: 'POST',
+  1527→            headers: { 'Content-Type': 'application/json' },
+  1528→            body: JSON.stringify({ reason: 'Manual escalation' }),
+  1529→          })
+  1530→          if (res.ok) {
+  1531→            toast.success('Alert escalated')
+  1532→            onRefresh()
+  1533→            onFetchDetail()
+  1534→          }
+  1535→        } catch {
+  1536→          toast.error('Failed to escalate alert')
+  1537→        }
+  1538→      } else if (action === 'suppress') {
+  1539→        try {
+  1540→          const res = await fetch(`/api/alerts/${alert.id}/suppress`, {
+  1541→            method: 'POST',
+  1542→            headers: { 'Content-Type': 'application/json' },
+  1543→            body: JSON.stringify({ reason: 'Manual suppression' }),
+  1544→          })
+  1545→          if (res.ok) {
+  1546→            toast.success('Alert suppressed')
+  1547→            onRefresh()
+  1548→            onFetchDetail()
+  1549→          }
+  1550→        } catch {
+  1551→          toast.error('Failed to suppress alert')
+  1552→        }
+  1553→      } else if (action === 'assign') {
+  1554→        try {
+  1555→          const res = await fetch(`/api/alerts/${alert.id}/assign`, {
+  1556→            method: 'POST',
+  1557→            headers: { 'Content-Type': 'application/json' },
+  1558→            body: JSON.stringify({ userId: 'default-admin', action: 'assigned' }),
+  1559→          })
+  1560→          if (res.ok) {
+  1561→            toast.success('Alert assigned')
+  1562→            onRefresh()
+  1563→            onFetchDetail()
+  1564→          }
+  1565→        } catch {
+  1566→          toast.error('Failed to assign alert')
+  1567→        }
+  1568→      } else if (action === 'link_incident') {
+  1569→        useSIEMStore.getState().setCreateIncidentOpen(true)
+  1570→      } else if (action === 'view_details') {
+  1571→        onOpenDrawer()
+  1572→      }
+  1573→    },
+  1574→    [alert.id, onStatusChange, onRefresh, onFetchDetail, onExpand, onOpenDrawer]
+  1575→  )
+  1576→
+  1577→  const tags = useMemo(() => {
+  1578→    if (!alert.tags) return []
+  1579→    try {
+  1580→      return JSON.parse(alert.tags)
+  1581→    } catch {
+  1582→      return alert.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+  1583→    }
+  1584→  }, [alert.tags])
+  1585→
+  1586→  // 10-3: snooze countdown string for the row badge
+  1587→  const snoozeLabel = useMemo(() => {
+  1588→    if (!snoozedUntil) return null
+  1589→    const remaining = snoozedUntil - Date.now()
+  1590→    if (remaining <= 0) return null
+  1591→    const mins = Math.round(remaining / 60000)
+  1592→    if (mins < 60) return `${mins}m`
+  1593→    const hrs = Math.floor(mins / 60)
+  1594→    const remMin = mins % 60
+  1595→    return remMin === 0 ? `${hrs}h` : `${hrs}h ${remMin}m`
+  1596→  }, [snoozedUntil])
+  1597→
+  1598→  return (
+  1599→    <>
+  1600→      {/* Main Row */}
+  1601→      <TableRow
+  1602→        key={alert.id}
+  1603→        className={cn(
+  1604→          'cursor-pointer transition-colors siem-severity-border-' + alert.severity,
+  1605→          // 10-3: staggered fade-in on mount + severity background tint
+  1606→          'siem-stagger-in',
+  1607→          severityTintClass[alert.severity as Severity] || '',
+  1608→          // 10-3: one-shot pulse for newly-arrived alerts
+  1609→          isNew && 'siem-new-pulse',
+  1610→          isSelected && 'bg-emerald-500/5',
+  1611→          isExpanded && 'bg-accent/20',
+  1612→          isOdd && !isSelected && !isExpanded && 'bg-muted/20',
+  1613→          isSelected && isOdd && 'bg-emerald-500/5'
+  1614→        )}
+  1615→        style={{ '--siem-stagger-i': staggerIndex } as React.CSSProperties}
+  1616→        onClick={onExpand}
+  1617→      >
+  1618→        <TableCell onClick={(e) => e.stopPropagation()}>
+  1619→          <Checkbox
+  1620→            checked={isSelected}
+  1621→            onCheckedChange={onToggleSelect}
+  1622→          />
+  1623→        </TableCell>
+  1624→        <TableCell>
+  1625→          <span
+  1626→            className={cn(
+  1627→              'h-2 w-2 rounded-full inline-block',
+  1628→              severityDotColor[alert.severity] || 'bg-zinc-400',
+  1629→              alert.severity === 'critical' && 'siem-critical-dot'
+  1630→            )}
+  1631→          />
+  1632→        </TableCell>
+  1633→        <TableCell>
+  1634→          {/* 10-3: hover-expand description preview — fades in a small popover
+  1635→              below the title on row hover. We use a group/relative wrapper. */}
+  1636→          <div className="group relative">
+  1637→            <span className="font-medium text-sm truncate block max-w-[300px]">
+  1638→              {alert.title}
+  1639→            </span>
+  1640→            {alert.description && (
+  1641→              <div
+  1642→                className="siem-hover-preview pointer-events-none absolute left-0 top-full z-20 mt-1 hidden max-w-md rounded-md border border-zinc-700 bg-zinc-900/95 p-2 text-[11px] leading-relaxed text-zinc-400 shadow-xl group-hover:block opacity-0 translate-y-[-4px] group-hover:opacity-100 group-hover:translate-y-0"
+  1643→              >
+  1644→                <span className="line-clamp-3">{alert.description}</span>
+  1645→              </div>
+  1646→            )}
+  1647→          </div>
+  1648→        </TableCell>
+  1649→        <TableCell className="hidden md:table-cell">
+  1650→          <span className="text-xs text-zinc-400">
+  1651→            {alert.category || '—'}
+  1652→          </span>
+  1653→        </TableCell>
+  1654→        <TableCell className="hidden md:table-cell">
+  1655→          <Badge variant="outline" className="text-[10px] h-5">
+  1656→            {alert.source}
+  1657→          </Badge>
+  1658→        </TableCell>
+  1659→        <TableCell className="hidden lg:table-cell">
+  1660→          <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+  1661→            <span>{alert.sourceIp || '—'}</span>
+  1662→            <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
+  1663→            <span>{alert.destIp || '—'}</span>
+  1664→          </span>
+  1665→        </TableCell>
+  1666→        <TableCell onClick={(e) => e.stopPropagation()}>
+  1667→          <div className="flex items-center gap-1.5">
+  1668→            <StatusBadge status={alert.status} type="alert" />
+  1669→            {/* 10-3: snooze countdown badge */}
+  1670→            {snoozeLabel && (
+  1671→              <Badge
+  1672→                className="bg-violet-500/15 text-violet-300 border-violet-500/30 text-[9px] gap-1 px-1.5"
+  1673→                title={`Snoozed — resumes in ${snoozeLabel}`}
+  1674→              >
+  1675→                <Bell className="h-2.5 w-2.5" />
+  1676→                {snoozeLabel}
+  1677→              </Badge>
+  1678→            )}
+  1679→          </div>
+  1680→        </TableCell>
+  1681→        <TableCell className="hidden sm:table-cell">
+  1682→          <span className="text-xs text-muted-foreground">
+  1683→            {formatDistanceToNow(new Date(alert.lastSeenAt), {
+  1684→              addSuffix: true,
+  1685→            })}
+  1686→          </span>
+  1687→        </TableCell>
+  1688→        <TableCell onClick={(e) => e.stopPropagation()}>
+  1689→          <div className="flex items-center gap-0.5">
+  1690→            {/* 10-3: Snooze dropdown — Bell icon, opens a small menu with the
+  1691→                4 standard durations. If already snoozed, the trigger becomes
+  1692→                an "unsnooze" affordance. */}
+  1693→            {snoozedUntil ? (
+  1694→              <Button
+  1695→                variant="ghost"
+  1696→                size="icon"
+  1697→                className="h-7 w-7 text-violet-300 hover:text-violet-200"
+  1698→                onClick={onUnsnooze}
+  1699→                title="Cancel snooze"
+  1700→              >
+  1701→                <Bell className="h-3.5 w-3.5" />
+  1702→              </Button>
+  1703→            ) : (
+  1704→              <DropdownMenu>
+  1705→                <DropdownMenuTrigger asChild>
+  1706→                  <Button
+  1707→                    variant="ghost"
+  1708→                    size="icon"
+  1709→                    className="h-7 w-7 text-zinc-500 hover:text-violet-300"
+  1710→                    title="Snooze alert"
+  1711→                  >
+  1712→                    <Bell className="h-3.5 w-3.5" />
+  1713→                  </Button>
+  1714→                </DropdownMenuTrigger>
+  1715→                <DropdownMenuContent align="end" className="w-40">
+  1716→                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+  1717→                    Snooze for
+  1718→                  </div>
+  1719→                  <DropdownMenuSeparator />
+  1720→                  {SNOOZE_DURATIONS.map((d) => (
+  1721→                    <DropdownMenuItem
+  1722→                      key={d.value}
+  1723→                      onClick={() => onSnooze(d.value)}
+  1724→                      className="gap-2 text-xs"
+  1725→                    >
+  1726→                      <Clock className="h-3 w-3" />
+  1727→                      {d.label}
+  1728→                    </DropdownMenuItem>
+  1729→                  ))}
+  1730→                </DropdownMenuContent>
+  1731→              </DropdownMenu>
+  1732→            )}
+  1733→            <DropdownMenu>
+  1734→              <DropdownMenuTrigger asChild>
+  1735→                <Button variant="ghost" size="icon" className="h-7 w-7">
+  1736→                  <MoreHorizontal className="h-3.5 w-3.5" />
+  1737→                </Button>
+  1738→              </DropdownMenuTrigger>
+  1739→              <DropdownMenuContent align="end" className="w-44">
+  1740→                <DropdownMenuItem onClick={() => handleAction('acknowledge')}>
+  1741→                  <Check className="h-3.5 w-3.5" />
+  1742→                  Acknowledge
+  1743→                </DropdownMenuItem>
+  1744→                <DropdownMenuItem onClick={() => handleAction('escalate')}>
+  1745→                  <ArrowUp className="h-3.5 w-3.5" />
+  1746→                  Escalate
+  1747→                </DropdownMenuItem>
+  1748→                <DropdownMenuItem onClick={() => handleAction('suppress')}>
+  1749→                  <X className="h-3.5 w-3.5" />
+  1750→                  Suppress
+  1751→                </DropdownMenuItem>
+  1752→                <DropdownMenuSeparator />
+  1753→                <DropdownMenuItem onClick={() => handleAction('assign')}>
+  1754→                  Assign
+  1755→                </DropdownMenuItem>
+  1756→                <DropdownMenuItem onClick={() => handleAction('link_incident')}>
+  1757→                  Link to Incident
+  1758→                </DropdownMenuItem>
+  1759→                <DropdownMenuSeparator />
+  1760→                <DropdownMenuItem onClick={() => handleAction('view_details')}>
+  1761→                  View Details
+  1762→                </DropdownMenuItem>
+  1763→              </DropdownMenuContent>
+  1764→            </DropdownMenu>
+  1765→          </div>
+  1766→        </TableCell>
+  1767→      </TableRow>
+  1768→
+  1769→      {/* Expanded Detail Row */}
+  1770→      <AnimatePresence>
+  1771→        {isExpanded && (
+  1772→          <TableRow key={`${alert.id}-detail`} className="hover:bg-transparent">
+  1773→            <TableCell colSpan={9} className="p-0">
+  1774→              <motion.div
+  1775→                initial={{ opacity: 0, height: 0 }}
+  1776→                animate={{ opacity: 1, height: 'auto' }}
+  1777→                exit={{ opacity: 0, height: 0 }}
+  1778→                transition={{ duration: 0.2 }}
+  1779→              >
+  1780→                <div className="border-b border-border bg-muted/10 px-6 py-4">
+  1781→                  {detailLoading ? (
+  1782→                    <div className="space-y-3">
+  1783→                      <Skeleton className="h-4 w-1/3" />
+  1784→                      <Skeleton className="h-4 w-2/3" />
+  1785→                      <Skeleton className="h-20" />
+  1786→                    </div>
+  1787→                  ) : detailData ? (
+  1788→                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+  1789→                      {/* Left: Description & Details */}
+  1790→                      <div className="lg:col-span-2 space-y-4">
+  1791→                        {/* Description */}
+  1792→                        <div>
+  1793→                          <h4 className="text-sm font-semibold mb-1">
+  1794→                            Description
+  1795→                          </h4>
+  1796→                          <p className="text-xs text-muted-foreground leading-relaxed">
+  1797→                            {detailData.description}
+  1798→                          </p>
+  1799→                        </div>
+  1800→
+  1801→                        {/* MITRE ATT&CK */}
+  1802→                        {(detailData.mitreTactic || detailData.mitreTechnique) && (
+  1803→                          <div>
+  1804→                            <h4 className="text-sm font-semibold mb-2">
+  1805→                              MITRE ATT&CK
+  1806→                            </h4>
+  1807→                            <div className="flex flex-wrap gap-1.5">
+  1808→                              {detailData.mitreTactic && (
+  1809→                                <Badge
+  1810→                                  variant="outline"
+  1811→                                  className="text-[10px] h-6 bg-orange-500/10 text-orange-400 border-orange-500/30"
+  1812→                                >
+  1813→                                  {detailData.mitreTactic}
+  1814→                                </Badge>
+  1815→                              )}
+  1816→                              {detailData.mitreTechnique && (
+  1817→                                <Badge
+  1818→                                  variant="outline"
+  1819→                                  className="text-[10px] h-6 bg-purple-500/10 text-purple-400 border-purple-500/30"
+  1820→                                >
+  1821→                                  {detailData.mitreTechnique}
+  1822→                                </Badge>
+  1823→                              )}
+  1824→                            </div>
+  1825→                          </div>
+  1826→                        )}
+  1827→
+  1828→                        {/* Raw Log */}
+  1829→                        {detailData.rawLog && (
+  1830→                          <div>
+  1831→                            <button
+  1832→                              className="flex items-center gap-1.5 text-sm font-semibold mb-2 hover:text-foreground transition-colors"
+  1833→                              onClick={onToggleRawLog}
+  1834→                            >
+  1835→                              <Code className="h-3.5 w-3.5" />
+  1836→                              Raw Log
+  1837→                              {rawLogExpanded ? (
+  1838→                                <ChevronUp className="h-3.5 w-3.5" />
+  1839→                              ) : (
+  1840→                                <ChevronDown className="h-3.5 w-3.5" />
+  1841→                              )}
+  1842→                            </button>
+  1843→                            <AnimatePresence>
+  1844→                              {rawLogExpanded && (
+  1845→                                <motion.div
+  1846→                                  initial={{ opacity: 0, height: 0 }}
+  1847→                                  animate={{ opacity: 1, height: 'auto' }}
+  1848→                                  exit={{ opacity: 0, height: 0 }}
+  1849→                                  transition={{ duration: 0.15 }}
+  1850→                                >
+  1851→                                  <ScrollArea className="max-h-64">
+  1852→                                    <pre className="rounded-md bg-background border border-border p-3 text-[10px] font-mono text-muted-foreground whitespace-pre-wrap break-all overflow-x-auto">
+  1853→                                      {detailData.rawLog}
+  1854→                                    </pre>
+  1855→                                  </ScrollArea>
+  1856→                                </motion.div>
+  1857→                              )}
+  1858→                            </AnimatePresence>
+  1859→                          </div>
+  1860→                        )}
+  1861→
+  1862→                        {/* Tags */}
+  1863→                        {tags.length > 0 && (
+  1864→                          <div>
+  1865→                            <h4 className="flex items-center gap-1.5 text-sm font-semibold mb-2">
+  1866→                              <Tag className="h-3.5 w-3.5" />
+  1867→                              Tags
+  1868→                            </h4>
+  1869→                            <div className="flex flex-wrap gap-1.5">
+  1870→                              {tags.map((tag: string, i: number) => (
+  1871→                                <Badge
+  1872→                                  key={i}
+  1873→                                  variant="outline"
+  1874→                                  className="text-[10px] h-5"
+  1875→                                >
+  1876→                                  {tag}
+  1877→                                </Badge>
+  1878→                              ))}
+  1879→                            </div>
+  1880→                          </div>
+  1881→                        )}
+  1882→
+  1883→                        {/* Comments Section */}
+  1884→                        <div>
+  1885→                          <h4 className="flex items-center gap-1.5 text-sm font-semibold mb-2">
+  1886→                            <MessageSquare className="h-3.5 w-3.5" />
+  1887→                            Comments
+  1888→                            {(detailData.comments?.length || 0) > 0 && (
+  1889→                              <Badge
+  1890→                                variant="secondary"
+  1891→                                className="text-[9px] h-4 px-1.5"
+  1892→                              >
+  1893→                                {detailData.comments?.length || 0}
+  1894→                              </Badge>
+  1895→                            )}
+  1896→                          </h4>
+  1897→
+  1898→                          {(detailData.comments?.length || 0) > 0 && (
+  1899→                            <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
+  1900→                              {detailData.comments?.map((comment: Comment) => (
+  1901→                                <div
+  1902→                                  key={comment.id}
+  1903→                                  className="rounded-md bg-background border border-border p-2.5"
+  1904→                                >
+  1905→                                  <div className="flex items-center gap-2 mb-1">
+  1906→                                    <span className="text-xs font-medium">
+  1907→                                      {comment.user?.name || 'Unknown'}
+  1908→                                    </span>
+  1909→                                    <span className="text-[10px] text-muted-foreground">
+  1910→                                      {formatDistanceToNow(
+  1911→                                        new Date(comment.createdAt),
+  1912→                                        { addSuffix: true }
+  1913→                                      )}
+  1914→                                    </span>
+  1915→                                  </div>
+  1916→                                  <p className="text-xs text-muted-foreground">
+  1917→                                    {comment.content}
+  1918→                                  </p>
+  1919→                                </div>
+  1920→                              ))}
+  1921→                            </div>
+  1922→                          )}
+  1923→
+  1924→                          <div className="flex gap-2">
+  1925→                            <Input
+  1926→                              value={commentText}
+  1927→                              onChange={(e) => onCommentTextChange(e.target.value)}
+  1928→                              placeholder="Add a comment..."
+  1929→                              className="h-8 text-xs"
+  1930→                              onKeyDown={(e) => {
+  1931→                                if (e.key === 'Enter') onAddComment()
+  1932→                              }}
+  1933→                            />
+  1934→                            <Button
+  1935→                              size="sm"
+  1936→                              variant="outline"
+  1937→                              className="h-8 px-3 gap-1"
+  1938→                              onClick={onAddComment}
+  1939→                              disabled={!commentText.trim()}
+  1940→                            >
+  1941→                              <Send className="h-3 w-3" />
+  1942→                            </Button>
+  1943→                          </div>
+  1944→                        </div>
+  1945→                      </div>
+  1946→
+  1947→                      {/* Right: Metadata */}
+  1948→                      <div className="space-y-4">
+  1949→                        <div className="rounded-md bg-background border border-border p-3 space-y-3">
+  1950→                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+  1951→                            Alert Details
+  1952→                          </h4>
+  1953→                          <div className="space-y-2 text-xs">
+  1954→                            <div className="flex justify-between">
+  1955→                              <span className="text-muted-foreground">
+  1956→                                Occurrences
+  1957→                              </span>
+  1958→                              <span className="font-medium">
+  1959→                                {detailData.occurrenceCount}
+  1960→                              </span>
+  1961→                            </div>
+  1962→                            <Separator />
+  1963→                            <div className="flex justify-between">
+  1964→                              <span className="text-muted-foreground">
+  1965→                                First Seen
+  1966→                              </span>
+  1967→                              <span className="font-medium">
+  1968→                                {formatDistanceToNow(
+  1969→                                  new Date(detailData.firstSeenAt),
+  1970→                                  { addSuffix: true }
+  1971→                                )}
+  1972→                              </span>
+  1973→                            </div>
+  1974→                            <Separator />
+  1975→                            <div className="flex justify-between">
+  1976→                              <span className="text-muted-foreground">
+  1977→                                Last Seen
+  1978→                              </span>
+  1979→                              <span className="font-medium">
+  1980→                                {formatDistanceToNow(
+  1981→                                  new Date(detailData.lastSeenAt),
+  1982→                                  { addSuffix: true }
+  1983→                                )}
+  1984→                              </span>
+  1985→                            </div>
+  1986→                            <Separator />
+  1987→                            <div className="flex justify-between">
+  1988→                              <span className="text-muted-foreground">
+  1989→                                Severity
+  1990→                              </span>
+  1991→                              <SeverityBadge severity={detailData.severity} size="sm" />
+  1992→                            </div>
+  1993→                            <Separator />
+  1994→                            <div className="flex justify-between">
+  1995→                              <span className="text-muted-foreground">
+  1996→                                Status
+  1997→                              </span>
+  1998→                              <StatusBadge status={detailData.status} type="alert" />
+  1999→                            </div>
+  2000→                            <Separator />
+
+[showing lines 1-2000 of 2099; use offset=2001 with limit to continue reading]

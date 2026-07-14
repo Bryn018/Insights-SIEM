@@ -1,0 +1,1745 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback, useMemo } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import {
+     6→  Search,
+     7→  X,
+     8→  ChevronDown,
+     9→  ChevronUp,
+    10→  ArrowRight,
+    11→  ArrowUp,
+    12→  Check,
+    13→  Plus,
+    14→  MoreHorizontal,
+    15→  RefreshCw,
+    16→  Filter,
+    17→  Clock,
+    18→  MessageSquare,
+    19→  Send,
+    20→  Code,
+    21→  Tag,
+    22→  AlertTriangle,
+    23→  FileText,
+    24→} from 'lucide-react'
+    25→import { formatDistanceToNow } from 'date-fns'
+    26→import { Card, CardContent } from '@/components/ui/card'
+    27→import { Button } from '@/components/ui/button'
+    28→import { Input } from '@/components/ui/input'
+    29→import { Badge } from '@/components/ui/badge'
+    30→import { Checkbox } from '@/components/ui/checkbox'
+    31→import {
+    32→  Select,
+    33→  SelectContent,
+    34→  SelectItem,
+    35→  SelectTrigger,
+    36→  SelectValue,
+    37→} from '@/components/ui/select'
+    38→import {
+    39→  Popover,
+    40→  PopoverContent,
+    41→  PopoverTrigger,
+    42→} from '@/components/ui/popover'
+    43→import {
+    44→  DropdownMenu,
+    45→  DropdownMenuContent,
+    46→  DropdownMenuItem,
+    47→  DropdownMenuSeparator,
+    48→  DropdownMenuTrigger,
+    49→} from '@/components/ui/dropdown-menu'
+    50→import {
+    51→  Dialog,
+    52→  DialogContent,
+    53→  DialogDescription,
+    54→  DialogFooter,
+    55→  DialogHeader,
+    56→  DialogTitle,
+    57→} from '@/components/ui/dialog'
+    58→import { ScrollArea } from '@/components/ui/scroll-area'
+    59→import { Separator } from '@/components/ui/separator'
+    60→import { Skeleton } from '@/components/ui/skeleton'
+    61→import { Label } from '@/components/ui/label'
+    62→import {
+    63→  Table,
+    64→  TableBody,
+    65→  TableCell,
+    66→  TableHead,
+    67→  TableHeader,
+    68→  TableRow,
+    69→} from '@/components/ui/table'
+    70→import {
+    71→  useSIEMStore,
+    72→  type Severity,
+    73→  type AlertStatus,
+    74→  type AlertFilters,
+    75→} from '@/lib/store'
+    76→import type { Alert, PaginatedResponse, Comment } from '@/lib/types'
+    77→import { SeverityBadge, StatusBadge } from '@/components/siem/status-badge'
+    78→import { ExportButton } from '@/components/siem/export-button'
+    79→import { AlertDetailDrawer } from '@/components/siem/alert-detail-drawer'
+    80→import { cn } from '@/lib/utils'
+    81→import { toast } from 'sonner'
+    82→
+    83→// ===== Constants =====
+    84→
+    85→const SEVERITY_OPTIONS: { value: Severity; label: string; color: string }[] = [
+    86→  { value: 'critical', label: 'Critical', color: 'bg-red-500' },
+    87→  { value: 'high', label: 'High', color: 'bg-amber-500' },
+    88→  { value: 'medium', label: 'Medium', color: 'bg-yellow-500' },
+    89→  { value: 'low', label: 'Low', color: 'bg-emerald-500' },
+    90→  { value: 'informational', label: 'Info', color: 'bg-zinc-400' },
+    91→]
+    92→
+    93→const STATUS_OPTIONS: { value: AlertStatus; label: string }[] = [
+    94→  { value: 'new', label: 'New' },
+    95→  { value: 'acknowledged', label: 'Acknowledged' },
+    96→  { value: 'investigating', label: 'Investigating' },
+    97→  { value: 'resolved', label: 'Resolved' },
+    98→  { value: 'suppressed', label: 'Suppressed' },
+    99→  { value: 'escalated', label: 'Escalated' },
+   100→]
+   101→
+   102→const CATEGORY_OPTIONS = [
+   103→  { value: 'Brute Force', label: 'Brute Force' },
+   104→  { value: 'Malware', label: 'Malware' },
+   105→  { value: 'Policy Violation', label: 'Policy Violation' },
+   106→  { value: 'Anomaly', label: 'Anomaly' },
+   107→  { value: 'Compliance', label: 'Compliance' },
+   108→  { value: 'Other', label: 'Other' },
+   109→]
+   110→
+   111→const SOURCE_OPTIONS = [
+   112→  { value: 'Suricata', label: 'Suricata' },
+   113→  { value: 'Prometheus', label: 'Prometheus' },
+   114→  { value: 'OpenSearch', label: 'OpenSearch' },
+   115→  { value: 'Custom', label: 'Custom' },
+   116→]
+   117→
+   118→const DATE_RANGE_OPTIONS = [
+   119→  { value: '1h', label: '1h', hours: 1 },
+   120→  { value: '6h', label: '6h', hours: 6 },
+   121→  { value: '24h', label: '24h', hours: 24 },
+   122→  { value: '7d', label: '7d', hours: 168 },
+   123→  { value: '30d', label: '30d', hours: 720 },
+   124→]
+   125→
+   126→// ===== Create Alert Form =====
+   127→
+   128→interface CreateAlertForm {
+   129→  title: string
+   130→  description: string
+   131→  severity: Severity
+   132→  category: string
+   133→  source: string
+   134→  sourceIp: string
+   135→  destIp: string
+   136→  protocol: string
+   137→}
+   138→
+   139→const emptyForm: CreateAlertForm = {
+   140→  title: '',
+   141→  description: '',
+   142→  severity: 'medium',
+   143→  category: 'Other',
+   144→  source: 'Custom',
+   145→  sourceIp: '',
+   146→  destIp: '',
+   147→  protocol: '',
+   148→}
+   149→
+   150→// ===== Severity Color Map for Filter Buttons =====
+   151→
+   152→const severityButtonColors: Record<Severity, { active: string; dot: string }> = {
+   153→  critical: { active: 'bg-red-500/20 text-red-400 border-red-500/50', dot: 'bg-red-500' },
+   154→  high: { active: 'bg-amber-500/20 text-amber-400 border-amber-500/50', dot: 'bg-amber-500' },
+   155→  medium: { active: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50', dot: 'bg-yellow-500' },
+   156→  low: { active: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50', dot: 'bg-emerald-500' },
+   157→  informational: { active: 'bg-zinc-400/20 text-zinc-400 border-zinc-400/50', dot: 'bg-zinc-400' },
+   158→}
+   159→
+   160→// ===== Main Component =====
+   161→
+   162→export function AlertsView() {
+   163→  const {
+   164→    alertFilters,
+   165→    setAlertFilters,
+   166→    setAlertFilter,
+   167→    resetAlertFilters,
+   168→    toggleAlertSelection,
+   169→    selectAllAlerts,
+   170→    clearAlertSelection,
+   171→    expandedAlert,
+   172→    setExpandedAlert,
+   173→  } = useSIEMStore()
+   174→
+   175→  const [alerts, setAlerts] = useState<Alert[]>([])
+   176→  const [total, setTotal] = useState(0)
+   177→  const [loading, setLoading] = useState(true)
+   178→  const [detailData, setDetailData] = useState<Alert | null>(null)
+   179→  const [detailLoading, setDetailLoading] = useState(false)
+   180→  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+   181→  const [createForm, setCreateForm] = useState<CreateAlertForm>(emptyForm)
+   182→  const [creating, setCreating] = useState(false)
+   183→  const [dateRange, setDateRange] = useState<string>('24h')
+   184→  const [commentText, setCommentText] = useState<Record<string, string>>({})
+   185→  const [rawLogExpanded, setRawLogExpanded] = useState<Record<string, boolean>>({})
+   186→  const [drawerAlertId, setDrawerAlertId] = useState<string | null>(null)
+   187→
+   188→  const totalPages = Math.ceil(total / alertFilters.pageSize)
+   189→
+   190→  // ===== Compute active filter count =====
+   191→  const activeFilterCount = useMemo(() => {
+   192→    let count = 0
+   193→    if (alertFilters.severity.length > 0) count++
+   194→    if (alertFilters.status.length > 0) count++
+   195→    if (alertFilters.category.length > 0) count++
+   196→    if (alertFilters.source.length > 0) count++
+   197→    if (alertFilters.search) count++
+   198→    if (dateRange !== '24h') count++
+   199→    return count
+   200→  }, [alertFilters, dateRange])
+   201→
+   202→  // ===== Data Fetching =====
+   203→  const fetchAlerts = useCallback(async () => {
+   204→    setLoading(true)
+   205→    try {
+   206→      const params = new URLSearchParams()
+   207→      params.set('page', String(alertFilters.page))
+   208→      params.set('pageSize', String(alertFilters.pageSize))
+   209→      params.set('sortBy', alertFilters.sortBy)
+   210→      params.set('sortOrder', alertFilters.sortOrder)
+   211→      if (alertFilters.severity.length)
+   212→        params.set('severity', alertFilters.severity.join(','))
+   213→      if (alertFilters.status.length)
+   214→        params.set('status', alertFilters.status.join(','))
+   215→      if (alertFilters.category.length)
+   216→        params.set('category', alertFilters.category.join(','))
+   217→      if (alertFilters.source.length)
+   218→        params.set('source', alertFilters.source.join(','))
+   219→      if (alertFilters.search) params.set('search', alertFilters.search)
+   220→      if (alertFilters.dateFrom)
+   221→        params.set('dateFrom', alertFilters.dateFrom)
+   222→      if (alertFilters.dateTo) params.set('dateTo', alertFilters.dateTo)
+   223→
+   224→      const res = await fetch(`/api/alerts?${params}`)
+   225→      if (res.ok) {
+   226→        const json: PaginatedResponse<Alert> = await res.json()
+   227→        setAlerts(json.data || [])
+   228→        setTotal(json.pagination?.total || 0)
+   229→      }
+   230→    } catch {
+   231→      // ignore
+   232→    } finally {
+   233→      setLoading(false)
+   234→    }
+   235→  }, [
+   236→    alertFilters.page,
+   237→    alertFilters.pageSize,
+   238→    alertFilters.sortBy,
+   239→    alertFilters.sortOrder,
+   240→    alertFilters.severity,
+   241→    alertFilters.status,
+   242→    alertFilters.category,
+   243→    alertFilters.source,
+   244→    alertFilters.search,
+   245→    alertFilters.dateFrom,
+   246→    alertFilters.dateTo,
+   247→  ])
+   248→
+   249→  useEffect(() => {
+   250→    fetchAlerts()
+   251→  }, [fetchAlerts])
+   252→
+   253→  // ===== Fetch Alert Detail =====
+   254→  const fetchDetail = useCallback(async (id: string) => {
+   255→    setDetailLoading(true)
+   256→    try {
+   257→      const res = await fetch(`/api/alerts/${id}`)
+   258→      if (res.ok) {
+   259→        const json = await res.json()
+   260→        setDetailData(json)
+   261→      }
+   262→    } catch {
+   263→      // ignore
+   264→    } finally {
+   265→      setDetailLoading(false)
+   266→    }
+   267→  }, [])
+   268→
+   269→  // ===== Handlers =====
+   270→  const handleExpand = useCallback(
+   271→    (id: string) => {
+   272→      if (expandedAlert === id) {
+   273→        setExpandedAlert(null)
+   274→      } else {
+   275→        setExpandedAlert(id)
+   276→        fetchDetail(id)
+   277→      }
+   278→    },
+   279→    [expandedAlert, setExpandedAlert, fetchDetail]
+   280→  )
+   281→
+   282→  const handleStatusChange = useCallback(
+   283→    async (alertId: string, status: string) => {
+   284→      try {
+   285→        const res = await fetch(`/api/alerts/${alertId}`, {
+   286→          method: 'PATCH',
+   287→          headers: { 'Content-Type': 'application/json' },
+   288→          body: JSON.stringify({ status }),
+   289→        })
+   290→        if (res.ok) {
+   291→          toast.success(`Alert status updated to ${status}`)
+   292→          fetchAlerts()
+   293→          if (expandedAlert === alertId) fetchDetail(alertId)
+   294→        }
+   295→      } catch {
+   296→        toast.error('Failed to update alert status')
+   297→      }
+   298→    },
+   299→    [fetchAlerts, fetchDetail, expandedAlert]
+   300→  )
+   301→
+   302→  const handleBulkAction = useCallback(
+   303→    async (action: 'acknowledge' | 'escalate' | 'suppress' | 'create_incident') => {
+   304→      const ids = alertFilters.selectedIds
+   305→      if (ids.length === 0) return
+   306→
+   307→      let successCount = 0
+   308→      for (const id of ids) {
+   309→        try {
+   310→          if (action === 'acknowledge') {
+   311→            const res = await fetch(`/api/alerts/${id}`, {
+   312→              method: 'PATCH',
+   313→              headers: { 'Content-Type': 'application/json' },
+   314→              body: JSON.stringify({ status: 'acknowledged' }),
+   315→            })
+   316→            if (res.ok) successCount++
+   317→          } else if (action === 'escalate') {
+   318→            const res = await fetch(`/api/alerts/${id}`, {
+   319→              method: 'PATCH',
+   320→              headers: { 'Content-Type': 'application/json' },
+   321→              body: JSON.stringify({ status: 'escalated' }),
+   322→            })
+   323→            if (res.ok) successCount++
+   324→          } else if (action === 'suppress') {
+   325→            const res = await fetch(`/api/alerts/${id}`, {
+   326→              method: 'PATCH',
+   327→              headers: { 'Content-Type': 'application/json' },
+   328→              body: JSON.stringify({ status: 'suppressed' }),
+   329→            })
+   330→            if (res.ok) successCount++
+   331→          } else if (action === 'create_incident') {
+   332→            // Open create incident dialog from store
+   333→            useSIEMStore.getState().setCreateIncidentOpen(true)
+   334→            return
+   335→          }
+   336→        } catch {
+   337→          // ignore individual failures
+   338→        }
+   339→      }
+   340→      if (action !== 'create_incident') {
+   341→        toast.success(`${successCount} alerts ${action}d`)
+   342→        clearAlertSelection()
+   343→        fetchAlerts()
+   344→      }
+   345→    },
+   346→    [alertFilters.selectedIds, clearAlertSelection, fetchAlerts]
+   347→  )
+   348→
+   349→  const toggleSeverityFilter = useCallback(
+   350→    (sev: Severity) => {
+   351→      const current = alertFilters.severity
+   352→      setAlertFilters({
+   353→        severity: current.includes(sev)
+   354→          ? current.filter((s) => s !== sev)
+   355→          : [...current, sev],
+   356→        page: 1,
+   357→      })
+   358→    },
+   359→    [alertFilters.severity, setAlertFilters]
+   360→  )
+   361→
+   362→  const toggleStatusFilter = useCallback(
+   363→    (status: AlertStatus) => {
+   364→      const current = alertFilters.status
+   365→      setAlertFilters({
+   366→        status: current.includes(status)
+   367→          ? current.filter((s) => s !== status)
+   368→          : [...current, status],
+   369→        page: 1,
+   370→      })
+   371→    },
+   372→    [alertFilters.status, setAlertFilters]
+   373→  )
+   374→
+   375→  const toggleCategoryFilter = useCallback(
+   376→    (category: string) => {
+   377→      const current = alertFilters.category
+   378→      setAlertFilters({
+   379→        category: current.includes(category)
+   380→          ? current.filter((c) => c !== category)
+   381→          : [...current, category],
+   382→        page: 1,
+   383→      })
+   384→    },
+   385→    [alertFilters.category, setAlertFilters]
+   386→  )
+   387→
+   388→  const toggleSourceFilter = useCallback(
+   389→    (source: string) => {
+   390→      const current = alertFilters.source
+   391→      setAlertFilters({
+   392→        source: current.includes(source)
+   393→          ? current.filter((s) => s !== source)
+   394→          : [...current, source],
+   395→        page: 1,
+   396→      })
+   397→    },
+   398→    [alertFilters.source, setAlertFilters]
+   399→  )
+   400→
+   401→  const handleDateRange = useCallback(
+   402→    (range: string) => {
+   403→      setDateRange(range)
+   404→      const option = DATE_RANGE_OPTIONS.find((o) => o.value === range)
+   405→      if (option) {
+   406→        const now = new Date()
+   407→        const from = new Date(now.getTime() - option.hours * 60 * 60 * 1000)
+   408→        setAlertFilters({
+   409→          dateFrom: from.toISOString(),
+   410→          dateTo: now.toISOString(),
+   411→          page: 1,
+   412→        })
+   413→      }
+   414→    },
+   415→    [setAlertFilters]
+   416→  )
+   417→
+   418→  const handleCreateAlert = useCallback(async () => {
+   419→    if (!createForm.title || !createForm.description || !createForm.source) {
+   420→      toast.error('Please fill in all required fields')
+   421→      return
+   422→    }
+   423→    setCreating(true)
+   424→    try {
+   425→      const res = await fetch('/api/alerts', {
+   426→        method: 'POST',
+   427→        headers: { 'Content-Type': 'application/json' },
+   428→        body: JSON.stringify({
+   429→          title: createForm.title,
+   430→          description: createForm.description,
+   431→          severity: createForm.severity,
+   432→          category: createForm.category,
+   433→          source: createForm.source,
+   434→          sourceIp: createForm.sourceIp || undefined,
+   435→          destIp: createForm.destIp || undefined,
+   436→          protocol: createForm.protocol || undefined,
+   437→        }),
+   438→      })
+   439→      if (res.ok) {
+   440→        toast.success('Alert created successfully')
+   441→        setCreateDialogOpen(false)
+   442→        setCreateForm(emptyForm)
+   443→        fetchAlerts()
+   444→      } else {
+   445→        toast.error('Failed to create alert')
+   446→      }
+   447→    } catch {
+   448→      toast.error('Failed to create alert')
+   449→    } finally {
+   450→      setCreating(false)
+   451→    }
+   452→  }, [createForm, fetchAlerts])
+   453→
+   454→  const handleAddComment = useCallback(
+   455→    async (alertId: string) => {
+   456→      const text = commentText[alertId]?.trim()
+   457→      if (!text) return
+   458→
+   459→      try {
+   460→        const res = await fetch(`/api/alerts/${alertId}`, {
+   461→          method: 'PATCH',
+   462→          headers: { 'Content-Type': 'application/json' },
+   463→          body: JSON.stringify({ comment: text }),
+   464→        })
+   465→        if (res.ok) {
+   466→          toast.success('Comment added')
+   467→          setCommentText((prev) => ({ ...prev, [alertId]: '' }))
+   468→          fetchDetail(alertId)
+   469→        }
+   470→      } catch {
+   471→        toast.error('Failed to add comment')
+   472→      }
+   473→    },
+   474→    [commentText, fetchDetail]
+   475→  )
+   476→
+   477→  // Select all on current page
+   478→  const allSelected =
+   479→    alerts.length > 0 && alerts.every((a) => alertFilters.selectedIds.includes(a.id))
+   480→  const someSelected =
+   481→    alerts.some((a) => alertFilters.selectedIds.includes(a.id)) && !allSelected
+   482→
+   483→  // ===== Render =====
+   484→  return (
+   485→    <motion.div
+   486→      initial={{ opacity: 0 }}
+   487→      animate={{ opacity: 1 }}
+   488→      className="flex flex-col gap-4 p-4 md:p-6"
+   489→    >
+   490→      {/* Header Row */}
+   491→      <div className="flex items-center justify-between">
+   492→        <div className="flex items-center gap-2">
+   493→          <h2 className="text-lg font-semibold">Alerts</h2>
+   494→          {activeFilterCount > 0 && (
+   495→            <Badge
+   496→              variant="secondary"
+   497→              className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-[10px] h-5 gap-1"
+   498→            >
+   499→              <Filter className="h-2.5 w-2.5" />
+   500→              {activeFilterCount} active
+   501→            </Badge>
+   502→          )}
+   503→        </div>
+   504→        <div className="flex items-center gap-2">
+   505→          <ExportButton
+   506→            filename="siem-alerts"
+   507→            fetchData={async () => {
+   508→              // Reuse the same query params as the current view, but request
+   509→              // a large page size to get all matching rows in one shot.
+   510→              const params = new URLSearchParams()
+   511→              params.set('page', '1')
+   512→              params.set('pageSize', '10000')
+   513→              params.set('sortBy', alertFilters.sortBy)
+   514→              params.set('sortOrder', alertFilters.sortOrder)
+   515→              if (alertFilters.severity.length)
+   516→                params.set('severity', alertFilters.severity.join(','))
+   517→              if (alertFilters.status.length)
+   518→                params.set('status', alertFilters.status.join(','))
+   519→              if (alertFilters.category.length)
+   520→                params.set('category', alertFilters.category.join(','))
+   521→              if (alertFilters.source.length)
+   522→                params.set('source', alertFilters.source.join(','))
+   523→              if (alertFilters.search) params.set('search', alertFilters.search)
+   524→              const res = await fetch(`/api/alerts?${params.toString()}`)
+   525→              if (!res.ok) throw new Error('Failed to fetch alerts for export')
+   526→              const json = await res.json()
+   527→              const rows = (json.data ?? json.alerts ?? []) as Record<string, unknown>[]
+   528→              return rows.map((r) => ({
+   529→                id: r.id,
+   530→                title: r.title,
+   531→                severity: r.severity,
+   532→                status: r.status,
+   533→                category: r.category,
+   534→                source: r.source,
+   535→                sourceIp: r.sourceIp,
+   536→                destIp: r.destIp,
+   537→                hostname: r.hostname,
+   538→                createdAt: r.createdAt,
+   539→                updatedAt: r.updatedAt,
+   540→              }))
+   541→            }}
+   542→          />
+   543→          <Button
+   544→            size="sm"
+   545→            className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+   546→            onClick={() => setCreateDialogOpen(true)}
+   547→          >
+   548→            <Plus className="h-3.5 w-3.5" />
+   549→            Create Alert
+   550→          </Button>
+   551→        </div>
+   552→      </div>
+   553→
+   554→      {/* Filter Bar */}
+   555→      <Card className="border-border bg-card">
+   556→        <CardContent className="p-3">
+   557→          <div className="flex flex-wrap items-center gap-2">
+   558→            {/* Severity Multi-Select Buttons */}
+   559→            {SEVERITY_OPTIONS.map((opt) => {
+   560→              const isSelected = alertFilters.severity.includes(opt.value)
+   561→              return (
+   562→                <button
+   563→                  key={opt.value}
+   564→                  onClick={() => toggleSeverityFilter(opt.value)}
+   565→                  className={cn(
+   566→                    'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-all',
+   567→                    isSelected
+   568→                      ? severityButtonColors[opt.value].active
+   569→                      : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/20'
+   570→                  )}
+   571→                >
+   572→                  <span
+   573→                    className={cn(
+   574→                      'h-2 w-2 rounded-full',
+   575→                      isSelected ? opt.color : 'bg-current opacity-30'
+   576→                    )}
+   577→                  />
+   578→                  {opt.label}
+   579→                </button>
+   580→              )
+   581→            })}
+   582→
+   583→            <Separator orientation="vertical" className="h-6 mx-1" />
+   584→
+   585→            {/* Status Dropdown with Checkboxes */}
+   586→            <Popover>
+   587→              <PopoverTrigger asChild>
+   588→                <Button
+   589→                  variant="outline"
+   590→                  size="sm"
+   591→                  className="h-8 gap-1.5 text-xs"
+   592→                >
+   593→                  <AlertTriangle className="h-3 w-3" />
+   594→                  Status
+   595→                  {alertFilters.status.length > 0 && (
+   596→                    <Badge className="ml-0.5 h-4 min-w-4 rounded-full p-0 text-[9px] flex items-center justify-center">
+   597→                      {alertFilters.status.length}
+   598→                    </Badge>
+   599→                  )}
+   600→                </Button>
+   601→              </PopoverTrigger>
+   602→              <PopoverContent className="w-52 bg-popover border-border p-2">
+   603→                <div className="space-y-0.5">
+   604→                  {STATUS_OPTIONS.map((opt) => (
+   605→                    <label
+   606→                      key={opt.value}
+   607→                      className={cn(
+   608→                        'flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm hover:bg-accent',
+   609→                        alertFilters.status.includes(opt.value) && 'bg-accent/50'
+   610→                      )}
+   611→                    >
+   612→                      <Checkbox
+   613→                        checked={alertFilters.status.includes(opt.value)}
+   614→                        onCheckedChange={() => toggleStatusFilter(opt.value)}
+   615→                      />
+   616→                      <StatusBadge status={opt.value} type="alert" />
+   617→                    </label>
+   618→                  ))}
+   619→                </div>
+   620→              </PopoverContent>
+   621→            </Popover>
+   622→
+   623→            {/* Category Dropdown with Checkboxes */}
+   624→            <Popover>
+   625→              <PopoverTrigger asChild>
+   626→                <Button
+   627→                  variant="outline"
+   628→                  size="sm"
+   629→                  className="h-8 gap-1.5 text-xs"
+   630→                >
+   631→                  <FileText className="h-3 w-3" />
+   632→                  Category
+   633→                  {alertFilters.category.length > 0 && (
+   634→                    <Badge className="ml-0.5 h-4 min-w-4 rounded-full p-0 text-[9px] flex items-center justify-center">
+   635→                      {alertFilters.category.length}
+   636→                    </Badge>
+   637→                  )}
+   638→                </Button>
+   639→              </PopoverTrigger>
+   640→              <PopoverContent className="w-52 bg-popover border-border p-2">
+   641→                <div className="space-y-0.5">
+   642→                  {CATEGORY_OPTIONS.map((opt) => (
+   643→                    <label
+   644→                      key={opt.value}
+   645→                      className={cn(
+   646→                        'flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm hover:bg-accent',
+   647→                        alertFilters.category.includes(opt.value) && 'bg-accent/50'
+   648→                      )}
+   649→                    >
+   650→                      <Checkbox
+   651→                        checked={alertFilters.category.includes(opt.value)}
+   652→                        onCheckedChange={() => toggleCategoryFilter(opt.value)}
+   653→                      />
+   654→                      <span className="text-xs">{opt.label}</span>
+   655→                    </label>
+   656→                  ))}
+   657→                </div>
+   658→              </PopoverContent>
+   659→            </Popover>
+   660→
+   661→            {/* Source Dropdown with Checkboxes */}
+   662→            <Popover>
+   663→              <PopoverTrigger asChild>
+   664→                <Button
+   665→                  variant="outline"
+   666→                  size="sm"
+   667→                  className="h-8 gap-1.5 text-xs"
+   668→                >
+   669→                  <RefreshCw className="h-3 w-3" />
+   670→                  Source
+   671→                  {alertFilters.source.length > 0 && (
+   672→                    <Badge className="ml-0.5 h-4 min-w-4 rounded-full p-0 text-[9px] flex items-center justify-center">
+   673→                      {alertFilters.source.length}
+   674→                    </Badge>
+   675→                  )}
+   676→                </Button>
+   677→              </PopoverTrigger>
+   678→              <PopoverContent className="w-52 bg-popover border-border p-2">
+   679→                <div className="space-y-0.5">
+   680→                  {SOURCE_OPTIONS.map((opt) => (
+   681→                    <label
+   682→                      key={opt.value}
+   683→                      className={cn(
+   684→                        'flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm hover:bg-accent',
+   685→                        alertFilters.source.includes(opt.value) && 'bg-accent/50'
+   686→                      )}
+   687→                    >
+   688→                      <Checkbox
+   689→                        checked={alertFilters.source.includes(opt.value)}
+   690→                        onCheckedChange={() => toggleSourceFilter(opt.value)}
+   691→                      />
+   692→                      <span className="text-xs">{opt.label}</span>
+   693→                    </label>
+   694→                  ))}
+   695→                </div>
+   696→              </PopoverContent>
+   697→            </Popover>
+   698→
+   699→            <Separator orientation="vertical" className="h-6 mx-1" />
+   700→
+   701→            {/* Search Input */}
+   702→            <div className="relative min-w-[180px] flex-1 max-w-[280px]">
+   703→              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+   704→              <Input
+   705→                placeholder="Search alerts..."
+   706→                value={alertFilters.search}
+   707→                onChange={(e) =>
+   708→                  setAlertFilters({ search: e.target.value, page: 1 })
+   709→                }
+   710→                className="h-8 pl-8 text-xs"
+   711→              />
+   712→            </div>
+   713→
+   714→            {/* Date Range Button Group */}
+   715→            <div className="flex items-center rounded-md border border-border overflow-hidden">
+   716→              {DATE_RANGE_OPTIONS.map((opt) => (
+   717→                <button
+   718→                  key={opt.value}
+   719→                  onClick={() => handleDateRange(opt.value)}
+   720→                  className={cn(
+   721→                    'px-2.5 py-1.5 text-xs font-medium transition-colors border-r border-border last:border-r-0',
+   722→                    dateRange === opt.value
+   723→                      ? 'bg-emerald-600 text-white'
+   724→                      : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+   725→                  )}
+   726→                >
+   727→                  {opt.label}
+   728→                </button>
+   729→              ))}
+   730→            </div>
+   731→
+   732→            {/* Refresh */}
+   733→            <Button
+   734→              variant="ghost"
+   735→              size="icon"
+   736→              className="h-8 w-8"
+   737→              onClick={fetchAlerts}
+   738→            >
+   739→              <RefreshCw
+   740→                className={cn('h-3.5 w-3.5', loading && 'animate-spin')}
+   741→              />
+   742→            </Button>
+   743→
+   744→            {/* Clear Filters */}
+   745→            {activeFilterCount > 0 && (
+   746→              <Button
+   747→                variant="ghost"
+   748→                size="sm"
+   749→                className="h-8 gap-1.5 text-xs text-muted-foreground"
+   750→                onClick={() => {
+   751→                  resetAlertFilters()
+   752→                  setDateRange('24h')
+   753→                }}
+   754→              >
+   755→                <X className="h-3 w-3" />
+   756→                Clear filters
+   757→              </Button>
+   758→            )}
+   759→          </div>
+   760→        </CardContent>
+   761→      </Card>
+   762→
+   763→      {/* Bulk Action Toolbar */}
+   764→      <AnimatePresence>
+   765→        {alertFilters.selectedIds.length > 0 && (
+   766→          <motion.div
+   767→            initial={{ opacity: 0, height: 0 }}
+   768→            animate={{ opacity: 1, height: 'auto' }}
+   769→            exit={{ opacity: 0, height: 0 }}
+   770→            transition={{ duration: 0.15 }}
+   771→          >
+   772→            <Card className="border-emerald-500/30 bg-emerald-500/5">
+   773→              <CardContent className="flex items-center gap-2 p-2">
+   774→                <span className="text-sm font-medium text-emerald-400">
+   775→                  {alertFilters.selectedIds.length} alert
+   776→                  {alertFilters.selectedIds.length !== 1 ? 's' : ''} selected
+   777→                </span>
+   778→                <Separator orientation="vertical" className="h-5" />
+   779→                <Button
+   780→                  variant="ghost"
+   781→                  size="sm"
+   782→                  className="h-7 gap-1.5 text-xs"
+   783→                  onClick={() => handleBulkAction('acknowledge')}
+   784→                >
+   785→                  <Check className="h-3.5 w-3.5" />
+   786→                  Acknowledge
+   787→                </Button>
+   788→                <Button
+   789→                  variant="ghost"
+   790→                  size="sm"
+   791→                  className="h-7 gap-1.5 text-xs text-orange-400"
+   792→                  onClick={() => handleBulkAction('escalate')}
+   793→                >
+   794→                  <ArrowUp className="h-3.5 w-3.5" />
+   795→                  Escalate
+   796→                </Button>
+   797→                <Button
+   798→                  variant="ghost"
+   799→                  size="sm"
+   800→                  className="h-7 gap-1.5 text-xs text-muted-foreground"
+   801→                  onClick={() => handleBulkAction('suppress')}
+   802→                >
+   803→                  <X className="h-3.5 w-3.5" />
+   804→                  Suppress
+   805→                </Button>
+   806→                <Button
+   807→                  variant="ghost"
+   808→                  size="sm"
+   809→                  className="h-7 gap-1.5 text-xs text-emerald-400"
+   810→                  onClick={() => handleBulkAction('create_incident')}
+   811→                >
+   812→                  <Plus className="h-3.5 w-3.5" />
+   813→                  Create Incident
+   814→                </Button>
+   815→                <Separator orientation="vertical" className="h-5" />
+   816→                <Button
+   817→                  variant="ghost"
+   818→                  size="sm"
+   819→                  className="h-7 text-xs text-muted-foreground"
+   820→                  onClick={clearAlertSelection}
+   821→                >
+   822→                  Clear Selection
+   823→                </Button>
+   824→              </CardContent>
+   825→            </Card>
+   826→          </motion.div>
+   827→        )}
+   828→      </AnimatePresence>
+   829→
+   830→      {/* Alerts Table */}
+   831→      <Card className="border-border bg-card overflow-hidden">
+   832→        <div className="overflow-x-auto">
+   833→          <Table>
+   834→            <TableHeader className="sticky top-0 z-10 bg-card">
+   835→              <TableRow className="hover:bg-transparent">
+   836→                <TableHead className="w-10">
+   837→                  <Checkbox
+   838→                    checked={allSelected}
+   839→                    ref={(el) => {
+   840→                      if (el) {
+   841→                        (el as HTMLButtonElement & { indeterminate?: boolean }).indeterminate = someSelected
+   842→                      }
+   843→                    }}
+   844→                    onCheckedChange={(checked) => {
+   845→                      if (checked) selectAllAlerts(alerts.map((a) => a.id))
+   846→                      else clearAlertSelection()
+   847→                    }}
+   848→                  />
+   849→                </TableHead>
+   850→                <TableHead className="w-8" />
+   851→                <TableHead className="min-w-[200px]">Title</TableHead>
+   852→                <TableHead className="hidden md:table-cell w-28">
+   853→                  Category
+   854→                </TableHead>
+   855→                <TableHead className="hidden md:table-cell w-24">
+   856→                  Source
+   857→                </TableHead>
+   858→                <TableHead className="hidden lg:table-cell w-44">
+   859→                  Source → Dest
+   860→                </TableHead>
+   861→                <TableHead className="w-28">Status</TableHead>
+   862→                <TableHead className="hidden sm:table-cell w-28">
+   863→                  Last Seen
+   864→                </TableHead>
+   865→                <TableHead className="w-10" />
+   866→              </TableRow>
+   867→            </TableHeader>
+   868→            <TableBody>
+   869→              {loading ? (
+   870→                // Skeleton rows
+   871→                Array.from({ length: 8 }).map((_, i) => (
+   872→                  <TableRow key={`skeleton-${i}`}>
+   873→                    <TableCell>
+   874→                      <Skeleton className="h-4 w-4" />
+   875→                    </TableCell>
+   876→                    <TableCell>
+   877→                      <Skeleton className="h-2 w-2 rounded-full" />
+   878→                    </TableCell>
+   879→                    <TableCell>
+   880→                      <Skeleton className="h-4 w-full max-w-[180px]" />
+   881→                    </TableCell>
+   882→                    <TableCell className="hidden md:table-cell">
+   883→                      <Skeleton className="h-4 w-20" />
+   884→                    </TableCell>
+   885→                    <TableCell className="hidden md:table-cell">
+   886→                      <Skeleton className="h-4 w-16" />
+   887→                    </TableCell>
+   888→                    <TableCell className="hidden lg:table-cell">
+   889→                      <Skeleton className="h-4 w-36" />
+   890→                    </TableCell>
+   891→                    <TableCell>
+   892→                      <Skeleton className="h-5 w-20 rounded-full" />
+   893→                    </TableCell>
+   894→                    <TableCell className="hidden sm:table-cell">
+   895→                      <Skeleton className="h-4 w-20" />
+   896→                    </TableCell>
+   897→                    <TableCell>
+   898→                      <Skeleton className="h-4 w-4" />
+   899→                    </TableCell>
+   900→                  </TableRow>
+   901→                ))
+   902→              ) : alerts.length === 0 ? (
+   903→                <TableRow>
+   904→                  <TableCell
+   905→                    colSpan={9}
+   906→                    className="h-48 text-center text-sm text-muted-foreground"
+   907→                  >
+   908→                    <div className="flex flex-col items-center gap-2">
+   909→                      <AlertTriangle className="h-8 w-8 text-muted-foreground/50" />
+   910→                      <p>No alerts found matching your filters</p>
+   911→                      {activeFilterCount > 0 && (
+   912→                        <Button
+   913→                          variant="outline"
+   914→                          size="sm"
+   915→                          className="mt-2"
+   916→                          onClick={() => {
+   917→                            resetAlertFilters()
+   918→                            setDateRange('24h')
+   919→                          }}
+   920→                        >
+   921→                          Clear filters
+   922→                        </Button>
+   923→                      )}
+   924→                    </div>
+   925→                  </TableCell>
+   926→                </TableRow>
+   927→              ) : (
+   928→                alerts.map((alert, idx) => (
+   929→                  <AlertRowComponent
+   930→                    key={alert.id}
+   931→                    alert={alert}
+   932→                    isSelected={alertFilters.selectedIds.includes(alert.id)}
+   933→                    isExpanded={expandedAlert === alert.id}
+   934→                    isOdd={idx % 2 === 1}
+   935→                    detailData={
+   936→                      expandedAlert === alert.id ? detailData : null
+   937→                    }
+   938→                    detailLoading={detailLoading}
+   939→                    onToggleSelect={() => toggleAlertSelection(alert.id)}
+   940→                    onExpand={() => handleExpand(alert.id)}
+   941→                    onOpenDrawer={() => setDrawerAlertId(alert.id)}
+   942→                    onStatusChange={(status) =>
+   943→                      handleStatusChange(alert.id, status)
+   944→                    }
+   945→                    commentText={commentText[alert.id] || ''}
+   946→                    onCommentTextChange={(text) =>
+   947→                      setCommentText((prev) => ({
+   948→                        ...prev,
+   949→                        [alert.id]: text,
+   950→                      }))
+   951→                    }
+   952→                    onAddComment={() => handleAddComment(alert.id)}
+   953→                    rawLogExpanded={rawLogExpanded[alert.id] || false}
+   954→                    onToggleRawLog={() =>
+   955→                      setRawLogExpanded((prev) => ({
+   956→                        ...prev,
+   957→                        [alert.id]: !prev[alert.id],
+   958→                      }))
+   959→                    }
+   960→                    onFetchDetail={() => fetchDetail(alert.id)}
+   961→                    onRefresh={fetchAlerts}
+   962→                  />
+   963→                ))
+   964→              )}
+   965→            </TableBody>
+   966→          </Table>
+   967→        </div>
+   968→      </Card>
+   969→
+   970→      {/* Pagination */}
+   971→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   972→        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+   973→          <span>
+   974→            Showing{' '}
+   975→            <span className="font-medium text-zinc-300 tabular-nums">
+   976→              {total === 0
+   977→                ? '0'
+   978→                : `${(alertFilters.page - 1) * alertFilters.pageSize + 1}–${Math.min(alertFilters.page * alertFilters.pageSize, total)}`}
+   979→            </span>{' '}
+   980→            of <span className="font-medium text-zinc-300 tabular-nums">{total}</span> alerts
+   981→          </span>
+   982→          <Select
+   983→            value={String(alertFilters.pageSize)}
+   984→            onValueChange={(v) => setAlertFilters({ pageSize: Number(v), page: 1 })}
+   985→          >
+   986→            <SelectTrigger className="h-7 w-[70px] text-[11px]">
+   987→              <SelectValue />
+   988→            </SelectTrigger>
+   989→            <SelectContent>
+   990→              {[25, 50, 100].map((s) => (
+   991→                <SelectItem key={s} value={String(s)} className="text-xs">
+   992→                  {s}/page
+   993→                </SelectItem>
+   994→              ))}
+   995→            </SelectContent>
+   996→          </Select>
+   997→          <div className="flex items-center gap-1.5">
+   998→            <span className="text-muted-foreground">Page</span>
+   999→            <Input
+  1000→              type="number"
+  1001→              min={1}
+  1002→              max={Math.max(totalPages, 1)}
+  1003→              value={alertFilters.page}
+  1004→              onChange={(e) => {
+  1005→                const p = Math.max(1, Math.min(Number(e.target.value) || 1, totalPages || 1))
+  1006→                setAlertFilters({ page: p })
+  1007→              }}
+  1008→              className="h-7 w-14 text-xs text-center"
+  1009→            />
+  1010→            <span className="text-muted-foreground">of {Math.max(totalPages, 1)}</span>
+  1011→          </div>
+  1012→        </div>
+  1013→        <div className="flex items-center gap-1.5">
+  1014→          <Button
+  1015→            variant="outline"
+  1016→            size="sm"
+  1017→            className="h-7 text-xs gap-1"
+  1018→            disabled={alertFilters.page <= 1}
+  1019→            onClick={() => setAlertFilters({ page: alertFilters.page - 1 })}
+  1020→          >
+  1021→            Previous
+  1022→          </Button>
+  1023→          <Button
+  1024→            variant="outline"
+  1025→            size="sm"
+  1026→            className="h-7 text-xs gap-1"
+  1027→            disabled={alertFilters.page >= totalPages}
+  1028→            onClick={() => setAlertFilters({ page: alertFilters.page + 1 })}
+  1029→          >
+  1030→            Next
+  1031→          </Button>
+  1032→        </div>
+  1033→      </div>
+  1034→
+  1035→      {/* Create Alert Dialog */}
+  1036→      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+  1037→        <DialogContent className="sm:max-w-lg bg-card border-border">
+  1038→          <DialogHeader>
+  1039→            <DialogTitle>Create Alert</DialogTitle>
+  1040→            <DialogDescription>
+  1041→              Manually create a new security alert.
+  1042→            </DialogDescription>
+  1043→          </DialogHeader>
+  1044→          <div className="grid gap-4 py-4">
+  1045→            <div className="grid gap-2">
+  1046→              <Label htmlFor="alert-title">Title *</Label>
+  1047→              <Input
+  1048→                id="alert-title"
+  1049→                value={createForm.title}
+  1050→                onChange={(e) =>
+  1051→                  setCreateForm((f) => ({ ...f, title: e.target.value }))
+  1052→                }
+  1053→                placeholder="Alert title"
+  1054→                className="text-sm"
+  1055→              />
+  1056→            </div>
+  1057→            <div className="grid gap-2">
+  1058→              <Label htmlFor="alert-desc">Description *</Label>
+  1059→              <Input
+  1060→                id="alert-desc"
+  1061→                value={createForm.description}
+  1062→                onChange={(e) =>
+  1063→                  setCreateForm((f) => ({ ...f, description: e.target.value }))
+  1064→                }
+  1065→                placeholder="Describe the alert"
+  1066→                className="text-sm"
+  1067→              />
+  1068→            </div>
+  1069→            <div className="grid grid-cols-2 gap-4">
+  1070→              <div className="grid gap-2">
+  1071→                <Label>Severity</Label>
+  1072→                <Select
+  1073→                  value={createForm.severity}
+  1074→                  onValueChange={(v) =>
+  1075→                    setCreateForm((f) => ({ ...f, severity: v as Severity }))
+  1076→                  }
+  1077→                >
+  1078→                  <SelectTrigger className="text-sm">
+  1079→                    <SelectValue />
+  1080→                  </SelectTrigger>
+  1081→                  <SelectContent>
+  1082→                    {SEVERITY_OPTIONS.map((opt) => (
+  1083→                      <SelectItem key={opt.value} value={opt.value}>
+  1084→                        {opt.label}
+  1085→                      </SelectItem>
+  1086→                    ))}
+  1087→                  </SelectContent>
+  1088→                </Select>
+  1089→              </div>
+  1090→              <div className="grid gap-2">
+  1091→                <Label>Category</Label>
+  1092→                <Select
+  1093→                  value={createForm.category}
+  1094→                  onValueChange={(v) =>
+  1095→                    setCreateForm((f) => ({ ...f, category: v }))
+  1096→                  }
+  1097→                >
+  1098→                  <SelectTrigger className="text-sm">
+  1099→                    <SelectValue />
+  1100→                  </SelectTrigger>
+  1101→                  <SelectContent>
+  1102→                    {CATEGORY_OPTIONS.map((opt) => (
+  1103→                      <SelectItem key={opt.value} value={opt.value}>
+  1104→                        {opt.label}
+  1105→                      </SelectItem>
+  1106→                    ))}
+  1107→                  </SelectContent>
+  1108→                </Select>
+  1109→              </div>
+  1110→            </div>
+  1111→            <div className="grid grid-cols-2 gap-4">
+  1112→              <div className="grid gap-2">
+  1113→                <Label>Source *</Label>
+  1114→                <Select
+  1115→                  value={createForm.source}
+  1116→                  onValueChange={(v) =>
+  1117→                    setCreateForm((f) => ({ ...f, source: v }))
+  1118→                  }
+  1119→                >
+  1120→                  <SelectTrigger className="text-sm">
+  1121→                    <SelectValue />
+  1122→                  </SelectTrigger>
+  1123→                  <SelectContent>
+  1124→                    {SOURCE_OPTIONS.map((opt) => (
+  1125→                      <SelectItem key={opt.value} value={opt.value}>
+  1126→                        {opt.label}
+  1127→                      </SelectItem>
+  1128→                    ))}
+  1129→                  </SelectContent>
+  1130→                </Select>
+  1131→              </div>
+  1132→              <div className="grid gap-2">
+  1133→                <Label>Protocol</Label>
+  1134→                <Input
+  1135→                  value={createForm.protocol}
+  1136→                  onChange={(e) =>
+  1137→                    setCreateForm((f) => ({ ...f, protocol: e.target.value }))
+  1138→                  }
+  1139→                  placeholder="e.g. TCP, UDP"
+  1140→                  className="text-sm"
+  1141→                />
+  1142→              </div>
+  1143→            </div>
+  1144→            <div className="grid grid-cols-2 gap-4">
+  1145→              <div className="grid gap-2">
+  1146→                <Label>Source IP</Label>
+  1147→                <Input
+  1148→                  value={createForm.sourceIp}
+  1149→                  onChange={(e) =>
+  1150→                    setCreateForm((f) => ({ ...f, sourceIp: e.target.value }))
+  1151→                  }
+  1152→                  placeholder="e.g. 10.0.0.1"
+  1153→                  className="text-sm"
+  1154→                />
+  1155→              </div>
+  1156→              <div className="grid gap-2">
+  1157→                <Label>Destination IP</Label>
+  1158→                <Input
+  1159→                  value={createForm.destIp}
+  1160→                  onChange={(e) =>
+  1161→                    setCreateForm((f) => ({ ...f, destIp: e.target.value }))
+  1162→                  }
+  1163→                  placeholder="e.g. 192.168.1.1"
+  1164→                  className="text-sm"
+  1165→                />
+  1166→              </div>
+  1167→            </div>
+  1168→          </div>
+  1169→          <DialogFooter>
+  1170→            <Button
+  1171→              variant="outline"
+  1172→              size="sm"
+  1173→              onClick={() => setCreateDialogOpen(false)}
+  1174→            >
+  1175→              Cancel
+  1176→            </Button>
+  1177→            <Button
+  1178→              size="sm"
+  1179→              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+  1180→              onClick={handleCreateAlert}
+  1181→              disabled={creating}
+  1182→            >
+  1183→              {creating && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+  1184→              Create Alert
+  1185→            </Button>
+  1186→          </DialogFooter>
+  1187→        </DialogContent>
+  1188→      </Dialog>
+  1189→
+  1190→      {/* Alert Detail Drawer */}
+  1191→      <AlertDetailDrawer
+  1192→        alertId={drawerAlertId}
+  1193→        open={drawerAlertId !== null}
+  1194→        onOpenChange={(open) => {
+  1195→          if (!open) setDrawerAlertId(null)
+  1196→        }}
+  1197→        onRefresh={fetchAlerts}
+  1198→      />
+  1199→    </motion.div>
+  1200→  )
+  1201→}
+  1202→
+  1203→// ===== Alert Row Component (extracted for efficiency) =====
+  1204→
+  1205→interface AlertRowProps {
+  1206→  alert: Alert
+  1207→  isSelected: boolean
+  1208→  isExpanded: boolean
+  1209→  isOdd: boolean
+  1210→  detailData: Alert | null
+  1211→  detailLoading: boolean
+  1212→  onToggleSelect: () => void
+  1213→  onExpand: () => void
+  1214→  onOpenDrawer: () => void
+  1215→  onStatusChange: (status: string) => void
+  1216→  commentText: string
+  1217→  onCommentTextChange: (text: string) => void
+  1218→  onAddComment: () => void
+  1219→  rawLogExpanded: boolean
+  1220→  onToggleRawLog: () => void
+  1221→  onFetchDetail: () => void
+  1222→  onRefresh: () => void
+  1223→}
+  1224→
+  1225→const severityDotColor: Record<string, string> = {
+  1226→  critical: 'bg-red-500',
+  1227→  high: 'bg-amber-500',
+  1228→  medium: 'bg-yellow-500',
+  1229→  low: 'bg-emerald-500',
+  1230→  informational: 'bg-zinc-400',
+  1231→}
+  1232→
+  1233→function AlertRowComponent({
+  1234→  alert,
+  1235→  isSelected,
+  1236→  isExpanded,
+  1237→  isOdd,
+  1238→  detailData,
+  1239→  detailLoading,
+  1240→  onToggleSelect,
+  1241→  onExpand,
+  1242→  onOpenDrawer,
+  1243→  onStatusChange,
+  1244→  commentText,
+  1245→  onCommentTextChange,
+  1246→  onAddComment,
+  1247→  rawLogExpanded,
+  1248→  onToggleRawLog,
+  1249→  onFetchDetail,
+  1250→  onRefresh,
+  1251→}: AlertRowProps) {
+  1252→  const handleAction = useCallback(
+  1253→    async (action: string) => {
+  1254→      if (action === 'acknowledge') {
+  1255→        onStatusChange('acknowledged')
+  1256→      } else if (action === 'escalate') {
+  1257→        try {
+  1258→          const res = await fetch(`/api/alerts/${alert.id}/escalate`, {
+  1259→            method: 'POST',
+  1260→            headers: { 'Content-Type': 'application/json' },
+  1261→            body: JSON.stringify({ reason: 'Manual escalation' }),
+  1262→          })
+  1263→          if (res.ok) {
+  1264→            toast.success('Alert escalated')
+  1265→            onRefresh()
+  1266→            onFetchDetail()
+  1267→          }
+  1268→        } catch {
+  1269→          toast.error('Failed to escalate alert')
+  1270→        }
+  1271→      } else if (action === 'suppress') {
+  1272→        try {
+  1273→          const res = await fetch(`/api/alerts/${alert.id}/suppress`, {
+  1274→            method: 'POST',
+  1275→            headers: { 'Content-Type': 'application/json' },
+  1276→            body: JSON.stringify({ reason: 'Manual suppression' }),
+  1277→          })
+  1278→          if (res.ok) {
+  1279→            toast.success('Alert suppressed')
+  1280→            onRefresh()
+  1281→            onFetchDetail()
+  1282→          }
+  1283→        } catch {
+  1284→          toast.error('Failed to suppress alert')
+  1285→        }
+  1286→      } else if (action === 'assign') {
+  1287→        try {
+  1288→          const res = await fetch(`/api/alerts/${alert.id}/assign`, {
+  1289→            method: 'POST',
+  1290→            headers: { 'Content-Type': 'application/json' },
+  1291→            body: JSON.stringify({ userId: 'default-admin', action: 'assigned' }),
+  1292→          })
+  1293→          if (res.ok) {
+  1294→            toast.success('Alert assigned')
+  1295→            onRefresh()
+  1296→            onFetchDetail()
+  1297→          }
+  1298→        } catch {
+  1299→          toast.error('Failed to assign alert')
+  1300→        }
+  1301→      } else if (action === 'link_incident') {
+  1302→        useSIEMStore.getState().setCreateIncidentOpen(true)
+  1303→      } else if (action === 'view_details') {
+  1304→        onOpenDrawer()
+  1305→      }
+  1306→    },
+  1307→    [alert.id, onStatusChange, onRefresh, onFetchDetail, onExpand, onOpenDrawer]
+  1308→  )
+  1309→
+  1310→  const tags = useMemo(() => {
+  1311→    if (!alert.tags) return []
+  1312→    try {
+  1313→      return JSON.parse(alert.tags)
+  1314→    } catch {
+  1315→      return alert.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+  1316→    }
+  1317→  }, [alert.tags])
+  1318→
+  1319→  return (
+  1320→    <>
+  1321→      {/* Main Row */}
+  1322→      <TableRow
+  1323→        key={alert.id}
+  1324→        className={cn(
+  1325→          'cursor-pointer transition-colors siem-severity-border-' + alert.severity,
+  1326→          isSelected && 'bg-emerald-500/5',
+  1327→          isExpanded && 'bg-accent/20',
+  1328→          isOdd && !isSelected && !isExpanded && 'bg-muted/20',
+  1329→          isSelected && isOdd && 'bg-emerald-500/5'
+  1330→        )}
+  1331→        onClick={onExpand}
+  1332→      >
+  1333→        <TableCell onClick={(e) => e.stopPropagation()}>
+  1334→          <Checkbox
+  1335→            checked={isSelected}
+  1336→            onCheckedChange={onToggleSelect}
+  1337→          />
+  1338→        </TableCell>
+  1339→        <TableCell>
+  1340→          <span
+  1341→            className={cn(
+  1342→              'h-2 w-2 rounded-full inline-block',
+  1343→              severityDotColor[alert.severity] || 'bg-zinc-400'
+  1344→            )}
+  1345→          />
+  1346→        </TableCell>
+  1347→        <TableCell>
+  1348→          <span className="font-medium text-sm truncate block max-w-[300px]">
+  1349→            {alert.title}
+  1350→          </span>
+  1351→        </TableCell>
+  1352→        <TableCell className="hidden md:table-cell">
+  1353→          <span className="text-xs text-zinc-400">
+  1354→            {alert.category || '—'}
+  1355→          </span>
+  1356→        </TableCell>
+  1357→        <TableCell className="hidden md:table-cell">
+  1358→          <Badge variant="outline" className="text-[10px] h-5">
+  1359→            {alert.source}
+  1360→          </Badge>
+  1361→        </TableCell>
+  1362→        <TableCell className="hidden lg:table-cell">
+  1363→          <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+  1364→            <span>{alert.sourceIp || '—'}</span>
+  1365→            <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
+  1366→            <span>{alert.destIp || '—'}</span>
+  1367→          </span>
+  1368→        </TableCell>
+  1369→        <TableCell onClick={(e) => e.stopPropagation()}>
+  1370→          <StatusBadge status={alert.status} type="alert" />
+  1371→        </TableCell>
+  1372→        <TableCell className="hidden sm:table-cell">
+  1373→          <span className="text-xs text-muted-foreground">
+  1374→            {formatDistanceToNow(new Date(alert.lastSeenAt), {
+  1375→              addSuffix: true,
+  1376→            })}
+  1377→          </span>
+  1378→        </TableCell>
+  1379→        <TableCell onClick={(e) => e.stopPropagation()}>
+  1380→          <DropdownMenu>
+  1381→            <DropdownMenuTrigger asChild>
+  1382→              <Button variant="ghost" size="icon" className="h-7 w-7">
+  1383→                <MoreHorizontal className="h-3.5 w-3.5" />
+  1384→              </Button>
+  1385→            </DropdownMenuTrigger>
+  1386→            <DropdownMenuContent align="end" className="w-44">
+  1387→              <DropdownMenuItem onClick={() => handleAction('acknowledge')}>
+  1388→                <Check className="h-3.5 w-3.5" />
+  1389→                Acknowledge
+  1390→              </DropdownMenuItem>
+  1391→              <DropdownMenuItem onClick={() => handleAction('escalate')}>
+  1392→                <ArrowUp className="h-3.5 w-3.5" />
+  1393→                Escalate
+  1394→              </DropdownMenuItem>
+  1395→              <DropdownMenuItem onClick={() => handleAction('suppress')}>
+  1396→                <X className="h-3.5 w-3.5" />
+  1397→                Suppress
+  1398→              </DropdownMenuItem>
+  1399→              <DropdownMenuSeparator />
+  1400→              <DropdownMenuItem onClick={() => handleAction('assign')}>
+  1401→                Assign
+  1402→              </DropdownMenuItem>
+  1403→              <DropdownMenuItem onClick={() => handleAction('link_incident')}>
+  1404→                Link to Incident
+  1405→              </DropdownMenuItem>
+  1406→              <DropdownMenuSeparator />
+  1407→              <DropdownMenuItem onClick={() => handleAction('view_details')}>
+  1408→                View Details
+  1409→              </DropdownMenuItem>
+  1410→            </DropdownMenuContent>
+  1411→          </DropdownMenu>
+  1412→        </TableCell>
+  1413→      </TableRow>
+  1414→
+  1415→      {/* Expanded Detail Row */}
+  1416→      <AnimatePresence>
+  1417→        {isExpanded && (
+  1418→          <TableRow key={`${alert.id}-detail`} className="hover:bg-transparent">
+  1419→            <TableCell colSpan={9} className="p-0">
+  1420→              <motion.div
+  1421→                initial={{ opacity: 0, height: 0 }}
+  1422→                animate={{ opacity: 1, height: 'auto' }}
+  1423→                exit={{ opacity: 0, height: 0 }}
+  1424→                transition={{ duration: 0.2 }}
+  1425→              >
+  1426→                <div className="border-b border-border bg-muted/10 px-6 py-4">
+  1427→                  {detailLoading ? (
+  1428→                    <div className="space-y-3">
+  1429→                      <Skeleton className="h-4 w-1/3" />
+  1430→                      <Skeleton className="h-4 w-2/3" />
+  1431→                      <Skeleton className="h-20" />
+  1432→                    </div>
+  1433→                  ) : detailData ? (
+  1434→                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+  1435→                      {/* Left: Description & Details */}
+  1436→                      <div className="lg:col-span-2 space-y-4">
+  1437→                        {/* Description */}
+  1438→                        <div>
+  1439→                          <h4 className="text-sm font-semibold mb-1">
+  1440→                            Description
+  1441→                          </h4>
+  1442→                          <p className="text-xs text-muted-foreground leading-relaxed">
+  1443→                            {detailData.description}
+  1444→                          </p>
+  1445→                        </div>
+  1446→
+  1447→                        {/* MITRE ATT&CK */}
+  1448→                        {(detailData.mitreTactic || detailData.mitreTechnique) && (
+  1449→                          <div>
+  1450→                            <h4 className="text-sm font-semibold mb-2">
+  1451→                              MITRE ATT&CK
+  1452→                            </h4>
+  1453→                            <div className="flex flex-wrap gap-1.5">
+  1454→                              {detailData.mitreTactic && (
+  1455→                                <Badge
+  1456→                                  variant="outline"
+  1457→                                  className="text-[10px] h-6 bg-orange-500/10 text-orange-400 border-orange-500/30"
+  1458→                                >
+  1459→                                  {detailData.mitreTactic}
+  1460→                                </Badge>
+  1461→                              )}
+  1462→                              {detailData.mitreTechnique && (
+  1463→                                <Badge
+  1464→                                  variant="outline"
+  1465→                                  className="text-[10px] h-6 bg-purple-500/10 text-purple-400 border-purple-500/30"
+  1466→                                >
+  1467→                                  {detailData.mitreTechnique}
+  1468→                                </Badge>
+  1469→                              )}
+  1470→                            </div>
+  1471→                          </div>
+  1472→                        )}
+  1473→
+  1474→                        {/* Raw Log */}
+  1475→                        {detailData.rawLog && (
+  1476→                          <div>
+  1477→                            <button
+  1478→                              className="flex items-center gap-1.5 text-sm font-semibold mb-2 hover:text-foreground transition-colors"
+  1479→                              onClick={onToggleRawLog}
+  1480→                            >
+  1481→                              <Code className="h-3.5 w-3.5" />
+  1482→                              Raw Log
+  1483→                              {rawLogExpanded ? (
+  1484→                                <ChevronUp className="h-3.5 w-3.5" />
+  1485→                              ) : (
+  1486→                                <ChevronDown className="h-3.5 w-3.5" />
+  1487→                              )}
+  1488→                            </button>
+  1489→                            <AnimatePresence>
+  1490→                              {rawLogExpanded && (
+  1491→                                <motion.div
+  1492→                                  initial={{ opacity: 0, height: 0 }}
+  1493→                                  animate={{ opacity: 1, height: 'auto' }}
+  1494→                                  exit={{ opacity: 0, height: 0 }}
+  1495→                                  transition={{ duration: 0.15 }}
+  1496→                                >
+  1497→                                  <ScrollArea className="max-h-64">
+  1498→                                    <pre className="rounded-md bg-background border border-border p-3 text-[10px] font-mono text-muted-foreground whitespace-pre-wrap break-all overflow-x-auto">
+  1499→                                      {detailData.rawLog}
+  1500→                                    </pre>
+  1501→                                  </ScrollArea>
+  1502→                                </motion.div>
+  1503→                              )}
+  1504→                            </AnimatePresence>
+  1505→                          </div>
+  1506→                        )}
+  1507→
+  1508→                        {/* Tags */}
+  1509→                        {tags.length > 0 && (
+  1510→                          <div>
+  1511→                            <h4 className="flex items-center gap-1.5 text-sm font-semibold mb-2">
+  1512→                              <Tag className="h-3.5 w-3.5" />
+  1513→                              Tags
+  1514→                            </h4>
+  1515→                            <div className="flex flex-wrap gap-1.5">
+  1516→                              {tags.map((tag: string, i: number) => (
+  1517→                                <Badge
+  1518→                                  key={i}
+  1519→                                  variant="outline"
+  1520→                                  className="text-[10px] h-5"
+  1521→                                >
+  1522→                                  {tag}
+  1523→                                </Badge>
+  1524→                              ))}
+  1525→                            </div>
+  1526→                          </div>
+  1527→                        )}
+  1528→
+  1529→                        {/* Comments Section */}
+  1530→                        <div>
+  1531→                          <h4 className="flex items-center gap-1.5 text-sm font-semibold mb-2">
+  1532→                            <MessageSquare className="h-3.5 w-3.5" />
+  1533→                            Comments
+  1534→                            {(detailData.comments?.length || 0) > 0 && (
+  1535→                              <Badge
+  1536→                                variant="secondary"
+  1537→                                className="text-[9px] h-4 px-1.5"
+  1538→                              >
+  1539→                                {detailData.comments?.length || 0}
+  1540→                              </Badge>
+  1541→                            )}
+  1542→                          </h4>
+  1543→
+  1544→                          {(detailData.comments?.length || 0) > 0 && (
+  1545→                            <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
+  1546→                              {detailData.comments?.map((comment: Comment) => (
+  1547→                                <div
+  1548→                                  key={comment.id}
+  1549→                                  className="rounded-md bg-background border border-border p-2.5"
+  1550→                                >
+  1551→                                  <div className="flex items-center gap-2 mb-1">
+  1552→                                    <span className="text-xs font-medium">
+  1553→                                      {comment.user?.name || 'Unknown'}
+  1554→                                    </span>
+  1555→                                    <span className="text-[10px] text-muted-foreground">
+  1556→                                      {formatDistanceToNow(
+  1557→                                        new Date(comment.createdAt),
+  1558→                                        { addSuffix: true }
+  1559→                                      )}
+  1560→                                    </span>
+  1561→                                  </div>
+  1562→                                  <p className="text-xs text-muted-foreground">
+  1563→                                    {comment.content}
+  1564→                                  </p>
+  1565→                                </div>
+  1566→                              ))}
+  1567→                            </div>
+  1568→                          )}
+  1569→
+  1570→                          <div className="flex gap-2">
+  1571→                            <Input
+  1572→                              value={commentText}
+  1573→                              onChange={(e) => onCommentTextChange(e.target.value)}
+  1574→                              placeholder="Add a comment..."
+  1575→                              className="h-8 text-xs"
+  1576→                              onKeyDown={(e) => {
+  1577→                                if (e.key === 'Enter') onAddComment()
+  1578→                              }}
+  1579→                            />
+  1580→                            <Button
+  1581→                              size="sm"
+  1582→                              variant="outline"
+  1583→                              className="h-8 px-3 gap-1"
+  1584→                              onClick={onAddComment}
+  1585→                              disabled={!commentText.trim()}
+  1586→                            >
+  1587→                              <Send className="h-3 w-3" />
+  1588→                            </Button>
+  1589→                          </div>
+  1590→                        </div>
+  1591→                      </div>
+  1592→
+  1593→                      {/* Right: Metadata */}
+  1594→                      <div className="space-y-4">
+  1595→                        <div className="rounded-md bg-background border border-border p-3 space-y-3">
+  1596→                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+  1597→                            Alert Details
+  1598→                          </h4>
+  1599→                          <div className="space-y-2 text-xs">
+  1600→                            <div className="flex justify-between">
+  1601→                              <span className="text-muted-foreground">
+  1602→                                Occurrences
+  1603→                              </span>
+  1604→                              <span className="font-medium">
+  1605→                                {detailData.occurrenceCount}
+  1606→                              </span>
+  1607→                            </div>
+  1608→                            <Separator />
+  1609→                            <div className="flex justify-between">
+  1610→                              <span className="text-muted-foreground">
+  1611→                                First Seen
+  1612→                              </span>
+  1613→                              <span className="font-medium">
+  1614→                                {formatDistanceToNow(
+  1615→                                  new Date(detailData.firstSeenAt),
+  1616→                                  { addSuffix: true }
+  1617→                                )}
+  1618→                              </span>
+  1619→                            </div>
+  1620→                            <Separator />
+  1621→                            <div className="flex justify-between">
+  1622→                              <span className="text-muted-foreground">
+  1623→                                Last Seen
+  1624→                              </span>
+  1625→                              <span className="font-medium">
+  1626→                                {formatDistanceToNow(
+  1627→                                  new Date(detailData.lastSeenAt),
+  1628→                                  { addSuffix: true }
+  1629→                                )}
+  1630→                              </span>
+  1631→                            </div>
+  1632→                            <Separator />
+  1633→                            <div className="flex justify-between">
+  1634→                              <span className="text-muted-foreground">
+  1635→                                Severity
+  1636→                              </span>
+  1637→                              <SeverityBadge severity={detailData.severity} size="sm" />
+  1638→                            </div>
+  1639→                            <Separator />
+  1640→                            <div className="flex justify-between">
+  1641→                              <span className="text-muted-foreground">
+  1642→                                Status
+  1643→                              </span>
+  1644→                              <StatusBadge status={detailData.status} type="alert" />
+  1645→                            </div>
+  1646→                            <Separator />
+  1647→                            <div className="flex justify-between">
+  1648→                              <span className="text-muted-foreground">
+  1649→                                Source
+  1650→                              </span>
+  1651→                              <Badge
+  1652→                                variant="outline"
+  1653→                                className="text-[10px] h-5"
+  1654→                              >
+  1655→                                {detailData.source}
+  1656→                              </Badge>
+  1657→                            </div>
+  1658→                            {detailData.protocol && (
+  1659→                              <>
+  1660→                                <Separator />
+  1661→                                <div className="flex justify-between">
+  1662→                                  <span className="text-muted-foreground">
+  1663→                                    Protocol
+  1664→                                  </span>
+  1665→                                  <span className="font-medium">
+  1666→                                    {detailData.protocol}
+  1667→                                  </span>
+  1668→                                </div>
+  1669→                              </>
+  1670→                            )}
+  1671→                            {detailData.sourceIp && (
+  1672→                              <>
+  1673→                                <Separator />
+  1674→                                <div className="flex justify-between">
+  1675→                                  <span className="text-muted-foreground">
+  1676→                                    Source IP
+  1677→                                  </span>
+  1678→                                  <span className="font-mono text-[11px]">
+  1679→                                    {detailData.sourceIp}
+  1680→                                  </span>
+  1681→                                </div>
+  1682→                              </>
+  1683→                            )}
+  1684→                            {detailData.destIp && (
+  1685→                              <>
+  1686→                                <Separator />
+  1687→                                <div className="flex justify-between">
+  1688→                                  <span className="text-muted-foreground">
+  1689→                                    Dest IP
+  1690→                                  </span>
+  1691→                                  <span className="font-mono text-[11px]">
+  1692→                                    {detailData.destIp}
+  1693→                                  </span>
+  1694→                                </div>
+  1695→                              </>
+  1696→                            )}
+  1697→                          </div>
+  1698→                        </div>
+  1699→
+  1700→                        {/* Linked Incidents */}
+  1701→                        {(detailData.incidents?.length || 0) > 0 && (
+  1702→                          <div className="rounded-md bg-background border border-border p-3">
+  1703→                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+  1704→                              Linked Incidents
+  1705→                            </h4>
+  1706→                            <div className="space-y-1.5">
+  1707→                              {detailData.incidents?.map((inc) => (
+  1708→                                <div
+  1709→                                  key={inc.id}
+  1710→                                  className="flex items-center gap-2 text-xs cursor-pointer hover:bg-accent/50 rounded px-2 py-1 transition-colors"
+  1711→                                  onClick={() => useSIEMStore.getState().setActiveView('incidents')}
+  1712→                                  role="button"
+  1713→                                  tabIndex={0}
+  1714→                                  onKeyDown={(e) => {
+  1715→                                    if (e.key === 'Enter' || e.key === ' ') {
+  1716→                                      useSIEMStore.getState().setActiveView('incidents')
+  1717→                                    }
+  1718→                                  }}
+  1719→                                >
+  1720→                                  <AlertTriangle className="h-3 w-3 text-muted-foreground" />
+  1721→                                  <span className="truncate text-primary underline decoration-primary/30 hover:decoration-primary">
+  1722→                                    {inc.incident?.title || inc.incidentId}
+  1723→                                  </span>
+  1724→                                </div>
+  1725→                              ))}
+  1726→                            </div>
+  1727→                          </div>
+  1728→                        )}
+  1729→                      </div>
+  1730→                    </div>
+  1731→                  ) : (
+  1732→                    <div className="text-xs text-muted-foreground py-4 text-center">
+  1733→                      Failed to load alert details
+  1734→                    </div>
+  1735→                  )}
+  1736→                </div>
+  1737→              </motion.div>
+  1738→            </TableCell>
+  1739→          </TableRow>
+  1740→        )}
+  1741→      </AnimatePresence>
+  1742→    </>
+  1743→  )
+  1744→}
+  1745→

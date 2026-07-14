@@ -1,0 +1,1815 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import {
+     6→  ChevronDown,
+     7→  ChevronUp,
+     8→  ChevronRight,
+     9→  RefreshCw,
+    10→  Shield,
+    11→  FileCheck,
+    12→  FileX,
+    13→  Clock,
+    14→  Ban,
+    15→  AlertTriangle,
+    16→  TrendingUp,
+    17→  Pencil,
+    18→  BarChart3,
+    19→  ClipboardList,
+    20→  ArrowUpRight,
+    21→  ArrowDownRight,
+    22→  Minus,
+    23→  Download,
+    24→  User,
+    25→  Eye,
+    26→  CheckCircle2,
+    27→  XCircle,
+    28→  HelpCircle,
+    29→  Slash,
+    30→} from 'lucide-react'
+    31→import {
+    32→  AreaChart,
+    33→  Area,
+    34→  LineChart,
+    35→  Line,
+    36→  RadarChart,
+    37→  PolarGrid,
+    38→  PolarAngleAxis,
+    39→  PolarRadiusAxis,
+    40→  Radar,
+    41→  XAxis,
+    42→  YAxis,
+    43→  CartesianGrid,
+    44→  Tooltip as RechartsTooltip,
+    45→  ResponsiveContainer,
+    46→  Legend,
+    47→} from 'recharts'
+    48→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+    49→import { Button } from '@/components/ui/button'
+    50→import { Badge } from '@/components/ui/badge'
+    51→import {
+    52→  Select,
+    53→  SelectContent,
+    54→  SelectItem,
+    55→  SelectTrigger,
+    56→  SelectValue,
+    57→} from '@/components/ui/select'
+    58→import {
+    59→  Dialog,
+    60→  DialogContent,
+    61→  DialogHeader,
+    62→  DialogTitle,
+    63→  DialogFooter,
+    64→  DialogDescription,
+    65→} from '@/components/ui/dialog'
+    66→import { ScrollArea } from '@/components/ui/scroll-area'
+    67→import { Skeleton } from '@/components/ui/skeleton'
+    68→import { Progress } from '@/components/ui/progress'
+    69→import { Textarea } from '@/components/ui/textarea'
+    70→import { Separator } from '@/components/ui/separator'
+    71→import { useSIEMStore, type ControlStatus } from '@/lib/store'
+    72→import type { ComplianceFramework, ComplianceControl } from '@/lib/types'
+    73→import { ComplianceBadge } from '@/components/siem/status-badge'
+    74→import { cn } from '@/lib/utils'
+    75→import { toast } from 'sonner'
+    76→import { format, subDays } from 'date-fns'
+    77→
+    78→// ===== Types =====
+    79→
+    80→interface FrameworkSummary {
+    81→  id: string
+    82→  name: string
+    83→  version: string | null
+    84→  description: string | null
+    85→  totalControls: number
+    86→  statusCounts: Record<string, number>
+    87→  complianceScore: number
+    88→  createdAt: string
+    89→  updatedAt: string
+    90→}
+    91→
+    92→interface ControlData {
+    93→  id: string
+    94→  frameworkId: string
+    95→  controlId: string
+    96→  title: string
+    97→  description: string
+    98→  category: string | null
+    99→  status: ControlStatus
+   100→  evidence: string | null
+   101→  notes: string | null
+   102→  assessedAt: string | null
+   103→  assessedBy: string | null
+   104→  remediationDue: string | null
+   105→  createdAt: string
+   106→  updatedAt: string
+   107→}
+   108→
+   109→// ===== SVG Circular Progress Component =====
+   110→
+   111→function CircularScoreRing({
+   112→  score,
+   113→  size = 120,
+   114→  strokeWidth = 10,
+   115→  label,
+   116→  showValue = true,
+   117→  className,
+   118→}: {
+   119→  score: number
+   120→  size?: number
+   121→  strokeWidth?: number
+   122→  label?: string
+   123→  showValue?: boolean
+   124→  className?: string
+   125→}) {
+   126→  const radius = (size - strokeWidth) / 2
+   127→  const circumference = 2 * Math.PI * radius
+   128→  const offset = circumference - (Math.min(score, 100) / 100) * circumference
+   129→
+   130→  const getColor = () => {
+   131→    if (score >= 80) return '#10b981'
+   132→    if (score >= 60) return '#eab308'
+   133→    if (score >= 40) return '#f97316'
+   134→    return '#ef4444'
+   135→  }
+   136→
+   137→  const getGlowColor = () => {
+   138→    if (score >= 80) return 'rgba(16, 185, 129, 0.2)'
+   139→    if (score >= 60) return 'rgba(234, 179, 8, 0.2)'
+   140→    if (score >= 40) return 'rgba(249, 115, 22, 0.2)'
+   141→    return 'rgba(239, 68, 68, 0.2)'
+   142→  }
+   143→
+   144→  const color = getColor()
+   145→
+   146→  return (
+   147→    <div className={cn('relative inline-flex flex-col items-center justify-center', className)}>
+   148→      <svg width={size} height={size} className="-rotate-90">
+   149→        <circle
+   150→          cx={size / 2}
+   151→          cy={size / 2}
+   152→          r={radius + strokeWidth / 2}
+   153→          fill="none"
+   154→          stroke={getGlowColor()}
+   155→          strokeWidth={strokeWidth * 2}
+   156→          className="blur-sm"
+   157→        />
+   158→        <circle
+   159→          cx={size / 2}
+   160→          cy={size / 2}
+   161→          r={radius}
+   162→          fill="none"
+   163→          stroke="currentColor"
+   164→          strokeWidth={strokeWidth}
+   165→          className="text-muted/20"
+   166→        />
+   167→        <motion.circle
+   168→          cx={size / 2}
+   169→          cy={size / 2}
+   170→          r={radius}
+   171→          fill="none"
+   172→          stroke={color}
+   173→          strokeWidth={strokeWidth}
+   174→          strokeDasharray={circumference}
+   175→          strokeDashoffset={offset}
+   176→          strokeLinecap="round"
+   177→          initial={{ strokeDashoffset: circumference }}
+   178→          animate={{ strokeDashoffset: offset }}
+   179→          transition={{ duration: 1.2, ease: 'easeOut' }}
+   180→        />
+   181→      </svg>
+   182→      {showValue && (
+   183→        <div className="absolute flex flex-col items-center justify-center">
+   184→          <motion.span
+   185→            className="font-bold"
+   186→            style={{ color, fontSize: size * 0.22 }}
+   187→            initial={{ opacity: 0 }}
+   188→            animate={{ opacity: 1 }}
+   189→            transition={{ delay: 0.5 }}
+   190→          >
+   191→            {score}%
+   192→          </motion.span>
+   193→          {label && (
+   194→            <span className="text-[10px] text-muted-foreground mt-0.5">{label}</span>
+   195→          )}
+   196→        </div>
+   197→      )}
+   198→    </div>
+   199→  )
+   200→}
+   201→
+   202→// ===== Mini Score Ring for Framework Cards =====
+   203→
+   204→function MiniScoreRing({ score, size = 56 }: { score: number; size?: number }) {
+   205→  const strokeWidth = 4
+   206→  const radius = (size - strokeWidth) / 2
+   207→  const circumference = 2 * Math.PI * radius
+   208→  const offset = circumference - (Math.min(score, 100) / 100) * circumference
+   209→
+   210→  const getColor = () => {
+   211→    if (score >= 80) return '#10b981'
+   212→    if (score >= 60) return '#eab308'
+   213→    if (score >= 40) return '#f97316'
+   214→    return '#ef4444'
+   215→  }
+   216→
+   217→  return (
+   218→    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+   219→      <svg width={size} height={size} className="-rotate-90">
+   220→        <circle
+   221→          cx={size / 2}
+   222→          cy={size / 2}
+   223→          r={radius}
+   224→          fill="none"
+   225→          stroke="currentColor"
+   226→          strokeWidth={strokeWidth}
+   227→          className="text-muted/20"
+   228→        />
+   229→        <motion.circle
+   230→          cx={size / 2}
+   231→          cy={size / 2}
+   232→          r={radius}
+   233→          fill="none"
+   234→          stroke={getColor()}
+   235→          strokeWidth={strokeWidth}
+   236→          strokeDasharray={circumference}
+   237→          strokeDashoffset={offset}
+   238→          strokeLinecap="round"
+   239→          initial={{ strokeDashoffset: circumference }}
+   240→          animate={{ strokeDashoffset: offset }}
+   241→          transition={{ duration: 0.8, ease: 'easeOut' }}
+   242→        />
+   243→      </svg>
+   244→      <span className="absolute text-xs font-bold" style={{ color: getColor() }}>
+   245→        {score}
+   246→      </span>
+   247→    </div>
+   248→  )
+   249→}
+   250→
+   251→// ===== Compact Header Progress Ring (inline SVG next to score) =====
+   252→
+   253→function HeaderProgressRing({
+   254→  score,
+   255→  size = 22,
+   256→  strokeWidth = 2.5,
+   257→}: {
+   258→  score: number
+   259→  size?: number
+   260→  strokeWidth?: number
+   261→}) {
+   262→  const radius = Math.max(1, (size - strokeWidth) / 2)
+   263→  const circumference = 2 * Math.PI * radius
+   264→  const clamped = Math.min(100, Math.max(0, score))
+   265→  const offset = circumference - (clamped / 100) * circumference
+   266→  const color =
+   267→    score >= 80 ? '#10b981' : score >= 60 ? '#eab308' : score >= 40 ? '#f97316' : '#ef4444'
+   268→
+   269→  return (
+   270→    <svg
+   271→      width={size}
+   272→      height={size}
+   273→      viewBox={`0 0 ${size} ${size}`}
+   274→      className="-rotate-90 shrink-0"
+   275→      aria-label={`${score}% compliance`}
+   276→      role="img"
+   277→    >
+   278→      <circle
+   279→        cx={size / 2}
+   280→        cy={size / 2}
+   281→        r={radius}
+   282→        fill="none"
+   283→        stroke="rgba(255,255,255,0.08)"
+   284→        strokeWidth={strokeWidth}
+   285→      />
+   286→      <motion.circle
+   287→        cx={size / 2}
+   288→        cy={size / 2}
+   289→        r={radius}
+   290→        fill="none"
+   291→        stroke={color}
+   292→        strokeWidth={strokeWidth}
+   293→        strokeDasharray={circumference}
+   294→        strokeDashoffset={offset}
+   295→        strokeLinecap="round"
+   296→        initial={{ strokeDashoffset: circumference }}
+   297→        animate={{ strokeDashoffset: offset }}
+   298→        transition={{ duration: 0.8, ease: 'easeOut' }}
+   299→      />
+   300→    </svg>
+   301→  )
+   302→}
+   303→
+   304→// ===== Safe relative-time formatter (returns short "5m ago" style) =====
+   305→
+   306→function formatDistanceToNowSafe(dateStr: string): string {
+   307→  try {
+   308→    const then = new Date(dateStr).getTime()
+   309→    if (Number.isNaN(then)) return ''
+   310→    const diffMs = Date.now() - then
+   311→    if (diffMs < 0) return 'just now'
+   312→    const sec = Math.floor(diffMs / 1000)
+   313→    if (sec < 60) return 'just now'
+   314→    const min = Math.floor(sec / 60)
+   315→    if (min < 60) return `${min}m ago`
+   316→    const hr = Math.floor(min / 60)
+   317→    if (hr < 24) return `${hr}h ago`
+   318→    const day = Math.floor(hr / 24)
+   319→    if (day < 30) return `${day}d ago`
+   320→    const mo = Math.floor(day / 30)
+   321→    if (mo < 12) return `${mo}mo ago`
+   322→    return `${Math.floor(mo / 12)}y ago`
+   323→  } catch {
+   324→    return ''
+   325→  }
+   326→}
+   327→
+   328→// ===== Framework Icons =====
+   329→
+   330→const frameworkIcons: Record<string, React.ReactNode> = {
+   331→  'PCI-DSS': <Shield className="h-5 w-5 text-blue-400" />,
+   332→  'HIPAA': <FileCheck className="h-5 w-5 text-emerald-400" />,
+   333→  'SOC2': <ClipboardList className="h-5 w-5 text-amber-400" />,
+   334→  'NIST': <BarChart3 className="h-5 w-5 text-purple-400" />,
+   335→}
+   336→
+   337→const frameworkGradients: Record<string, string> = {
+   338→  'PCI-DSS': 'from-blue-500/10 to-blue-500/5',
+   339→  'HIPAA': 'from-emerald-500/10 to-emerald-500/5',
+   340→  'SOC2': 'from-amber-500/10 to-amber-500/5',
+   341→  'NIST': 'from-purple-500/10 to-purple-500/5',
+   342→}
+   343→
+   344→// ===== 30-Day Compliance Trend Data =====
+   345→
+   346→function generate30DayTrendData(frameworks: FrameworkSummary[]) {
+   347→  const days = 30
+   348→  const today = new Date()
+   349→  return Array.from({ length: days }, (_, i) => {
+   350→    const date = subDays(today, days - 1 - i)
+   351→    const entry: Record<string, string | number> = {
+   352→      date: format(date, 'MMM d'),
+   353→      fullDate: format(date, 'yyyy-MM-dd'),
+   354→    }
+   355→    frameworks.forEach((fw) => {
+   356→      const baseScore = fw.complianceScore
+   357→      const dayVariance = Math.sin(i * 0.3) * 4 + (Math.random() - 0.5) * 6
+   358→      const trendAdjust = (i / days) * 5
+   359→      entry[fw.name] = Math.min(100, Math.max(0, Math.round(baseScore - 5 + dayVariance + trendAdjust)))
+   360→    })
+   361→    return entry
+   362→  })
+   363→}
+   364→
+   365→// ===== 6-Month Trend Data (for line chart fallback) =====
+   366→
+   367→function generate6MonthTrendData(frameworks: FrameworkSummary[]) {
+   368→  const months = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar']
+   369→  return months.map((month, i) => {
+   370→    const entry: Record<string, string | number> = { month }
+   371→    frameworks.forEach((fw) => {
+   372→      const baseScore = fw.complianceScore
+   373→      const variance = Math.round((Math.random() - 0.4) * 12)
+   374→      const trendAdjust = i * 1.5
+   375→      entry[fw.name] = Math.min(100, Math.max(0, baseScore + variance + trendAdjust))
+   376→    })
+   377→    return entry
+   378→  })
+   379→}
+   380→
+   381→// ===== Radar Chart Data Generator =====
+   382→
+   383→function generateRadarData(frameworks: FrameworkSummary[]) {
+   384→  const dimensions = [
+   385→    { key: 'compliance', label: 'Compliance' },
+   386→    { key: 'coverage', label: 'Coverage' },
+   387→    { key: 'evidence', label: 'Evidence' },
+   388→    { key: 'remediation', label: 'Remediation' },
+   389→    { key: 'monitoring', label: 'Monitoring' },
+   390→    { key: 'governance', label: 'Governance' },
+   391→  ]
+   392→
+   393→  return dimensions.map((dim) => {
+   394→    const entry: Record<string, string | number> = { dimension: dim.label }
+   395→    frameworks.forEach((fw) => {
+   396→      const base = fw.complianceScore
+   397→      let value: number
+   398→      switch (dim.key) {
+   399→        case 'compliance':
+   400→          value = base
+   401→          break
+   402→        case 'coverage': {
+   403→          const assessed = (fw.statusCounts.compliant || 0) + (fw.statusCounts.non_compliant || 0) + (fw.statusCounts.partially_compliant || 0)
+   404→          value = fw.totalControls > 0 ? Math.round((assessed / fw.totalControls) * 100) : 0
+   405→          break
+   406→        }
+   407→        case 'evidence':
+   408→          value = Math.min(100, base + Math.round((Math.random() - 0.3) * 15))
+   409→          break
+   410→        case 'remediation': {
+   411→          const nonCompliant = fw.statusCounts.non_compliant || 0
+   412→          value = nonCompliant > 0 ? Math.round(Math.max(20, 100 - nonCompliant * 10)) : 95
+   413→          break
+   414→        }
+   415→        case 'monitoring':
+   416→          value = Math.min(100, base + Math.round((Math.random() - 0.4) * 10))
+   417→          break
+   418→        case 'governance':
+   419→          value = Math.min(100, base + Math.round((Math.random() - 0.5) * 12))
+   420→          break
+   421→        default:
+   422→          value = base
+   423→      }
+   424→      entry[fw.name] = Math.max(0, Math.min(100, value))
+   425→    })
+   426→    return entry
+   427→  })
+   428→}
+   429→
+   430→// ===== Trend Chart Colors =====
+   431→
+   432→const trendColors: Record<string, string> = {
+   433→  'PCI-DSS': '#3b82f6',
+   434→  'HIPAA': '#10b981',
+   435→  'SOC2': '#f59e0b',
+   436→  'NIST': '#8b5cf6',
+   437→}
+   438→
+   439→const radarColors: Record<string, string> = {
+   440→  'PCI-DSS': '#3b82f6',
+   441→  'HIPAA': '#10b981',
+   442→  'SOC2': '#f59e0b',
+   443→  'NIST': '#8b5cf6',
+   444→}
+   445→
+   446→// ===== Status icon helper =====
+   447→
+   448→function StatusIcon({ status, className }: { status: ControlStatus; className?: string }) {
+   449→  const cls = cn('h-3.5 w-3.5', className)
+   450→  switch (status) {
+   451→    case 'compliant':
+   452→      return <CheckCircle2 className={cn(cls, 'text-emerald-400')} />
+   453→    case 'non_compliant':
+   454→      return <XCircle className={cn(cls, 'text-red-400')} />
+   455→    case 'partially_compliant':
+   456→      return <AlertTriangle className={cn(cls, 'text-amber-400')} />
+   457→    case 'not_assessed':
+   458→      return <HelpCircle className={cn(cls, 'text-zinc-400')} />
+   459→    case 'not_applicable':
+   460→      return <Slash className={cn(cls, 'text-zinc-500')} />
+   461→    default:
+   462→      return <HelpCircle className={cn(cls, 'text-zinc-400')} />
+   463→  }
+   464→}
+   465→
+   466→// ===== Control Row with Inline Status Select =====
+   467→
+   468→function ControlRow({
+   469→  control,
+   470→  frameworkId,
+   471→  onStatusChange,
+   472→}: {
+   473→  control: ControlData
+   474→  frameworkId: string
+   475→  onStatusChange: (controlId: string, newStatus: ControlStatus) => void
+   476→}) {
+   477→  const [statusUpdating, setStatusUpdating] = useState(false)
+   478→  const [expanded, setExpanded] = useState(false)
+   479→
+   480→  const assessmentProgress = useMemo(() => {
+   481→    if (control.status === 'compliant' || control.status === 'non_compliant') return 100
+   482→    if (control.status === 'partially_compliant') return 60
+   483→    if (control.status === 'not_applicable') return 100
+   484→    return 0
+   485→  }, [control.status])
+   486→
+   487→  const handleStatusChange = async (newStatus: string) => {
+   488→    if (newStatus === control.status) return
+   489→    setStatusUpdating(true)
+   490→    try {
+   491→      const res = await fetch(`/api/compliance/${frameworkId}/controls`, {
+   492→        method: 'PATCH',
+   493→        headers: { 'Content-Type': 'application/json' },
+   494→        body: JSON.stringify({
+   495→          controlId: control.id,
+   496→          status: newStatus,
+   497→        }),
+   498→      })
+   499→      if (res.ok) {
+   500→        toast.success(`Control ${control.controlId} updated to ${newStatus.replace(/_/g, ' ')}`)
+   501→        onStatusChange(control.id, newStatus as ControlStatus)
+   502→      } else {
+   503→        toast.error('Failed to update control status')
+   504→      }
+   505→    } catch {
+   506→      toast.error('Failed to update control status')
+   507→    } finally {
+   508→      setStatusUpdating(false)
+   509→    }
+   510→  }
+   511→
+   512→  return (
+   513→    <motion.div
+   514→      layout
+   515→      initial={{ opacity: 0 }}
+   516→      animate={{ opacity: 1 }}
+   517→      className={cn(
+   518→        'rounded-lg border transition-colors',
+   519→        control.status === 'non_compliant'
+   520→          ? 'border-red-500/20 bg-red-500/5 border-l-2 border-l-red-500/50'
+   521→          : control.status === 'partially_compliant'
+   522→            ? 'border-amber-500/20 bg-amber-500/5'
+   523→            : 'border-border/50 bg-muted/10'
+   524→      )}
+   525→    >
+   526→      <div
+   527→        className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-accent/20 rounded-lg"
+   528→        onClick={() => setExpanded(!expanded)}
+   529→      >
+   530→        {/* Expand chevron */}
+   531→        <motion.div
+   532→          animate={{ rotate: expanded ? 90 : 0 }}
+   533→          transition={{ duration: 0.15 }}
+   534→          className="shrink-0"
+   535→        >
+   536→          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+   537→        </motion.div>
+   538→
+   539→        {/* Status icon */}
+   540→        <StatusIcon status={control.status} />
+   541→
+   542→        {/* Control ID */}
+   543→        <span className="font-mono text-xs text-muted-foreground shrink-0 w-20">
+   544→          {control.controlId}
+   545→        </span>
+   546→
+   547→        {/* Title */}
+   548→        <span className="text-xs flex-1 truncate">{control.title}</span>
+   549→
+   550→        {/* Category badge (hidden on small) */}
+   551→        {control.category && (
+   552→          <Badge variant="outline" className="text-[9px] px-1.5 py-0 hidden md:inline-flex shrink-0">
+   553→            {control.category}
+   554→          </Badge>
+   555→        )}
+   556→
+   557→        {/* Mini assessment progress */}
+   558→        <div className="hidden sm:flex items-center gap-1.5 shrink-0 w-20">
+   559→          <Progress
+   560→            value={assessmentProgress}
+   561→            className={cn(
+   562→              'h-1 w-14',
+   563→              control.status === 'compliant'
+   564→                ? '[&>div]:bg-emerald-500'
+   565→                : control.status === 'non_compliant'
+   566→                  ? '[&>div]:bg-red-500'
+   567→                  : control.status === 'partially_compliant'
+   568→                    ? '[&>div]:bg-amber-500'
+   569→                    : '[&>div]:bg-zinc-500'
+   570→            )}
+   571→          />
+   572→          <span className="text-[9px] text-muted-foreground tabular-nums">{assessmentProgress}%</span>
+   573→        </div>
+   574→
+   575→        {/* Status select */}
+   576→        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+   577→          <Select
+   578→            value={control.status}
+   579→            onValueChange={handleStatusChange}
+   580→            disabled={statusUpdating}
+   581→          >
+   582→            <SelectTrigger className={cn(
+   583→              'h-6 w-[130px] text-[10px] border-0 bg-transparent',
+   584→              'hover:bg-accent/30 focus:ring-0 focus:ring-offset-0',
+   585→              statusUpdating && 'opacity-50'
+   586→            )}>
+   587→              <SelectValue />
+   588→            </SelectTrigger>
+   589→            <SelectContent className="text-xs">
+   590→              <SelectItem value="compliant">
+   591→                <span className="flex items-center gap-1.5">
+   592→                  <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Compliant
+   593→                </span>
+   594→              </SelectItem>
+   595→              <SelectItem value="non_compliant">
+   596→                <span className="flex items-center gap-1.5">
+   597→                  <XCircle className="h-3 w-3 text-red-400" /> Non-Compliant
+   598→                </span>
+   599→              </SelectItem>
+   600→              <SelectItem value="partially_compliant">
+   601→                <span className="flex items-center gap-1.5">
+   602→                  <AlertTriangle className="h-3 w-3 text-amber-400" /> Partial
+   603→                </span>
+   604→              </SelectItem>
+   605→              <SelectItem value="not_assessed">
+   606→                <span className="flex items-center gap-1.5">
+   607→                  <HelpCircle className="h-3 w-3 text-zinc-400" /> Not Assessed
+   608→                </span>
+   609→              </SelectItem>
+   610→              <SelectItem value="not_applicable">
+   611→                <span className="flex items-center gap-1.5">
+   612→                  <Slash className="h-3 w-3 text-zinc-500" /> N/A
+   613→                </span>
+   614→              </SelectItem>
+   615→            </SelectContent>
+   616→          </Select>
+   617→        </div>
+   618→      </div>
+   619→
+   620→      {/* Expanded detail */}
+   621→      <AnimatePresence>
+   622→        {expanded && (
+   623→          <motion.div
+   624→            initial={{ height: 0, opacity: 0 }}
+   625→            animate={{ height: 'auto', opacity: 1 }}
+   626→            exit={{ height: 0, opacity: 0 }}
+   627→            transition={{ duration: 0.2 }}
+   628→            className="overflow-hidden"
+   629→          >
+   630→            <div className="px-3 pb-3 pt-1 ml-7 space-y-2 border-t border-border/30 mt-0.5">
+   631→              {/* Description */}
+   632→              <p className="text-[11px] text-muted-foreground leading-relaxed">
+   633→                {control.description}
+   634→              </p>
+   635→
+   636→              {/* Meta info grid */}
+   637→              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+   638→                {/* Assessed by */}
+   639→                <div className="flex items-center gap-1.5">
+   640→                  <User className="h-3 w-3 text-muted-foreground" />
+   641→                  <span className="text-muted-foreground">Assessor:</span>
+   642→                  <span className="text-foreground">
+   643→                    {control.assessedBy || 'Unassigned'}
+   644→                  </span>
+   645→                </div>
+   646→
+   647→                {/* Assessed at */}
+   648→                <div className="flex items-center gap-1.5">
+   649→                  <Clock className="h-3 w-3 text-muted-foreground" />
+   650→                  <span className="text-muted-foreground">Assessed:</span>
+   651→                  <span className="text-foreground">
+   652→                    {control.assessedAt
+   653→                      ? format(new Date(control.assessedAt), 'MMM d, yyyy')
+   654→                      : 'Never'}
+   655→                  </span>
+   656→                </div>
+   657→
+   658→                {/* Remediation due */}
+   659→                <div className="flex items-center gap-1.5">
+   660→                  <AlertTriangle className="h-3 w-3 text-muted-foreground" />
+   661→                  <span className="text-muted-foreground">Due:</span>
+   662→                  <span className={cn(
+   663→                    'text-foreground',
+   664→                    control.remediationDue && new Date(control.remediationDue) < new Date() && 'text-red-400'
+   665→                  )}>
+   666→                    {control.remediationDue
+   667→                      ? format(new Date(control.remediationDue), 'MMM d, yyyy')
+   668→                      : '—'}
+   669→                  </span>
+   670→                </div>
+   671→
+   672→                {/* Evidence */}
+   673→                <div className="flex items-center gap-1.5">
+   674→                  <Eye className="h-3 w-3 text-muted-foreground" />
+   675→                  <span className="text-muted-foreground">Evidence:</span>
+   676→                  <span className="text-foreground">
+   677→                    {control.evidence ? 'Available' : 'None'}
+   678→                  </span>
+   679→                </div>
+   680→              </div>
+   681→
+   682→              {/* Notes */}
+   683→              {control.notes && (
+   684→                <div className="rounded bg-muted/30 px-2 py-1.5 text-[10px] text-muted-foreground">
+   685→                  <span className="font-medium text-foreground">Notes: </span>
+   686→                  {control.notes}
+   687→                </div>
+   688→              )}
+   689→
+   690→              {/* Assessment progress bar (visible on mobile too) */}
+   691→              <div className="sm:hidden flex items-center gap-2">
+   692→                <span className="text-[10px] text-muted-foreground shrink-0">Assessment:</span>
+   693→                <Progress
+   694→                  value={assessmentProgress}
+   695→                  className={cn(
+   696→                    'h-1.5 flex-1',
+   697→                    control.status === 'compliant'
+   698→                      ? '[&>div]:bg-emerald-500'
+   699→                      : control.status === 'non_compliant'
+   700→                        ? '[&>div]:bg-red-500'
+   701→                        : control.status === 'partially_compliant'
+   702→                          ? '[&>div]:bg-amber-500'
+   703→                          : '[&>div]:bg-zinc-500'
+   704→                  )}
+   705→                />
+   706→                <span className="text-[10px] text-muted-foreground tabular-nums">{assessmentProgress}%</span>
+   707→              </div>
+   708→            </div>
+   709→          </motion.div>
+   710→        )}
+   711→      </AnimatePresence>
+   712→    </motion.div>
+   713→  )
+   714→}
+   715→
+   716→// ===== Status Group Component =====
+   717→
+   718→function StatusGroup({
+   719→  label,
+   720→  icon,
+   721→  controls,
+   722→  frameworkId,
+   723→  colorClass,
+   724→  onStatusChange,
+   725→  defaultOpen,
+   726→}: {
+   727→  label: string
+   728→  icon: React.ReactNode
+   729→  controls: ControlData[]
+   730→  frameworkId: string
+   731→  colorClass: string
+   732→  onStatusChange: (controlId: string, newStatus: ControlStatus) => void
+   733→  defaultOpen?: boolean
+   734→}) {
+   735→  const [isOpen, setIsOpen] = useState(defaultOpen ?? true)
+   736→
+   737→  if (controls.length === 0) return null
+   738→
+   739→  return (
+   740→    <div className="space-y-1.5">
+   741→      <button
+   742→        onClick={() => setIsOpen(!isOpen)}
+   743→        className="flex items-center gap-2 w-full text-left hover:bg-accent/20 rounded-md px-1.5 py-1.5 transition-colors"
+   744→      >
+   745→        <motion.div
+   746→          animate={{ rotate: isOpen ? 90 : 0 }}
+   747→          transition={{ duration: 0.15 }}
+   748→        >
+   749→          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+   750→        </motion.div>
+   751→        {icon}
+   752→        <span className={cn('text-xs font-medium', colorClass)}>{label}</span>
+   753→        <Badge variant="outline" className="text-[9px] px-1.5 py-0 ml-1">
+   754→          {controls.length}
+   755→        </Badge>
+   756→      </button>
+   757→      <AnimatePresence>
+   758→        {isOpen && (
+   759→          <motion.div
+   760→            initial={{ height: 0, opacity: 0 }}
+   761→            animate={{ height: 'auto', opacity: 1 }}
+   762→            exit={{ height: 0, opacity: 0 }}
+   763→            transition={{ duration: 0.2 }}
+   764→            className="overflow-hidden space-y-1.5 pl-2"
+   765→          >
+   766→            {controls.map((ctrl) => (
+   767→              <ControlRow
+   768→                key={ctrl.id}
+   769→                control={ctrl}
+   770→                frameworkId={frameworkId}
+   771→                onStatusChange={onStatusChange}
+   772→              />
+   773→            ))}
+   774→          </motion.div>
+   775→        )}
+   776→      </AnimatePresence>
+   777→    </div>
+   778→  )
+   779→}
+   780→
+   781→// ===== Main Compliance View =====
+   782→
+   783→export function ComplianceView() {
+   784→  const { compliance, setCompliance } = useSIEMStore()
+   785→  const [frameworks, setFrameworks] = useState<FrameworkSummary[]>([])
+   786→  const [loading, setLoading] = useState(true)
+   787→  const [refreshing, setRefreshing] = useState(false)
+   788→  const [expandedFramework, setExpandedFramework] = useState<string | null>(null)
+   789→  const [controls, setControls] = useState<ControlData[]>([])
+   790→  const [controlsLoading, setControlsLoading] = useState(false)
+   791→  const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+   792→  const [selectedControl, setSelectedControl] = useState<{
+   793→    id: string
+   794→    frameworkId: string
+   795→    currentStatus: ControlStatus
+   796→    title: string
+   797→  } | null>(null)
+   798→  const [newStatus, setNewStatus] = useState<string>('')
+   799→  const [updateNotes, setUpdateNotes] = useState('')
+   800→  const [exporting, setExporting] = useState(false)
+   801→  const controlsFetchedRef = useRef<string | null>(null)
+   802→
+   803→  // Fetch frameworks
+   804→  const fetchFrameworks = useCallback(async (showRefreshing = false) => {
+   805→    if (showRefreshing) setRefreshing(true)
+   806→    else setLoading(true)
+   807→    try {
+   808→      const res = await fetch('/api/compliance')
+   809→      if (res.ok) {
+   810→        const json = await res.json()
+   811→        setFrameworks(json.data || json)
+   812→      }
+   813→    } catch {
+   814→      toast.error('Failed to fetch compliance data')
+   815→    } finally {
+   816→      setLoading(false)
+   817→      setRefreshing(false)
+   818→    }
+   819→  }, [])
+   820→
+   821→  useEffect(() => {
+   822→    fetchFrameworks()
+   823→  }, [fetchFrameworks])
+   824→
+   825→  // Fetch controls for a framework
+   826→  const fetchControls = useCallback(async (frameworkId: string) => {
+   827→    // Avoid re-fetching if already loaded
+   828→    if (controlsFetchedRef.current === frameworkId && controls.length > 0) return
+   829→    setControlsLoading(true)
+   830→    try {
+   831→      const res = await fetch(`/api/compliance/${frameworkId}/controls`)
+   832→      if (res.ok) {
+   833→        const json = await res.json()
+   834→        const controlsList = json.controls || json.controls === undefined ? (Array.isArray(json) ? json : (json.controls || [])) : []
+   835→        setControls(controlsList)
+   836→        controlsFetchedRef.current = frameworkId
+   837→      }
+   838→    } catch {
+   839→      toast.error('Failed to fetch controls')
+   840→    } finally {
+   841→      setControlsLoading(false)
+   842→    }
+   843→  }, [controls.length])
+   844→
+   845→  // Expand/collapse framework
+   846→  const handleExpandFramework = (id: string) => {
+   847→    if (expandedFramework === id) {
+   848→      setExpandedFramework(null)
+   849→      setCompliance({ expandedFramework: null })
+   850→      controlsFetchedRef.current = null
+   851→    } else {
+   852→      setExpandedFramework(id)
+   853→      setCompliance({ expandedFramework: id })
+   854→      setControls([])
+   855→      fetchControls(id)
+   856→    }
+   857→  }
+   858→
+   859→  // Handle inline status change
+   860→  const handleInlineStatusChange = (controlId: string, newStatus: ControlStatus) => {
+   861→    setControls((prev) =>
+   862→      prev.map((c) =>
+   863→        c.id === controlId ? { ...c, status: newStatus, assessedAt: new Date().toISOString() } : c
+   864→      )
+   865→    )
+   866→    // Also refresh frameworks to update scores
+   867→    fetchFrameworks()
+   868→  }
+   869→
+   870→  // Update control status via dialog
+   871→  const handleUpdateControl = async () => {
+   872→    if (!selectedControl || !newStatus) return
+   873→    try {
+   874→      const res = await fetch(`/api/compliance/${selectedControl.frameworkId}/controls`, {
+   875→        method: 'PATCH',
+   876→        headers: { 'Content-Type': 'application/json' },
+   877→        body: JSON.stringify({
+   878→          controlId: selectedControl.id,
+   879→          status: newStatus,
+   880→          notes: updateNotes || undefined,
+   881→        }),
+   882→      })
+   883→      if (res.ok) {
+   884→        toast.success('Control status updated')
+   885→        setUpdateDialogOpen(false)
+   886→        setUpdateNotes('')
+   887→        handleInlineStatusChange(selectedControl.id, newStatus as ControlStatus)
+   888→      } else {
+   889→        toast.error('Failed to update control')
+   890→      }
+   891→    } catch {
+   892→      toast.error('Failed to update control')
+   893→    }
+   894→  }
+   895→
+   896→  // Export compliance report as JSON
+   897→  const handleExportReport = async () => {
+   898→    setExporting(true)
+   899→    try {
+   900→      // Fetch full compliance data for all frameworks
+   901→      const reportData: Record<string, unknown> = {
+   902→        generatedAt: new Date().toISOString(),
+   903→        summary: {
+   904→          overallScore,
+   905→          totalControls,
+   906→          totalNonCompliant,
+   907→          totalPartiallyCompliant,
+   908→          frameworksCount: frameworks.length,
+   909→        },
+   910→        frameworks: [],
+   911→      }
+   912→
+   913→      // Fetch controls for each framework
+   914→      for (const fw of frameworks) {
+   915→        try {
+   916→          const res = await fetch(`/api/compliance/${fw.id}/controls`)
+   917→          if (res.ok) {
+   918→            const json = await res.json()
+   919→            const fwControls = json.controls || (Array.isArray(json) ? json : [])
+   920→            ;(reportData.frameworks as unknown[]).push({
+   921→              id: fw.id,
+   922→              name: fw.name,
+   923→              version: fw.version,
+   924→              description: fw.description,
+   925→              complianceScore: fw.complianceScore,
+   926→              totalControls: fw.totalControls,
+   927→              statusCounts: fw.statusCounts,
+   928→              controls: fwControls,
+   929→            })
+   930→          }
+   931→        } catch {
+   932→          // Skip failed framework controls
+   933→        }
+   934→      }
+   935→
+   936→      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' })
+   937→      const url = URL.createObjectURL(blob)
+   938→      const a = document.createElement('a')
+   939→      a.href = url
+   940→      a.download = `compliance-report-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`
+   941→      document.body.appendChild(a)
+   942→      a.click()
+   943→      document.body.removeChild(a)
+   944→      URL.revokeObjectURL(url)
+   945→      toast.success('Compliance report exported successfully')
+   946→    } catch {
+   947→      toast.error('Failed to export compliance report')
+   948→    } finally {
+   949→      setExporting(false)
+   950→    }
+   951→  }
+   952→
+   953→  // Computed values
+   954→  const overallScore = useMemo(() => {
+   955→    if (frameworks.length === 0) return 0
+   956→    const total = frameworks.reduce((acc, fw) => acc + fw.complianceScore, 0)
+   957→    return Math.round(total / frameworks.length)
+   958→  }, [frameworks])
+   959→
+   960→  const totalControls = useMemo(
+   961→    () => frameworks.reduce((acc, fw) => acc + fw.totalControls, 0),
+   962→    [frameworks]
+   963→  )
+   964→
+   965→  const totalNonCompliant = useMemo(
+   966→    () =>
+   967→      frameworks.reduce(
+   968→        (acc, fw) => acc + (fw.statusCounts.non_compliant || 0),
+   969→        0
+   970→      ),
+   971→    [frameworks]
+   972→  )
+   973→
+   974→  const totalPartiallyCompliant = useMemo(
+   975→    () =>
+   976→      frameworks.reduce(
+   977→        (acc, fw) => acc + (fw.statusCounts.partially_compliant || 0),
+   978→        0
+   979→      ),
+   980→    [frameworks]
+   981→  )
+   982→
+   983→  const trendData30Day = useMemo(() => generate30DayTrendData(frameworks), [frameworks])
+   984→  const trendData6Month = useMemo(() => generate6MonthTrendData(frameworks), [frameworks])
+   985→  const radarData = useMemo(() => generateRadarData(frameworks), [frameworks])
+   986→
+   987→  // Group controls by status
+   988→  const controlsByStatus = useMemo(() => {
+   989→    const groups: Record<string, ControlData[]> = {
+   990→      non_compliant: [],
+   991→      partially_compliant: [],
+   992→      not_assessed: [],
+   993→      not_applicable: [],
+   994→      compliant: [],
+   995→    }
+   996→    controls.forEach((c) => {
+   997→      if (groups[c.status]) {
+   998→        groups[c.status].push(c)
+   999→      } else {
+  1000→        groups.not_assessed.push(c)
+  1001→      }
+  1002→    })
+  1003→    return groups
+  1004→  }, [controls])
+  1005→
+  1006→  // Non-compliant controls with remediation
+  1007→  const remediationItems = useMemo(() => {
+  1008→    return controls.filter(
+  1009→      (c) =>
+  1010→        (c.status === 'non_compliant' || c.status === 'partially_compliant') &&
+  1011→        c.remediationDue
+  1012→    )
+  1013→  }, [controls])
+  1014→
+  1015→  // Score change indicator (simulated)
+  1016→  const scoreChange = useMemo(() => {
+  1017→    return Math.round((Math.random() - 0.3) * 8)
+  1018→  }, [frameworks])
+  1019→
+  1020→  const expandedFrameworkData = useMemo(() => {
+  1021→    if (!expandedFramework) return null
+  1022→    return frameworks.find((fw) => fw.id === expandedFramework) || null
+  1023→  }, [expandedFramework, frameworks])
+  1024→
+  1025→  return (
+  1026→    <motion.div
+  1027→      initial={{ opacity: 0, y: 10 }}
+  1028→      animate={{ opacity: 1, y: 0 }}
+  1029→      transition={{ duration: 0.3 }}
+  1030→      className="space-y-6 p-4"
+  1031→    >
+  1032→      {/* ===== Header ===== */}
+  1033→      <div className="flex items-center justify-between">
+  1034→        <div>
+  1035→          <h2 className="text-lg font-bold tracking-tight">Compliance Dashboard</h2>
+  1036→          <p className="text-xs text-muted-foreground">
+  1037→            Monitor and manage regulatory compliance across frameworks
+  1038→          </p>
+  1039→        </div>
+  1040→        <div className="flex items-center gap-2">
+  1041→          <Button
+  1042→            variant="outline"
+  1043→            size="sm"
+  1044→            className="gap-1.5 text-xs"
+  1045→            onClick={handleExportReport}
+  1046→            disabled={exporting || loading}
+  1047→          >
+  1048→            <Download className={cn('h-3.5 w-3.5', exporting && 'animate-bounce')} />
+  1049→            {exporting ? 'Exporting...' : 'Export Report'}
+  1050→          </Button>
+  1051→          <Button
+  1052→            variant="outline"
+  1053→            size="sm"
+  1054→            className="gap-1.5 text-xs"
+  1055→            onClick={() => fetchFrameworks(true)}
+  1056→            disabled={refreshing}
+  1057→          >
+  1058→            <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+  1059→            Refresh
+  1060→          </Button>
+  1061→        </div>
+  1062→      </div>
+  1063→
+  1064→      {/* ===== Overall Compliance Score + Summary Cards ===== */}
+  1065→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+  1066→        {/* Main Score Card */}
+  1067→        <Card className="border-border bg-card lg:col-span-1">
+  1068→          <CardContent className="flex flex-col items-center justify-center p-6">
+  1069→            {loading ? (
+  1070→              <Skeleton className="h-32 w-32 rounded-full" />
+  1071→            ) : (
+  1072→              <CircularScoreRing
+  1073→                score={overallScore}
+  1074→                size={140}
+  1075→                strokeWidth={12}
+  1076→                label="Overall"
+  1077→              />
+  1078→            )}
+  1079→            <div className="mt-3 flex items-center gap-1 text-xs">
+  1080→              {scoreChange > 0 ? (
+  1081→                <>
+  1082→                  <ArrowUpRight className="h-3 w-3 text-emerald-400" />
+  1083→                  <span className="text-emerald-400">+{scoreChange}%</span>
+  1084→                </>
+  1085→              ) : scoreChange < 0 ? (
+  1086→                <>
+  1087→                  <ArrowDownRight className="h-3 w-3 text-red-400" />
+  1088→                  <span className="text-red-400">{scoreChange}%</span>
+  1089→                </>
+  1090→              ) : (
+  1091→                <>
+  1092→                  <Minus className="h-3 w-3 text-muted-foreground" />
+  1093→                  <span className="text-muted-foreground">No change</span>
+  1094→                </>
+  1095→              )}
+  1096→              <span className="text-muted-foreground">vs last month</span>
+  1097→            </div>
+  1098→          </CardContent>
+  1099→        </Card>
+  1100→
+  1101→        {/* Summary Stat Cards */}
+  1102→        <Card className="border-border bg-card">
+  1103→          <CardContent className="flex flex-col justify-center p-4">
+  1104→            <div className="flex items-center gap-2">
+  1105→              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10">
+  1106→                <Shield className="h-4 w-4 text-emerald-400" />
+  1107→              </div>
+  1108→              <div>
+  1109→                <p className="text-[10px] text-muted-foreground">Total Controls</p>
+  1110→                <p className="text-lg font-bold">{loading ? '—' : totalControls}</p>
+  1111→              </div>
+  1112→            </div>
+  1113→          </CardContent>
+  1114→        </Card>
+  1115→
+  1116→        <Card className="border-border bg-card">
+  1117→          <CardContent className="flex flex-col justify-center p-4">
+  1118→            <div className="flex items-center gap-2">
+  1119→              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10">
+  1120→                <FileX className="h-4 w-4 text-red-400" />
+  1121→              </div>
+  1122→              <div>
+  1123→                <p className="text-[10px] text-muted-foreground">Non-Compliant</p>
+  1124→                <p className="text-lg font-bold text-red-400">
+  1125→                  {loading ? '—' : totalNonCompliant}
+  1126→                </p>
+  1127→              </div>
+  1128→            </div>
+  1129→          </CardContent>
+  1130→        </Card>
+  1131→
+  1132→        <Card className="border-border bg-card">
+  1133→          <CardContent className="flex flex-col justify-center p-4">
+  1134→            <div className="flex items-center gap-2">
+  1135→              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
+  1136→                <AlertTriangle className="h-4 w-4 text-amber-400" />
+  1137→              </div>
+  1138→              <div>
+  1139→                <p className="text-[10px] text-muted-foreground">Partial Compliance</p>
+  1140→                <p className="text-lg font-bold text-amber-400">
+  1141→                  {loading ? '—' : totalPartiallyCompliant}
+  1142→                </p>
+  1143→              </div>
+  1144→            </div>
+  1145→          </CardContent>
+  1146→        </Card>
+  1147→      </div>
+  1148→
+  1149→      {/* ===== 30-Day Compliance Trend Area Chart ===== */}
+  1150→      <Card className="border-border bg-card">
+  1151→        <CardHeader className="pb-2">
+  1152→          <div className="flex items-center justify-between">
+  1153→            <div>
+  1154→              <CardTitle className="text-sm font-semibold">
+  1155→                Compliance Score Trend
+  1156→              </CardTitle>
+  1157→              <CardDescription className="text-[10px]">
+  1158→                30-day compliance score trajectory across all frameworks
+  1159→              </CardDescription>
+  1160→            </div>
+  1161→            <TrendingUp className="h-4 w-4 text-emerald-400" />
+  1162→          </div>
+  1163→        </CardHeader>
+  1164→        <CardContent className="pt-0">
+  1165→          {loading ? (
+  1166→            <Skeleton className="h-52 w-full rounded" />
+  1167→          ) : (
+  1168→            <ResponsiveContainer width="100%" height={200}>
+  1169→              <AreaChart data={trendData30Day}>
+  1170→                <defs>
+  1171→                  {frameworks.map((fw) => (
+  1172→                    <linearGradient key={fw.id} id={`gradient-${fw.name.replace(/[^a-zA-Z]/g, '')}`} x1="0" y1="0" x2="0" y2="1">
+  1173→                      <stop offset="5%" stopColor={trendColors[fw.name] || '#6b7280'} stopOpacity={0.3} />
+  1174→                      <stop offset="95%" stopColor={trendColors[fw.name] || '#6b7280'} stopOpacity={0} />
+  1175→                    </linearGradient>
+  1176→                  ))}
+  1177→                </defs>
+  1178→                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+  1179→                <XAxis
+  1180→                  dataKey="date"
+  1181→                  tick={{ fill: '#94a3b8', fontSize: 9 }}
+  1182→                  axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
+  1183→                  interval={4}
+  1184→                />
+  1185→                <YAxis
+  1186→                  domain={[0, 100]}
+  1187→                  tick={{ fill: '#94a3b8', fontSize: 9 }}
+  1188→                  axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
+  1189→                  width={30}
+  1190→                />
+  1191→                <RechartsTooltip
+  1192→                  contentStyle={{
+  1193→                    backgroundColor: '#18181b',
+  1194→                    border: '1px solid rgba(255,255,255,0.1)',
+  1195→                    borderRadius: '8px',
+  1196→                    fontSize: '11px',
+  1197→                  }}
+  1198→                  labelStyle={{ color: '#94a3b8' }}
+  1199→                />
+  1200→                {frameworks.map((fw) => (
+  1201→                  <Area
+  1202→                    key={fw.id}
+  1203→                    type="monotone"
+  1204→                    dataKey={fw.name}
+  1205→                    stroke={trendColors[fw.name] || '#6b7280'}
+  1206→                    strokeWidth={2}
+  1207→                    fill={`url(#gradient-${fw.name.replace(/[^a-zA-Z]/g, '')})`}
+  1208→                    dot={false}
+  1209→                    activeDot={{ r: 4, strokeWidth: 0 }}
+  1210→                  />
+  1211→                ))}
+  1212→                <Legend
+  1213→                  iconType="circle"
+  1214→                  iconSize={8}
+  1215→                  wrapperStyle={{ fontSize: '10px', paddingTop: '8px' }}
+  1216→                />
+  1217→              </AreaChart>
+  1218→            </ResponsiveContainer>
+  1219→          )}
+  1220→        </CardContent>
+  1221→      </Card>
+  1222→
+  1223→      {/* ===== Framework Comparison Radar Chart ===== */}
+  1224→      <Card className="border-border bg-card">
+  1225→        <CardHeader className="pb-2">
+  1226→          <div className="flex items-center justify-between">
+  1227→            <div>
+  1228→              <CardTitle className="text-sm font-semibold">
+  1229→                Framework Comparison
+  1230→              </CardTitle>
+  1231→              <CardDescription className="text-[10px]">
+  1232→                Multi-dimensional compliance analysis across frameworks
+  1233→              </CardDescription>
+  1234→            </div>
+  1235→            <BarChart3 className="h-4 w-4 text-purple-400" />
+  1236→          </div>
+  1237→        </CardHeader>
+  1238→        <CardContent className="pt-0">
+  1239→          {loading ? (
+  1240→            <Skeleton className="h-72 w-full rounded" />
+  1241→          ) : (
+  1242→            <ResponsiveContainer width="100%" height={280}>
+  1243→              <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
+  1244→                <PolarGrid stroke="rgba(255,255,255,0.08)" />
+  1245→                <PolarAngleAxis
+  1246→                  dataKey="dimension"
+  1247→                  tick={{ fill: '#94a3b8', fontSize: 10 }}
+  1248→                />
+  1249→                <PolarRadiusAxis
+  1250→                  angle={90}
+  1251→                  domain={[0, 100]}
+  1252→                  tick={{ fill: '#71717a', fontSize: 8 }}
+  1253→                  tickCount={5}
+  1254→                />
+  1255→                {frameworks.map((fw) => (
+  1256→                  <Radar
+  1257→                    key={fw.id}
+  1258→                    name={fw.name}
+  1259→                    dataKey={fw.name}
+  1260→                    stroke={radarColors[fw.name] || '#6b7280'}
+  1261→                    fill={radarColors[fw.name] || '#6b7280'}
+  1262→                    fillOpacity={0.1}
+  1263→                    strokeWidth={2}
+  1264→                    dot={{ r: 3, fill: radarColors[fw.name] || '#6b7280' }}
+  1265→                  />
+  1266→                ))}
+  1267→                <Legend
+  1268→                  iconType="circle"
+  1269→                  iconSize={8}
+  1270→                  wrapperStyle={{ fontSize: '10px', paddingTop: '8px' }}
+  1271→                />
+  1272→                <RechartsTooltip
+  1273→                  contentStyle={{
+  1274→                    backgroundColor: '#18181b',
+  1275→                    border: '1px solid rgba(255,255,255,0.1)',
+  1276→                    borderRadius: '8px',
+  1277→                    fontSize: '11px',
+  1278→                  }}
+  1279→                />
+  1280→              </RadarChart>
+  1281→            </ResponsiveContainer>
+  1282→          )}
+  1283→        </CardContent>
+  1284→      </Card>
+  1285→
+  1286→      {/* ===== Framework Cards Grid ===== */}
+  1287→      <div>
+  1288→        <h3 className="mb-3 text-sm font-semibold">Compliance Frameworks</h3>
+  1289→        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+  1290→          {loading
+  1291→            ? [1, 2, 3, 4].map((i) => (
+  1292→                <Card key={i} className="border-border bg-card">
+  1293→                  <CardContent className="p-4">
+  1294→                    <div className="flex items-start gap-4">
+  1295→                      <Skeleton className="h-14 w-14 rounded-full" />
+  1296→                      <div className="flex-1 space-y-2">
+  1297→                        <Skeleton className="h-4 w-24" />
+  1298→                        <Skeleton className="h-3 w-full" />
+  1299→                        <Skeleton className="h-2 w-full" />
+  1300→                      </div>
+  1301→                    </div>
+  1302→                  </CardContent>
+  1303→                </Card>
+  1304→              ))
+  1305→            : frameworks.map((fw, index) => {
+  1306→                const score = fw.complianceScore
+  1307→                const isExpanded = expandedFramework === fw.id
+  1308→
+  1309→                return (
+  1310→                  <motion.div
+  1311→                    key={fw.id}
+  1312→                    layout
+  1313→                    initial={{ opacity: 0, y: 20 }}
+  1314→                    animate={{ opacity: 1, y: 0 }}
+  1315→                    transition={{ delay: index * 0.1 }}
+  1316→                    className={isExpanded ? 'md:col-span-2' : ''}
+  1317→                  >
+  1318→                    <Card
+  1319→                      className={cn(
+  1320→                        'border-border bg-card transition-all duration-200 cursor-pointer',
+  1321→                        isExpanded
+  1322→                          ? 'ring-1 ring-emerald-500/40 border-emerald-500/30'
+  1323→                          : 'hover:border-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/5'
+  1324→                      )}
+  1325→                      onClick={() => handleExpandFramework(fw.id)}
+  1326→                    >
+  1327→                      <CardContent className="p-4">
+  1328→                        <div className="flex items-start gap-4">
+  1329→                          {/* Compliance Ring */}
+  1330→                          <MiniScoreRing score={score} size={56} />
+  1331→
+  1332→                          <div className="flex-1 min-w-0">
+  1333→                            {/* Header */}
+  1334→                            <div className="flex items-center justify-between gap-2">
+  1335→                              <div className="flex min-w-0 items-center gap-2">
+  1336→                                {frameworkIcons[fw.name] || (
+  1337→                                  <Shield className="h-4 w-4 text-muted-foreground" />
+  1338→                                )}
+  1339→                                <span className="truncate text-sm font-semibold">{fw.name}</span>
+  1340→                                {fw.version && (
+  1341→                                  <Badge
+  1342→                                    variant="outline"
+  1343→                                    className="text-[9px] px-1.5 py-0"
+  1344→                                  >
+  1345→                                    v{fw.version}
+  1346→                                  </Badge>
+  1347→                                )}
+  1348→                                {fw.updatedAt && (
+  1349→                                  <Badge
+  1350→                                    variant="outline"
+  1351→                                    className="hidden shrink-0 items-center gap-1 text-[9px] px-1.5 py-0 text-muted-foreground sm:inline-flex"
+  1352→                                    title={`Last updated ${new Date(fw.updatedAt).toLocaleString()}`}
+  1353→                                  >
+  1354→                                    <Clock className="h-2.5 w-2.5" />
+  1355→                                    <span>Last Updated {formatDistanceToNowSafe(fw.updatedAt)}</span>
+  1356→                                  </Badge>
+  1357→                                )}
+  1358→                              </div>
+  1359→                              <div className="flex shrink-0 items-center gap-1.5">
+  1360→                                {/* Inline progress ring next to score percentage */}
+  1361→                                <HeaderProgressRing
+  1362→                                  score={score}
+  1363→                                  size={22}
+  1364→                                  strokeWidth={2.5}
+  1365→                                />
+  1366→                                <span
+  1367→                                  className={cn(
+  1368→                                    'text-xs font-bold tabular-nums',
+  1369→                                    score >= 80
+  1370→                                      ? 'text-emerald-400'
+  1371→                                      : score >= 60
+  1372→                                        ? 'text-amber-400'
+  1373→                                        : 'text-red-400'
+  1374→                                  )}
+  1375→                                >
+  1376→                                  {score}%
+  1377→                                </span>
+  1378→                                {isExpanded ? (
+  1379→                                  <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+  1380→                                ) : (
+  1381→                                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+  1382→                                )}
+  1383→                              </div>
+  1384→                            </div>
+  1385→
+  1386→                            {/* Description */}
+  1387→                            {fw.description && (
+  1388→                              <p className="mt-1 text-[10px] text-muted-foreground line-clamp-2">
+  1389→                                {fw.description}
+  1390→                              </p>
+  1391→                            )}
+  1392→
+  1393→                            {/* Progress Bar */}
+  1394→                            <div className="mt-2">
+  1395→                              <Progress
+  1396→                                value={score}
+  1397→                                className={cn(
+  1398→                                  'h-1.5',
+  1399→                                  score >= 80
+  1400→                                    ? '[&>div]:bg-emerald-500'
+  1401→                                    : score >= 60
+  1402→                                      ? '[&>div]:bg-amber-500'
+  1403→                                      : '[&>div]:bg-red-500'
+  1404→                                )}
+  1405→                              />
+  1406→                            </div>
+  1407→
+  1408→                            {/* Status Breakdown */}
+  1409→                            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+  1410→                              <span className="flex items-center gap-1">
+  1411→                                <CheckCircle2 className="h-2.5 w-2.5 text-emerald-400" />
+  1412→                                <span className="text-muted-foreground">Compliant:</span>
+  1413→                                <span className="font-medium text-emerald-400">
+  1414→                                  {fw.statusCounts.compliant || 0}
+  1415→                                </span>
+  1416→                              </span>
+  1417→                              <span className="flex items-center gap-1">
+  1418→                                <XCircle className="h-2.5 w-2.5 text-red-400" />
+  1419→                                <span className="text-muted-foreground">Non-Compliant:</span>
+  1420→                                <span className="font-medium text-red-400">
+  1421→                                  {fw.statusCounts.non_compliant || 0}
+  1422→                                </span>
+  1423→                              </span>
+  1424→                              <span className="flex items-center gap-1">
+  1425→                                <AlertTriangle className="h-2.5 w-2.5 text-amber-400" />
+  1426→                                <span className="text-muted-foreground">Partial:</span>
+  1427→                                <span className="font-medium text-amber-400">
+  1428→                                  {fw.statusCounts.partially_compliant || 0}
+  1429→                                </span>
+  1430→                              </span>
+  1431→                              <span className="flex items-center gap-1">
+  1432→                                <HelpCircle className="h-2.5 w-2.5 text-zinc-400" />
+  1433→                                <span className="text-muted-foreground">Not Assessed:</span>
+  1434→                                <span className="font-medium text-zinc-400">
+  1435→                                  {fw.statusCounts.not_assessed || 0}
+  1436→                                </span>
+  1437→                              </span>
+  1438→                              <span className="flex items-center gap-1">
+  1439→                                <Slash className="h-2.5 w-2.5 text-zinc-500" />
+  1440→                                <span className="text-muted-foreground">N/A:</span>
+  1441→                                <span className="font-medium text-zinc-500">
+  1442→                                  {fw.statusCounts.not_applicable || 0}
+  1443→                                </span>
+  1444→                              </span>
+  1445→                            </div>
+  1446→
+  1447→                            {/* Remediation Warning */}
+  1448→                            {(fw.statusCounts.non_compliant || 0) > 0 && (
+  1449→                              <div className="mt-2 flex items-center gap-1.5 rounded-md bg-red-500/10 px-2 py-1 text-[10px] text-red-400">
+  1450→                                <AlertTriangle className="h-3 w-3 shrink-0" />
+  1451→                                <span>
+  1452→                                  {fw.statusCounts.non_compliant} control
+  1453→                                  {fw.statusCounts.non_compliant !== 1 ? 's' : ''} require
+  1454→                                  {fw.statusCounts.non_compliant === 1 ? 's' : ''} remediation
+  1455→                                </span>
+  1456→                              </div>
+  1457→                            )}
+  1458→                          </div>
+  1459→                        </div>
+  1460→
+  1461→                        {/* ===== Expanded Controls (inline within card) ===== */}
+  1462→                        <AnimatePresence>
+  1463→                          {isExpanded && (
+  1464→                            <motion.div
+  1465→                              initial={{ height: 0, opacity: 0 }}
+  1466→                              animate={{ height: 'auto', opacity: 1 }}
+  1467→                              exit={{ height: 0, opacity: 0 }}
+  1468→                              transition={{ duration: 0.3 }}
+  1469→                              className="overflow-hidden"
+  1470→                            >
+  1471→                              <Separator className="my-3 bg-emerald-500/20" />
+  1472→                              <div className="space-y-2">
+  1473→                                <div className="flex items-center justify-between">
+  1474→                                  <div className="flex items-center gap-2">
+  1475→                                    <h4 className="text-xs font-semibold text-emerald-400">
+  1476→                                      Framework Controls
+  1477→                                    </h4>
+  1478→                                    <Badge variant="outline" className="text-[9px] px-1.5 py-0">
+  1479→                                      {controls.length} controls
+  1480→                                    </Badge>
+  1481→                                  </div>
+  1482→                                  <span className="text-[9px] text-muted-foreground">
+  1483→                                    Click a control to expand &middot; Use dropdown to change status
+  1484→                                  </span>
+  1485→                                </div>
+  1486→
+  1487→                                {controlsLoading ? (
+  1488→                                  <div className="space-y-2">
+  1489→                                    {[1, 2, 3, 4, 5].map((i) => (
+  1490→                                      <Skeleton key={i} className="h-9 rounded" />
+  1491→                                    ))}
+  1492→                                  </div>
+  1493→                                ) : controls.length === 0 ? (
+  1494→                                  <div className="flex flex-col items-center justify-center py-8 text-center">
+  1495→                                    <FileCheck className="mb-2 h-6 w-6 text-muted-foreground/50" />
+  1496→                                    <p className="text-xs text-muted-foreground">No controls found</p>
+  1497→                                    <p className="text-[10px] text-muted-foreground/70">
+  1498→                                      This framework has no compliance controls defined
+  1499→                                    </p>
+  1500→                                  </div>
+  1501→                                ) : (
+  1502→                                  <ScrollArea className="max-h-[500px]">
+  1503→                                    <div className="space-y-3 pr-2">
+  1504→                                      {/* Non-compliant group (most urgent, shown first) */}
+  1505→                                      <StatusGroup
+  1506→                                        label="Non-Compliant"
+  1507→                                        icon={<XCircle className="h-3.5 w-3.5 text-red-400" />}
+  1508→                                        controls={controlsByStatus.non_compliant}
+  1509→                                        frameworkId={fw.id}
+  1510→                                        colorClass="text-red-400"
+  1511→                                        onStatusChange={handleInlineStatusChange}
+  1512→                                        defaultOpen={true}
+  1513→                                      />
+  1514→
+  1515→                                      {/* Partially compliant */}
+  1516→                                      <StatusGroup
+  1517→                                        label="Partially Compliant"
+  1518→                                        icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-400" />}
+  1519→                                        controls={controlsByStatus.partially_compliant}
+  1520→                                        frameworkId={fw.id}
+  1521→                                        colorClass="text-amber-400"
+  1522→                                        onStatusChange={handleInlineStatusChange}
+  1523→                                        defaultOpen={true}
+  1524→                                      />
+  1525→
+  1526→                                      {/* Not assessed */}
+  1527→                                      <StatusGroup
+  1528→                                        label="Not Assessed"
+  1529→                                        icon={<HelpCircle className="h-3.5 w-3.5 text-zinc-400" />}
+  1530→                                        controls={controlsByStatus.not_assessed}
+  1531→                                        frameworkId={fw.id}
+  1532→                                        colorClass="text-zinc-400"
+  1533→                                        onStatusChange={handleInlineStatusChange}
+  1534→                                        defaultOpen={false}
+  1535→                                      />
+  1536→
+  1537→                                      {/* Not applicable */}
+  1538→                                      <StatusGroup
+  1539→                                        label="Not Applicable"
+  1540→                                        icon={<Slash className="h-3.5 w-3.5 text-zinc-500" />}
+  1541→                                        controls={controlsByStatus.not_applicable}
+  1542→                                        frameworkId={fw.id}
+  1543→                                        colorClass="text-zinc-500"
+  1544→                                        onStatusChange={handleInlineStatusChange}
+  1545→                                        defaultOpen={false}
+  1546→                                      />
+  1547→
+  1548→                                      {/* Compliant (shown last, as least urgent) */}
+  1549→                                      <StatusGroup
+  1550→                                        label="Compliant"
+  1551→                                        icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
+  1552→                                        controls={controlsByStatus.compliant}
+  1553→                                        frameworkId={fw.id}
+  1554→                                        colorClass="text-emerald-400"
+  1555→                                        onStatusChange={handleInlineStatusChange}
+  1556→                                        defaultOpen={false}
+  1557→                                      />
+  1558→                                    </div>
+  1559→                                  </ScrollArea>
+  1560→                                )}
+  1561→                              </div>
+  1562→                            </motion.div>
+  1563→                          )}
+  1564→                        </AnimatePresence>
+  1565→                      </CardContent>
+  1566→                    </Card>
+  1567→                  </motion.div>
+  1568→                )
+  1569→              })}
+  1570→        </div>
+  1571→      </div>
+  1572→
+  1573→      {/* ===== 6-Month Trend + Remediation Grid ===== */}
+  1574→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+  1575→        {/* 6-Month Trend Line Chart */}
+  1576→        <Card className="border-border bg-card lg:col-span-2">
+  1577→          <CardHeader className="pb-2">
+  1578→            <div className="flex items-center justify-between">
+  1579→              <div>
+  1580→                <CardTitle className="text-sm font-semibold">
+  1581→                  6-Month Trend
+  1582→                </CardTitle>
+  1583→                <CardDescription className="text-[10px]">
+  1584→                  Historical compliance score trajectory
+  1585→                </CardDescription>
+  1586→              </div>
+  1587→              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+  1588→            </div>
+  1589→          </CardHeader>
+  1590→          <CardContent className="pt-0">
+  1591→            {loading ? (
+  1592→              <Skeleton className="h-56 w-full rounded" />
+  1593→            ) : (
+  1594→              <ResponsiveContainer width="100%" height={220}>
+  1595→                <LineChart data={trendData6Month}>
+  1596→                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+  1597→                  <XAxis
+  1598→                    dataKey="month"
+  1599→                    tick={{ fill: '#94a3b8', fontSize: 10 }}
+  1600→                    axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
+  1601→                  />
+  1602→                  <YAxis
+  1603→                    domain={[0, 100]}
+  1604→                    tick={{ fill: '#94a3b8', fontSize: 10 }}
+  1605→                    axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
+  1606→                  />
+  1607→                  <RechartsTooltip
+  1608→                    contentStyle={{
+  1609→                      backgroundColor: '#1e1e2e',
+  1610→                      border: '1px solid rgba(255,255,255,0.1)',
+  1611→                      borderRadius: '8px',
+  1612→                      fontSize: '11px',
+  1613→                    }}
+  1614→                  />
+  1615→                  {frameworks.map((fw) => (
+  1616→                    <Line
+  1617→                      key={fw.id}
+  1618→                      type="monotone"
+  1619→                      dataKey={fw.name}
+  1620→                      stroke={trendColors[fw.name] || '#6b7280'}
+  1621→                      strokeWidth={2}
+  1622→                      dot={{ r: 3, fill: trendColors[fw.name] || '#6b7280' }}
+  1623→                      activeDot={{ r: 5 }}
+  1624→                    />
+  1625→                  ))}
+  1626→                  <Legend
+  1627→                    iconType="circle"
+  1628→                    iconSize={8}
+  1629→                    wrapperStyle={{ fontSize: '10px', paddingTop: '8px' }}
+  1630→                  />
+  1631→                </LineChart>
+  1632→              </ResponsiveContainer>
+  1633→            )}
+  1634→          </CardContent>
+  1635→        </Card>
+  1636→
+  1637→        {/* Remediation Tracking */}
+  1638→        <Card className="border-border bg-card">
+  1639→          <CardHeader className="pb-2">
+  1640→            <div className="flex items-center justify-between">
+  1641→              <div>
+  1642→                <CardTitle className="text-sm font-semibold">
+  1643→                  Remediation Tracking
+  1644→                </CardTitle>
+  1645→                <CardDescription className="text-[10px]">
+  1646→                  Non-compliant items requiring action
+  1647→                </CardDescription>
+  1648→              </div>
+  1649→              <FileX className="h-4 w-4 text-red-400" />
+  1650→            </div>
+  1651→          </CardHeader>
+  1652→          <CardContent className="pt-0">
+  1653→            {loading ? (
+  1654→              <div className="space-y-2">
+  1655→                {[1, 2, 3].map((i) => (
+  1656→                  <Skeleton key={i} className="h-14 rounded" />
+  1657→                ))}
+  1658→              </div>
+  1659→            ) : !expandedFramework ? (
+  1660→              <div className="flex flex-col items-center justify-center py-8 text-center">
+  1661→                <AlertTriangle className="mb-2 h-6 w-6 text-muted-foreground/50" />
+  1662→                <p className="text-xs text-muted-foreground">
+  1663→                  Expand a framework to view remediation items
+  1664→                </p>
+  1665→              </div>
+  1666→            ) : remediationItems.length === 0 ? (
+  1667→              <div className="flex flex-col items-center justify-center py-8 text-center">
+  1668→                <Shield className="mb-2 h-6 w-6 text-emerald-400/50" />
+  1669→                <p className="text-xs text-emerald-400">All controls compliant</p>
+  1670→                <p className="text-[10px] text-muted-foreground">
+  1671→                  No remediation items for this framework
+  1672→                </p>
+  1673→              </div>
+  1674→            ) : (
+  1675→              <ScrollArea className="max-h-56">
+  1676→                <div className="space-y-2">
+  1677→                  {remediationItems.map((item) => {
+  1678→                    const isOverdue =
+  1679→                      item.remediationDue &&
+  1680→                      new Date(item.remediationDue) < new Date()
+  1681→                    return (
+  1682→                      <div
+  1683→                        key={item.id}
+  1684→                        className={cn(
+  1685→                          'rounded-lg border p-2.5',
+  1686→                          isOverdue
+  1687→                            ? 'border-red-500/30 bg-red-500/5'
+  1688→                            : 'border-border bg-muted/20'
+  1689→                        )}
+  1690→                      >
+  1691→                        <div className="flex items-start justify-between gap-2">
+  1692→                          <div className="min-w-0 flex-1">
+  1693→                            <div className="flex items-center gap-1.5">
+  1694→                              <span className="font-mono text-[10px] text-muted-foreground">
+  1695→                                {item.controlId}
+  1696→                              </span>
+  1697→                              <ComplianceBadge status={item.status} className="text-[9px] px-1.5 py-px" />
+  1698→                            </div>
+  1699→                            <p className="mt-0.5 text-[10px] truncate">{item.title}</p>
+  1700→                          </div>
+  1701→                        </div>
+  1702→                        <div className="mt-1.5 flex items-center justify-between">
+  1703→                          <span className="text-[9px] text-muted-foreground">
+  1704→                            {isOverdue ? 'Overdue' : 'Due'}
+  1705→                          </span>
+  1706→                          <span
+  1707→                            className={cn(
+  1708→                              'text-[10px] font-medium',
+  1709→                              isOverdue ? 'text-red-400' : 'text-amber-400'
+  1710→                            )}
+  1711→                          >
+  1712→                            {item.remediationDue
+  1713→                              ? format(new Date(item.remediationDue), 'MMM d, yyyy')
+  1714→                              : '—'}
+  1715→                          </span>
+  1716→                        </div>
+  1717→                      </div>
+  1718→                    )
+  1719→                  })}
+  1720→                </div>
+  1721→              </ScrollArea>
+  1722→            )}
+  1723→          </CardContent>
+  1724→        </Card>
+  1725→      </div>
+  1726→
+  1727→      {/* ===== Update Control Status Dialog (for detailed update with notes) ===== */}
+  1728→      <Dialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen}>
+  1729→        <DialogContent className="bg-card border-border sm:max-w-md">
+  1730→          <DialogHeader>
+  1731→            <DialogTitle className="text-sm">Update Control Status</DialogTitle>
+  1732→            <DialogDescription className="text-xs">
+  1733→              Change the compliance status for{' '}
+  1734→              <span className="font-mono font-medium">{selectedControl?.title}</span>
+  1735→            </DialogDescription>
+  1736→          </DialogHeader>
+  1737→          <div className="space-y-4">
+  1738→            <div className="flex items-center gap-2">
+  1739→              <span className="text-xs text-muted-foreground">Current:</span>
+  1740→              {selectedControl && (
+  1741→                <ComplianceBadge status={selectedControl.currentStatus} />
+  1742→              )}
+  1743→            </div>
+  1744→            <div>
+  1745→              <label className="text-xs font-medium text-muted-foreground">
+  1746→                New Status
+  1747→              </label>
+  1748→              <Select value={newStatus} onValueChange={setNewStatus}>
+  1749→                <SelectTrigger className="mt-1 h-9 text-xs">
+  1750→                  <SelectValue />
+  1751→                </SelectTrigger>
+  1752→                <SelectContent>
+  1753→                  <SelectItem value="compliant">
+  1754→                    <span className="flex items-center gap-1.5">
+  1755→                      <CheckCircle2 className="h-3 w-3 text-emerald-400" /> Compliant
+  1756→                    </span>
+  1757→                  </SelectItem>
+  1758→                  <SelectItem value="non_compliant">
+  1759→                    <span className="flex items-center gap-1.5">
+  1760→                      <XCircle className="h-3 w-3 text-red-400" /> Non-Compliant
+  1761→                    </span>
+  1762→                  </SelectItem>
+  1763→                  <SelectItem value="partially_compliant">
+  1764→                    <span className="flex items-center gap-1.5">
+  1765→                      <AlertTriangle className="h-3 w-3 text-amber-400" /> Partially Compliant
+  1766→                    </span>
+  1767→                  </SelectItem>
+  1768→                  <SelectItem value="not_assessed">
+  1769→                    <span className="flex items-center gap-1.5">
+  1770→                      <HelpCircle className="h-3 w-3 text-zinc-400" /> Not Assessed
+  1771→                    </span>
+  1772→                  </SelectItem>
+  1773→                  <SelectItem value="not_applicable">
+  1774→                    <span className="flex items-center gap-1.5">
+  1775→                      <Slash className="h-3 w-3 text-zinc-500" /> Not Applicable
+  1776→                    </span>
+  1777→                  </SelectItem>
+  1778→                </SelectContent>
+  1779→              </Select>
+  1780→            </div>
+  1781→            <div>
+  1782→              <label className="text-xs font-medium text-muted-foreground">
+  1783→                Notes (optional)
+  1784→              </label>
+  1785→              <Textarea
+  1786→                value={updateNotes}
+  1787→                onChange={(e) => setUpdateNotes(e.target.value)}
+  1788→                className="mt-1 min-h-[60px] text-xs"
+  1789→                placeholder="Add assessment notes..."
+  1790→              />
+  1791→            </div>
+  1792→          </div>
+  1793→          <DialogFooter className="gap-2">
+  1794→            <Button
+  1795→              variant="outline"
+  1796→              size="sm"
+  1797→              onClick={() => setUpdateDialogOpen(false)}
+  1798→            >
+  1799→              Cancel
+  1800→            </Button>
+  1801→            <Button
+  1802→              size="sm"
+  1803→              className="bg-emerald-600 hover:bg-emerald-700"
+  1804→              onClick={handleUpdateControl}
+  1805→              disabled={!newStatus || newStatus === selectedControl?.currentStatus}
+  1806→            >
+  1807→              Update Status
+  1808→            </Button>
+  1809→          </DialogFooter>
+  1810→        </DialogContent>
+  1811→      </Dialog>
+  1812→    </motion.div>
+  1813→  )
+  1814→}
+  1815→

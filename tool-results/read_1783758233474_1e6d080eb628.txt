@@ -1,0 +1,749 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import {
+     6→  Wifi,
+     7→  ArrowUpRight,
+     8→  ArrowDownRight,
+     9→  Search,
+    10→  ChevronUp,
+    11→  ChevronDown,
+    12→  ArrowRightLeft,
+    13→  ShieldAlert,
+    14→  ExternalLink,
+    15→  Activity,
+    16→  AlertTriangle,
+    17→  TrendingUp,
+    18→  TrendingDown,
+    19→  Globe,
+    20→} from 'lucide-react'
+    21→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    22→import { Button } from '@/components/ui/button'
+    23→import { Badge } from '@/components/ui/badge'
+    24→import { Input } from '@/components/ui/input'
+    25→import { ScrollArea } from '@/components/ui/scroll-area'
+    26→import {
+    27→  Table,
+    28→  TableBody,
+    29→  TableCell,
+    30→  TableHead,
+    31→  TableHeader,
+    32→  TableRow,
+    33→} from '@/components/ui/table'
+    34→import { cn } from '@/lib/utils'
+    35→
+    36→// ===== Types =====
+    37→
+    38→type Protocol = 'TCP' | 'UDP' | 'ICMP' | 'DNS' | 'HTTP' | 'HTTPS' | 'SSH' | 'FTP'
+    39→type Direction = 'Inbound' | 'Outbound'
+    40→type Risk = 'Low' | 'Medium' | 'High' | 'Critical'
+    41→type AnomalyType = 'Port Scan' | 'DGA Domain' | 'Beacon' | 'Data Exfil' | 'Tunnel' | 'C2'
+    42→type AnomalySeverity = 'Critical' | 'High' | 'Medium' | 'Low'
+    43→
+    44→interface NetworkFlow {
+    45→  id: string
+    46→  sourceIp: string
+    47→  sourcePort: number
+    48→  destIp: string
+    49→  destPort: number
+    50→  protocol: Protocol
+    51→  bytes: number
+    52→  packets: number
+    53→  direction: Direction
+    54→  risk: Risk
+    55→  timestamp: string
+    56→}
+    57→
+    58→interface Anomaly {
+    59→  id: string
+    60→  type: AnomalyType
+    61→  severity: AnomalySeverity
+    62→  source: string
+    63→  destination: string
+    64→  description: string
+    65→  detectedAt: string
+    66→}
+    67→
+    68→interface TopTalker {
+    69→  ip: string
+    70→  bytes: number
+    71→  packets: number
+    72→  flows: number
+    73→  risk: Risk
+    74→}
+    75→
+    76→interface GeoEntry {
+    77→  country: string
+    78→  flag: string
+    79→  ipCount: number
+    80→  totalBytes: number
+    81→}
+    82→
+    83→// ===== Protocol Color Map =====
+    84→
+    85→const PROTOCOL_COLORS: Record<Protocol, string> = {
+    86→  TCP: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    87→  UDP: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+    88→  ICMP: 'bg-red-500/20 text-red-400 border-red-500/30',
+    89→  DNS: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+    90→  HTTP: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    91→  HTTPS: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    92→  SSH: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+    93→  FTP: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+    94→}
+    95→
+    96→const PROTOCOL_BAR_COLORS: Record<string, string> = {
+    97→  'HTTP/HTTPS': '#10b981',
+    98→  DNS: '#06b6d4',
+    99→  SSH: '#8b5cf6',
+   100→  FTP: '#f97316',
+   101→  SMTP: '#eab308',
+   102→  Other: '#71717a',
+   103→}
+   104→
+   105→const RISK_COLORS: Record<Risk, string> = {
+   106→  Low: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+   107→  Medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+   108→  High: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+   109→  Critical: 'bg-red-500/20 text-red-400 border-red-500/30',
+   110→}
+   111→
+   112→const DIRECTION_COLORS: Record<Direction, string> = {
+   113→  Inbound: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+   114→  Outbound: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+   115→}
+   116→
+   117→const ANOMALY_TYPE_COLORS: Record<AnomalyType, string> = {
+   118→  'Port Scan': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+   119→  'DGA Domain': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+   120→  Beacon: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+   121→  'Data Exfil': 'bg-red-500/20 text-red-400 border-red-500/30',
+   122→  Tunnel: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+   123→  C2: 'bg-red-600/20 text-red-500 border-red-600/30',
+   124→}
+   125→
+   126→const ANOMALY_SEVERITY_COLORS: Record<AnomalySeverity, string> = {
+   127→  Critical: 'bg-red-500/20 text-red-400 border-red-500/30',
+   128→  High: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+   129→  Medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+   130→  Low: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+   131→}
+   132→
+   133→// ===== Mock Data =====
+   134→
+   135→const MOCK_FLOWS: NetworkFlow[] = [
+   136→  { id: 'f1', sourceIp: '192.168.1.105', sourcePort: 52341, destIp: '10.0.0.50', destPort: 443, protocol: 'HTTPS', bytes: 524288, packets: 412, direction: 'Outbound', risk: 'Low', timestamp: '2m ago' },
+   137→  { id: 'f2', sourceIp: '10.0.0.22', sourcePort: 22, destIp: '192.168.1.105', destPort: 60112, protocol: 'SSH', bytes: 15360, packets: 98, direction: 'Inbound', risk: 'Medium', timestamp: '3m ago' },
+   138→  { id: 'f3', sourceIp: '172.16.0.88', sourcePort: 51000, destIp: '10.0.0.50', destPort: 80, protocol: 'HTTP', bytes: 1024000, packets: 845, direction: 'Outbound', risk: 'Low', timestamp: '4m ago' },
+   139→  { id: 'f4', sourceIp: '10.0.0.15', sourcePort: 53, destIp: '192.168.1.200', destPort: 53024, protocol: 'DNS', bytes: 2048, packets: 2, direction: 'Inbound', risk: 'Low', timestamp: '5m ago' },
+   140→  { id: 'f5', sourceIp: '192.168.1.33', sourcePort: 49152, destIp: '203.0.113.50', destPort: 4444, protocol: 'TCP', bytes: 819200, packets: 623, direction: 'Outbound', risk: 'Critical', timestamp: '6m ago' },
+   141→  { id: 'f6', sourceIp: '10.0.0.5', sourcePort: 53000, destIp: '10.0.0.50', destPort: 3306, protocol: 'TCP', bytes: 409600, packets: 287, direction: 'Outbound', risk: 'Medium', timestamp: '7m ago' },
+   142→  { id: 'f7', sourceIp: '172.16.0.99', sourcePort: 0, destIp: '10.0.0.1', destPort: 0, protocol: 'ICMP', bytes: 256, packets: 4, direction: 'Inbound', risk: 'Low', timestamp: '8m ago' },
+   143→  { id: 'f8', sourceIp: '10.0.0.22', sourcePort: 21, destIp: '192.168.2.40', destPort: 54001, protocol: 'FTP', bytes: 2048000, packets: 1523, direction: 'Outbound', risk: 'High', timestamp: '9m ago' },
+   144→  { id: 'f9', sourceIp: '192.168.1.105', sourcePort: 52456, destIp: '10.0.0.50', destPort: 443, protocol: 'HTTPS', bytes: 327680, packets: 256, direction: 'Outbound', risk: 'Low', timestamp: '10m ago' },
+   145→  { id: 'f10', sourceIp: '10.0.0.15', sourcePort: 53, destIp: '192.168.1.88', destPort: 53050, protocol: 'DNS', bytes: 1024, packets: 1, direction: 'Inbound', risk: 'Low', timestamp: '11m ago' },
+   146→  { id: 'f11', sourceIp: '172.16.0.10', sourcePort: 51234, destIp: '10.0.0.50', destPort: 8080, protocol: 'HTTP', bytes: 655360, packets: 520, direction: 'Outbound', risk: 'Medium', timestamp: '12m ago' },
+   147→  { id: 'f12', sourceIp: '192.168.1.200', sourcePort: 22, destIp: '10.0.0.22', destPort: 60200, protocol: 'SSH', bytes: 7680, packets: 52, direction: 'Inbound', risk: 'Low', timestamp: '13m ago' },
+   148→  { id: 'f13', sourceIp: '10.0.0.5', sourcePort: 53001, destIp: '198.51.100.22', destPort: 8443, protocol: 'TCP', bytes: 262144, packets: 198, direction: 'Outbound', risk: 'High', timestamp: '14m ago' },
+   149→  { id: 'f14', sourceIp: '172.16.0.88', sourcePort: 51001, destIp: '10.0.0.50', destPort: 443, protocol: 'HTTPS', bytes: 786432, packets: 602, direction: 'Outbound', risk: 'Low', timestamp: '15m ago' },
+   150→  { id: 'f15', sourceIp: '192.168.1.33', sourcePort: 53002, destIp: '10.0.0.15', destPort: 53, protocol: 'UDP', bytes: 512, packets: 1, direction: 'Outbound', risk: 'Low', timestamp: '16m ago' },
+   151→  { id: 'f16', sourceIp: '10.0.0.22', sourcePort: 3306, destIp: '10.0.0.5', destPort: 53003, protocol: 'TCP', bytes: 131072, packets: 88, direction: 'Outbound', risk: 'Medium', timestamp: '17m ago' },
+   152→  { id: 'f17', sourceIp: '172.16.0.200', sourcePort: 0, destIp: '10.0.0.1', destPort: 0, protocol: 'ICMP', bytes: 128, packets: 2, direction: 'Inbound', risk: 'Low', timestamp: '18m ago' },
+   153→  { id: 'f18', sourceIp: '192.168.2.40', sourcePort: 54010, destIp: '10.0.0.22', destPort: 21, protocol: 'FTP', bytes: 409600, packets: 312, direction: 'Inbound', risk: 'Medium', timestamp: '19m ago' },
+   154→  { id: 'f19', sourceIp: '10.0.0.50', sourcePort: 443, destIp: '192.168.1.105', destPort: 52500, protocol: 'HTTPS', bytes: 921600, packets: 710, direction: 'Inbound', risk: 'Low', timestamp: '20m ago' },
+   155→  { id: 'f20', sourceIp: '192.168.1.33', sourcePort: 49200, destIp: '203.0.113.50', destPort: 8888, protocol: 'TCP', bytes: 1638400, packets: 1200, direction: 'Outbound', risk: 'Critical', timestamp: '22m ago' },
+   156→]
+   157→
+   158→const MOCK_ANOMALIES: Anomaly[] = [
+   159→  { id: 'a1', type: 'Port Scan', severity: 'High', source: '192.168.1.33', destination: '10.0.0.0/24', description: 'Rapid sequential port scan detected across 1024 ports in 30 seconds', detectedAt: '5m ago' },
+   160→  { id: 'a2', type: 'C2', severity: 'Critical', source: '192.168.1.33', destination: '203.0.113.50:4444', description: 'Command and control beacon pattern - regular 60s intervals to known C2 infrastructure', detectedAt: '12m ago' },
+   161→  { id: 'a3', type: 'Data Exfil', severity: 'Critical', source: '10.0.0.5', destination: '198.51.100.22:8443', description: 'Large outbound data transfer (2.1GB) to unknown external IP outside business hours', detectedAt: '25m ago' },
+   162→  { id: 'a4', type: 'DGA Domain', severity: 'Medium', source: '10.0.0.15', destination: 'dns-resolve', description: 'DNS queries to algorithmically generated domains: xk7f2n.com, m9q3p1.net, j4w8r2.org', detectedAt: '38m ago' },
+   163→  { id: 'a5', type: 'Beacon', severity: 'High', source: '172.16.0.10', destination: '45.33.32.156:443', description: 'Consistent beaconing behavior - 45-second intervals with small payload sizes', detectedAt: '1h ago' },
+   164→  { id: 'a6', type: 'Tunnel', severity: 'Medium', source: '10.0.0.22', destination: '192.168.2.40', description: 'DNS tunneling detected - unusually long TXT record queries with encoded data', detectedAt: '2h ago' },
+   165→]
+   166→
+   167→const MOCK_TOP_SRC_TALKERS: TopTalker[] = [
+   168→  { ip: '192.168.1.33', bytes: 2478080, packets: 1824, flows: 4, risk: 'Critical' },
+   169→  { ip: '172.16.0.88', bytes: 1720320, packets: 1365, flows: 3, risk: 'Low' },
+   170→  { ip: '10.0.0.5', bytes: 1228800, packets: 867, flows: 3, risk: 'High' },
+   171→  { ip: '10.0.0.50', bytes: 921600, packets: 710, flows: 2, risk: 'Low' },
+   172→  { ip: '172.16.0.10', bytes: 655360, packets: 520, flows: 1, risk: 'Medium' },
+   173→]
+   174→
+   175→const MOCK_TOP_DST_TALKERS: TopTalker[] = [
+   176→  { ip: '10.0.0.50', bytes: 3366912, packets: 2629, flows: 6, risk: 'Low' },
+   177→  { ip: '203.0.113.50', bytes: 2457600, packets: 1823, flows: 2, risk: 'Critical' },
+   178→  { ip: '10.0.0.22', bytes: 2101248, packets: 1583, flows: 3, risk: 'High' },
+   179→  { ip: '198.51.100.22', bytes: 262144, packets: 198, flows: 1, risk: 'High' },
+   180→  { ip: '10.0.0.15', bytes: 3072, packets: 3, flows: 2, risk: 'Low' },
+   181→]
+   182→
+   183→const MOCK_GEO: GeoEntry[] = [
+   184→  { country: 'United States', flag: '🇺🇸', ipCount: 342, totalBytes: 8472000000 },
+   185→  { country: 'China', flag: '🇨🇳', ipCount: 87, totalBytes: 3215000000 },
+   186→  { country: 'Russia', flag: '🇷🇺', ipCount: 45, totalBytes: 1890000000 },
+   187→  { country: 'Germany', flag: '🇩🇪', ipCount: 63, totalBytes: 1420000000 },
+   188→  { country: 'Brazil', flag: '🇧🇷', ipCount: 29, totalBytes: 780000000 },
+   189→]
+   190→
+   191→const PROTOCOL_DIST = [
+   192→  { name: 'HTTP/HTTPS', pct: 42, color: '#10b981' },
+   193→  { name: 'DNS', pct: 22, color: '#06b6d4' },
+   194→  { name: 'SSH', pct: 12, color: '#8b5cf6' },
+   195→  { name: 'FTP', pct: 8, color: '#f97316' },
+   196→  { name: 'SMTP', pct: 6, color: '#eab308' },
+   197→  { name: 'Other', pct: 10, color: '#71717a' },
+   198→]
+   199→
+   200→// Bandwidth sparkline data (24 points = 24h)
+   201→const BANDWIDTH_DATA = [
+   202→  320, 280, 210, 190, 160, 140, 180, 350, 520, 680, 750, 820,
+   203→  790, 810, 780, 720, 650, 580, 620, 540, 460, 380, 350, 310,
+   204→]
+   205→
+   206→// ===== Helpers =====
+   207→
+   208→function formatBytes(bytes: number): string {
+   209→  if (bytes < 1024) return `${bytes} B`
+   210→  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
+   211→  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`
+   212→  return `${(bytes / 1073741824).toFixed(1)} GB`
+   213→}
+   214→
+   215→function formatBytesShort(bytes: number): string {
+   216→  if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)}K`
+   217→  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)}M`
+   218→  return `${(bytes / 1073741824).toFixed(1)}G`
+   219→}
+   220→
+   221→// ===== Sub-Components =====
+   222→
+   223→function StatCard({
+   224→  icon: Icon,
+   225→  iconColor,
+   226→  iconBg,
+   227→  value,
+   228→  label,
+   229→  trend,
+   230→  trendUp,
+   231→}: {
+   232→  icon: React.ElementType
+   233→  iconColor: string
+   234→  iconBg: string
+   235→  value: string
+   236→  label: string
+   237→  trend: string
+   238→  trendUp: boolean
+   239→}) {
+   240→  return (
+   241→    <Card className="border-zinc-800 bg-zinc-900/60 backdrop-blur-sm">
+   242→      <CardContent className="p-4">
+   243→        <div className="flex items-start justify-between">
+   244→          <div className="space-y-1">
+   245→            <p className="text-sm text-zinc-400">{label}</p>
+   246→            <p className="text-2xl font-bold text-zinc-100">{value}</p>
+   247→          </div>
+   248→          <div className={cn('rounded-lg p-2', iconBg)}>
+   249→            <Icon className={cn('size-5', iconColor)} />
+   250→          </div>
+   251→        </div>
+   252→        <div className="mt-2 flex items-center gap-1.5">
+   253→          {trendUp ? (
+   254→            <TrendingUp className="size-3.5 text-emerald-400" />
+   255→          ) : (
+   256→            <TrendingDown className="size-3.5 text-red-400" />
+   257→          )}
+   258→          <span className={cn('text-xs font-medium', trendUp ? 'text-emerald-400' : 'text-red-400')}>
+   259→            {trend}
+   260→          </span>
+   261→          <span className="text-xs text-zinc-500">vs last hour</span>
+   262→        </div>
+   263→      </CardContent>
+   264→    </Card>
+   265→  )
+   266→}
+   267→
+   268→function ProtocolBar({ name, pct, color }: { name: string; pct: number; color: string }) {
+   269→  return (
+   270→    <div className="flex items-center gap-3">
+   271→      <span className="w-24 text-xs text-zinc-300 font-medium truncate">{name}</span>
+   272→      <div className="flex-1 h-5 bg-zinc-800 rounded overflow-hidden">
+   273→        <motion.div
+   274→          initial={{ width: 0 }}
+   275→          animate={{ width: `${pct}%` }}
+   276→          transition={{ duration: 0.8, ease: 'easeOut' }}
+   277→          className="h-full rounded"
+   278→          style={{ backgroundColor: color }}
+   279→        />
+   280→      </div>
+   281→      <span className="w-10 text-right text-xs font-mono text-zinc-300">{pct}%</span>
+   282→    </div>
+   283→  )
+   284→}
+   285→
+   286→function BandwidthSparkline() {
+   287→  const w = 600
+   288→  const h = 80
+   289→  const padX = 4
+   290→  const padY = 8
+   291→  const max = Math.max(...BANDWIDTH_DATA)
+   292→  const min = Math.min(...BANDWIDTH_DATA)
+   293→  const range = max - min || 1
+   294→
+   295→  const points = BANDWIDTH_DATA.map((v, i) => {
+   296→    const x = padX + (i / (BANDWIDTH_DATA.length - 1)) * (w - padX * 2)
+   297→    const y = padY + (1 - (v - min) / range) * (h - padY * 2)
+   298→    return `${x},${y}`
+   299→  }).join(' ')
+   300→
+   301→  const areaPoints = `${padX},${h - padY} ${points} ${w - padX},${h - padY}`
+   302→
+   303→  return (
+   304→    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-20" preserveAspectRatio="none">
+   305→      <defs>
+   306→        <linearGradient id="bwGrad" x1="0" y1="0" x2="0" y2="1">
+   307→          <stop offset="0%" stopColor="#10b981" stopOpacity="0.3" />
+   308→          <stop offset="100%" stopColor="#10b981" stopOpacity="0.02" />
+   309→        </linearGradient>
+   310→      </defs>
+   311→      <polygon points={areaPoints} fill="url(#bwGrad)" />
+   312→      <polyline points={points} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+   313→      {/* Highlight last point */}
+   314→      {(() => {
+   315→        const lastIdx = BANDWIDTH_DATA.length - 1
+   316→        const lx = padX + (lastIdx / (BANDWIDTH_DATA.length - 1)) * (w - padX * 2)
+   317→        const ly = padY + (1 - (BANDWIDTH_DATA[lastIdx] - min) / range) * (h - padY * 2)
+   318→        return <circle cx={lx} cy={ly} r="3" fill="#10b981" className="animate-pulse" />
+   319→      })()}
+   320→    </svg>
+   321→  )
+   322→}
+   323→
+   324→function TopTalkerRow({ talker, maxBytes }: { talker: TopTalker; maxBytes: number }) {
+   325→  const pct = (talker.bytes / maxBytes) * 100
+   326→  return (
+   327→    <div className="flex items-center gap-3 py-1.5">
+   328→      <span className="w-32 text-xs font-mono text-zinc-300 truncate">{talker.ip}</span>
+   329→      <div className="flex-1 h-3 bg-zinc-800 rounded overflow-hidden">
+   330→        <motion.div
+   331→          initial={{ width: 0 }}
+   332→          animate={{ width: `${pct}%` }}
+   333→          transition={{ duration: 0.6, ease: 'easeOut' }}
+   334→          className={cn(
+   335→            'h-full rounded',
+   336→            talker.risk === 'Critical' ? 'bg-red-500' :
+   337→            talker.risk === 'High' ? 'bg-amber-500' :
+   338→            talker.risk === 'Medium' ? 'bg-yellow-500' :
+   339→            'bg-emerald-500'
+   340→          )}
+   341→        />
+   342→      </div>
+   343→      <span className="w-16 text-right text-xs font-mono text-zinc-400">{formatBytesShort(talker.bytes)}</span>
+   344→      <Badge variant="outline" className={cn('text-[9px] px-1.5 py-0 h-4 border', RISK_COLORS[talker.risk])}>
+   345→        {talker.risk}
+   346→      </Badge>
+   347→      <span className="w-8 text-right text-[10px] text-zinc-500">{talker.flows}f</span>
+   348→    </div>
+   349→  )
+   350→}
+   351→
+   352→function GeoRow({ entry, maxBytes }: { entry: GeoEntry; maxBytes: number }) {
+   353→  const pct = (entry.totalBytes / maxBytes) * 100
+   354→  return (
+   355→    <div className="flex items-center gap-3 py-1.5">
+   356→      <span className="w-6 text-base">{entry.flag}</span>
+   357→      <span className="w-28 text-xs text-zinc-300 truncate">{entry.country}</span>
+   358→      <div className="flex-1 h-3 bg-zinc-800 rounded overflow-hidden">
+   359→        <motion.div
+   360→          initial={{ width: 0 }}
+   361→          animate={{ width: `${pct}%` }}
+   362→          transition={{ duration: 0.6, ease: 'easeOut' }}
+   363→          className="h-full rounded bg-emerald-500/70"
+   364→        />
+   365→      </div>
+   366→      <span className="w-14 text-right text-xs font-mono text-zinc-400">{entry.ipCount} IPs</span>
+   367→      <span className="w-16 text-right text-xs font-mono text-zinc-500">{formatBytesShort(entry.totalBytes)}</span>
+   368→    </div>
+   369→  )
+   370→}
+   371→
+   372→function AnomalyRow({ anomaly }: { anomaly: Anomaly }) {
+   373→  return (
+   374→    <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+   375→      <div className="flex items-start justify-between gap-2">
+   376→        <div className="flex items-center gap-2 flex-wrap">
+   377→          <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0 h-5 border', ANOMALY_TYPE_COLORS[anomaly.type])}>
+   378→            {anomaly.type}
+   379→          </Badge>
+   380→          <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0 h-5 border', ANOMALY_SEVERITY_COLORS[anomaly.severity])}>
+   381→            {anomaly.severity}
+   382→          </Badge>
+   383→        </div>
+   384→        <span className="text-[10px] text-zinc-500 whitespace-nowrap">{anomaly.detectedAt}</span>
+   385→      </div>
+   386→      <div className="flex items-center gap-2 text-xs font-mono">
+   387→        <span className="text-zinc-300">{anomaly.source}</span>
+   388→        <ArrowRightLeft className="size-3 text-zinc-600" />
+   389→        <span className="text-zinc-300">{anomaly.destination}</span>
+   390→      </div>
+   391→      <p className="text-xs text-zinc-400 leading-relaxed">{anomaly.description}</p>
+   392→      <div className="flex justify-end">
+   393→        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1 border-zinc-700 text-zinc-300 hover:text-emerald-400 hover:border-emerald-500/30">
+   394→          <ExternalLink className="size-3" />
+   395→          Investigate
+   396→        </Button>
+   397→      </div>
+   398→    </div>
+   399→  )
+   400→}
+   401→
+   402→// ===== Main Component =====
+   403→
+   404→export function NetworkView() {
+   405→  const [filterProtocol, setFilterProtocol] = useState<string>('all')
+   406→  const [searchQuery, setSearchQuery] = useState('')
+   407→  const [sortCol, setSortCol] = useState<string>('timestamp')
+   408→  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+   409→
+   410→  const protocolFilters = ['all', 'TCP', 'UDP', 'ICMP', 'DNS', 'HTTP/HTTPS', 'SSH'] as const
+   411→
+   412→  const filteredFlows = useMemo(() => {
+   413→    let flows = [...MOCK_FLOWS]
+   414→
+   415→    // Protocol filter
+   416→    if (filterProtocol !== 'all') {
+   417→      if (filterProtocol === 'HTTP/HTTPS') {
+   418→        flows = flows.filter(f => f.protocol === 'HTTP' || f.protocol === 'HTTPS')
+   419→      } else {
+   420→        flows = flows.filter(f => f.protocol === filterProtocol)
+   421→      }
+   422→    }
+   423→
+   424→    // Search filter
+   425→    if (searchQuery.trim()) {
+   426→      const q = searchQuery.toLowerCase().trim()
+   427→      flows = flows.filter(f =>
+   428→        f.sourceIp.includes(q) ||
+   429→        f.destIp.includes(q) ||
+   430→        String(f.sourcePort).includes(q) ||
+   431→        String(f.destPort).includes(q) ||
+   432→        f.protocol.toLowerCase().includes(q)
+   433→      )
+   434→    }
+   435→
+   436→    // Sort
+   437→    flows.sort((a, b) => {
+   438→      let cmp = 0
+   439→      switch (sortCol) {
+   440→        case 'sourceIp': cmp = a.sourceIp.localeCompare(b.sourceIp); break
+   441→        case 'destIp': cmp = a.destIp.localeCompare(b.destIp); break
+   442→        case 'protocol': cmp = a.protocol.localeCompare(b.protocol); break
+   443→        case 'bytes': cmp = a.bytes - b.bytes; break
+   444→        case 'packets': cmp = a.packets - b.packets; break
+   445→        case 'risk': {
+   446→          const riskOrder: Record<Risk, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 }
+   447→          cmp = riskOrder[a.risk] - riskOrder[b.risk]
+   448→          break
+   449→        }
+   450→        default: cmp = 0
+   451→      }
+   452→      return sortDir === 'asc' ? cmp : -cmp
+   453→    })
+   454→
+   455→    return flows
+   456→  }, [filterProtocol, searchQuery, sortCol, sortDir])
+   457→
+   458→  const toggleSort = (col: string) => {
+   459→    if (sortCol === col) {
+   460→      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+   461→    } else {
+   462→      setSortCol(col)
+   463→      setSortDir('desc')
+   464→    }
+   465→  }
+   466→
+   467→  const maxSrcBytes = Math.max(...MOCK_TOP_SRC_TALKERS.map(t => t.bytes))
+   468→  const maxDstBytes = Math.max(...MOCK_TOP_DST_TALKERS.map(t => t.bytes))
+   469→  const maxGeoBytes = Math.max(...MOCK_GEO.map(g => g.totalBytes))
+   470→
+   471→  const renderSortIcon = (col: string) => (
+   472→    <span className="inline-flex ml-1">
+   473→      {sortCol === col ? (
+   474→        sortDir === 'asc' ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />
+   475→      ) : (
+   476→        <ChevronDown className="size-3 opacity-30" />
+   477→      )}
+   478→    </span>
+   479→  )
+   480→
+   481→  return (
+   482→    <div className="space-y-6">
+   483→      {/* Header Section */}
+   484→      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+   485→        <div className="flex items-center gap-3 mb-1">
+   486→          <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2">
+   487→            <Wifi className="size-5 text-emerald-400" />
+   488→          </div>
+   489→          <div>
+   490→            <h1 className="text-xl font-bold text-zinc-100">Network Traffic Analysis</h1>
+   491→            <p className="text-sm text-zinc-400">Monitor network flows, detect anomalies, and analyze traffic patterns</p>
+   492→          </div>
+   493→        </div>
+   494→      </motion.div>
+   495→
+   496→      {/* Stat Cards */}
+   497→      <motion.div
+   498→        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05 }}
+   499→        className="grid grid-cols-2 lg:grid-cols-4 gap-4"
+   500→      >
+   501→        <StatCard icon={Activity} iconColor="text-emerald-400" iconBg="bg-emerald-500/10 border border-emerald-500/20" value="12,847" label="Total Flows" trend="+8.2%" trendUp={true} />
+   502→        <StatCard icon={Wifi} iconColor="text-cyan-400" iconBg="bg-cyan-500/10 border border-cyan-500/20" value="847 Mbps" label="Bandwidth" trend="+12.5%" trendUp={true} />
+   503→        <StatCard icon={AlertTriangle} iconColor="text-red-400" iconBg="bg-red-500/10 border border-red-500/20" value="6" label="Anomalies Detected" trend="+2" trendUp={false} />
+   504→        <StatCard icon={Globe} iconColor="text-purple-400" iconBg="bg-purple-500/10 border border-purple-500/20" value="HTTPS" label="Top Protocol" trend="42%" trendUp={true} />
+   505→      </motion.div>
+   506→
+   507→      {/* Traffic Flow Table + Right Panels */}
+   508→      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+   509→        {/* Left: Flow Table */}
+   510→        <motion.div
+   511→          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }}
+   512→          className="xl:col-span-2"
+   513→        >
+   514→          <Card className="border-zinc-800 bg-zinc-900/60 backdrop-blur-sm">
+   515→            <CardHeader className="pb-3">
+   516→              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+   517→                <CardTitle className="text-base text-zinc-100">Traffic Flows</CardTitle>
+   518→                <div className="flex items-center gap-2 flex-wrap">
+   519→                  <div className="relative">
+   520→                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-zinc-500" />
+   521→                    <Input
+   522→                      placeholder="Search IP / port..."
+   523→                      value={searchQuery}
+   524→                      onChange={(e) => setSearchQuery(e.target.value)}
+   525→                      className="h-7 w-44 pl-8 text-xs bg-zinc-800/50 border-zinc-700 text-zinc-200 placeholder:text-zinc-500"
+   526→                    />
+   527→                  </div>
+   528→                </div>
+   529→              </div>
+   530→              {/* Protocol filter buttons */}
+   531→              <div className="flex items-center gap-1.5 flex-wrap mt-2">
+   532→                {protocolFilters.map(pf => (
+   533→                  <Button
+   534→                    key={pf}
+   535→                    variant="outline"
+   536→                    size="sm"
+   537→                    onClick={() => setFilterProtocol(pf)}
+   538→                    className={cn(
+   539→                      'h-6 text-[10px] px-2 border-zinc-700 transition-all',
+   540→                      filterProtocol === pf
+   541→                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+   542→                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+   543→                    )}
+   544→                  >
+   545→                    {pf === 'all' ? 'All' : pf}
+   546→                  </Button>
+   547→                ))}
+   548→              </div>
+   549→            </CardHeader>
+   550→            <CardContent className="p-0">
+   551→              <ScrollArea className="max-h-96 overflow-y-auto">
+   552→                <Table>
+   553→                  <TableHeader>
+   554→                    <TableRow className="border-zinc-800 hover:bg-transparent">
+   555→                      <TableHead className="text-[10px] text-zinc-500 h-8 cursor-pointer select-none" onClick={() => toggleSort('sourceIp')}>
+   556→                        Source IP:Port {renderSortIcon('sourceIp')}
+   557→                      </TableHead>
+   558→                      <TableHead className="text-[10px] text-zinc-500 h-8 cursor-pointer select-none" onClick={() => toggleSort('destIp')}>
+   559→                        Dest IP:Port {renderSortIcon('destIp')}
+   560→                      </TableHead>
+   561→                      <TableHead className="text-[10px] text-zinc-500 h-8 cursor-pointer select-none" onClick={() => toggleSort('protocol')}>
+   562→                        Protocol {renderSortIcon('protocol')}
+   563→                      </TableHead>
+   564→                      <TableHead className="text-[10px] text-zinc-500 h-8 cursor-pointer select-none" onClick={() => toggleSort('bytes')}>
+   565→                        Bytes {renderSortIcon('bytes')}
+   566→                      </TableHead>
+   567→                      <TableHead className="text-[10px] text-zinc-500 h-8 cursor-pointer select-none" onClick={() => toggleSort('packets')}>
+   568→                        Pkts {renderSortIcon('packets')}
+   569→                      </TableHead>
+   570→                      <TableHead className="text-[10px] text-zinc-500 h-8">Direction</TableHead>
+   571→                      <TableHead className="text-[10px] text-zinc-500 h-8 cursor-pointer select-none" onClick={() => toggleSort('risk')}>
+   572→                        Risk {renderSortIcon('risk')}
+   573→                      </TableHead>
+   574→                      <TableHead className="text-[10px] text-zinc-500 h-8 w-12">Time</TableHead>
+   575→                    </TableRow>
+   576→                  </TableHeader>
+   577→                  <TableBody>
+   578→                    {filteredFlows.map(flow => (
+   579→                      <TableRow key={flow.id} className="border-zinc-800/50 hover:bg-zinc-800/30">
+   580→                        <TableCell className="py-1.5">
+   581→                          <div className="flex flex-col">
+   582→                            <span className="text-xs font-mono text-zinc-200">{flow.sourceIp}</span>
+   583→                            <span className="text-[10px] font-mono text-zinc-500">:{flow.sourcePort}</span>
+   584→                          </div>
+   585→                        </TableCell>
+   586→                        <TableCell className="py-1.5">
+   587→                          <div className="flex flex-col">
+   588→                            <span className="text-xs font-mono text-zinc-200">{flow.destIp}</span>
+   589→                            <span className="text-[10px] font-mono text-zinc-500">:{flow.destPort}</span>
+   590→                          </div>
+   591→                        </TableCell>
+   592→                        <TableCell className="py-1.5">
+   593→                          <Badge variant="outline" className={cn('text-[9px] px-1.5 py-0 h-4 border font-medium', PROTOCOL_COLORS[flow.protocol])}>
+   594→                            {flow.protocol}
+   595→                          </Badge>
+   596→                        </TableCell>
+   597→                        <TableCell className="py-1.5 text-xs font-mono text-zinc-300">{formatBytes(flow.bytes)}</TableCell>
+   598→                        <TableCell className="py-1.5 text-xs font-mono text-zinc-300">{flow.packets.toLocaleString()}</TableCell>
+   599→                        <TableCell className="py-1.5">
+   600→                          <div className="flex items-center gap-1">
+   601→                            {flow.direction === 'Inbound' ? (
+   602→                              <ArrowDownRight className="size-3 text-cyan-400" />
+   603→                            ) : (
+   604→                              <ArrowUpRight className="size-3 text-orange-400" />
+   605→                            )}
+   606→                            <Badge variant="outline" className={cn('text-[9px] px-1.5 py-0 h-4 border', DIRECTION_COLORS[flow.direction])}>
+   607→                              {flow.direction}
+   608→                            </Badge>
+   609→                          </div>
+   610→                        </TableCell>
+   611→                        <TableCell className="py-1.5">
+   612→                          <Badge variant="outline" className={cn('text-[9px] px-1.5 py-0 h-4 border font-medium', RISK_COLORS[flow.risk])}>
+   613→                            {flow.risk}
+   614→                          </Badge>
+   615→                        </TableCell>
+   616→                        <TableCell className="py-1.5 text-[10px] text-zinc-500 whitespace-nowrap">{flow.timestamp}</TableCell>
+   617→                      </TableRow>
+   618→                    ))}
+   619→                    {filteredFlows.length === 0 && (
+   620→                      <TableRow>
+   621→                        <TableCell colSpan={8} className="h-24 text-center text-sm text-zinc-500">
+   622→                          No flows match the current filters
+   623→                        </TableCell>
+   624→                      </TableRow>
+   625→                    )}
+   626→                  </TableBody>
+   627→                </Table>
+   628→              </ScrollArea>
+   629→              <div className="border-t border-zinc-800 px-4 py-2 flex items-center justify-between">
+   630→                <span className="text-[10px] text-zinc-500">Showing {filteredFlows.length} of {MOCK_FLOWS.length} flows</span>
+   631→                <span className="text-[10px] text-zinc-600">Last updated: just now</span>
+   632→              </div>
+   633→            </CardContent>
+   634→          </Card>
+   635→        </motion.div>
+   636→
+   637→        {/* Right: Protocol Distribution + Bandwidth Sparkline */}
+   638→        <motion.div
+   639→          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15 }}
+   640→          className="space-y-6"
+   641→        >
+   642→          {/* Protocol Distribution */}
+   643→          <Card className="border-zinc-800 bg-zinc-900/60 backdrop-blur-sm">
+   644→            <CardHeader className="pb-3">
+   645→              <CardTitle className="text-sm text-zinc-100">Protocol Distribution</CardTitle>
+   646→            </CardHeader>
+   647→            <CardContent className="space-y-2.5">
+   648→              {PROTOCOL_DIST.map(p => (
+   649→                <ProtocolBar key={p.name} name={p.name} pct={p.pct} color={p.color} />
+   650→              ))}
+   651→            </CardContent>
+   652→          </Card>
+   653→
+   654→          {/* Bandwidth Over Time */}
+   655→          <Card className="border-zinc-800 bg-zinc-900/60 backdrop-blur-sm">
+   656→            <CardHeader className="pb-3">
+   657→              <div className="flex items-center justify-between">
+   658→                <CardTitle className="text-sm text-zinc-100">Bandwidth (24h)</CardTitle>
+   659→                <span className="text-xs text-zinc-500">847 Mbps peak</span>
+   660→              </div>
+   661→            </CardHeader>
+   662→            <CardContent>
+   663→              <BandwidthSparkline />
+   664→              <div className="flex justify-between mt-1">
+   665→                <span className="text-[9px] text-zinc-600">24h ago</span>
+   666→                <span className="text-[9px] text-zinc-600">Now</span>
+   667→              </div>
+   668→            </CardContent>
+   669→          </Card>
+   670→
+   671→          {/* Geo IP Summary */}
+   672→          <Card className="border-zinc-800 bg-zinc-900/60 backdrop-blur-sm">
+   673→            <CardHeader className="pb-3">
+   674→              <CardTitle className="text-sm text-zinc-100">Geo IP Summary</CardTitle>
+   675→            </CardHeader>
+   676→            <CardContent className="space-y-1">
+   677→              {MOCK_GEO.map(g => (
+   678→                <GeoRow key={g.country} entry={g} maxBytes={maxGeoBytes} />
+   679→              ))}
+   680→            </CardContent>
+   681→          </Card>
+   682→        </motion.div>
+   683→      </div>
+   684→
+   685→      {/* Bottom: Top Talkers + Anomaly Detection */}
+   686→      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+   687→        {/* Top Talkers */}
+   688→        <motion.div
+   689→          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.2 }}
+   690→          className="xl:col-span-1"
+   691→        >
+   692→          <Card className="border-zinc-800 bg-zinc-900/60 backdrop-blur-sm h-full">
+   693→            <CardHeader className="pb-3">
+   694→              <CardTitle className="text-sm text-zinc-100">Top Talkers</CardTitle>
+   695→            </CardHeader>
+   696→            <CardContent className="space-y-4">
+   697→              <div>
+   698→                <h4 className="text-[10px] uppercase tracking-wider text-emerald-400 font-semibold mb-2">Top Source IPs</h4>
+   699→                <div className="space-y-0.5">
+   700→                  {MOCK_TOP_SRC_TALKERS.map(t => (
+   701→                    <TopTalkerRow key={t.ip} talker={t} maxBytes={maxSrcBytes} />
+   702→                  ))}
+   703→                </div>
+   704→              </div>
+   705→              <div className="border-t border-zinc-800 pt-3">
+   706→                <h4 className="text-[10px] uppercase tracking-wider text-cyan-400 font-semibold mb-2">Top Destination IPs</h4>
+   707→                <div className="space-y-0.5">
+   708→                  {MOCK_TOP_DST_TALKERS.map(t => (
+   709→                    <TopTalkerRow key={t.ip} talker={t} maxBytes={maxDstBytes} />
+   710→                  ))}
+   711→                </div>
+   712→              </div>
+   713→            </CardContent>
+   714→          </Card>
+   715→        </motion.div>
+   716→
+   717→        {/* Anomaly Detection Panel */}
+   718→        <motion.div
+   719→          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.25 }}
+   720→          className="xl:col-span-2"
+   721→        >
+   722→          <Card className="border-zinc-800 bg-zinc-900/60 backdrop-blur-sm h-full">
+   723→            <CardHeader className="pb-3">
+   724→              <div className="flex items-center justify-between">
+   725→                <div className="flex items-center gap-2">
+   726→                  <ShieldAlert className="size-4 text-red-400" />
+   727→                  <CardTitle className="text-sm text-zinc-100">Anomaly Detection</CardTitle>
+   728→                </div>
+   729→                <Badge variant="outline" className="text-[10px] border-red-500/30 text-red-400 px-2">
+   730→                  {MOCK_ANOMALIES.length} Active
+   731→                </Badge>
+   732→              </div>
+   733→            </CardHeader>
+   734→            <CardContent>
+   735→              <ScrollArea className="max-h-80">
+   736→                <div className="space-y-3">
+   737→                  {MOCK_ANOMALIES.map(a => (
+   738→                    <AnomalyRow key={a.id} anomaly={a} />
+   739→                  ))}
+   740→                </div>
+   741→              </ScrollArea>
+   742→            </CardContent>
+   743→          </Card>
+   744→        </motion.div>
+   745→      </div>
+   746→    </div>
+   747→  )
+   748→}
+   749→

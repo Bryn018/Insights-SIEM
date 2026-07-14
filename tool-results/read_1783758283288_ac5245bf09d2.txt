@@ -1,0 +1,826 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import {
+     6→  Activity,
+     7→  ChevronDown,
+     8→  RefreshCw,
+     9→  Clock,
+    10→  Zap,
+    11→  TrendingUp,
+    12→  TrendingDown,
+    13→  AlertTriangle,
+    14→  CheckCircle2,
+    15→  XCircle,
+    16→  Server,
+    17→  ArrowDownToLine,
+    18→  ArrowUpFromLine,
+    19→  Timer,
+    20→  Gauge,
+    21→} from 'lucide-react'
+    22→import {
+    23→  AreaChart,
+    24→  Area,
+    25→  ResponsiveContainer,
+    26→} from 'recharts'
+    27→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    28→import { Button } from '@/components/ui/button'
+    29→import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+    30→import { cn } from '@/lib/utils'
+    31→
+    32→// ===== Types =====
+    33→
+    34→type ServiceStatus = 'healthy' | 'degraded' | 'down'
+    35→
+    36→interface ServiceInfo {
+    37→  name: string
+    38→  status: ServiceStatus
+    39→  uptime: string
+    40→  lastHealthCheck: string
+    41→  responseMs: number
+    42→  icon: string
+    43→}
+    44→
+    45→interface ResourceUsage {
+    46→  cpu: number
+    47→  cpuHistory: Array<{ t: string; v: number }>
+    48→  memoryUsed: number
+    49→  memoryCached: number
+    50→  memoryFree: number
+    51→  memoryTotal: number
+    52→  diskReadMbps: number
+    53→  diskWriteMbps: number
+    54→  diskReadHistory: Array<{ t: string; v: number }>
+    55→  diskWriteHistory: Array<{ t: string; v: number }>
+    56→  networkInMbps: number
+    57→  networkOutMbps: number
+    58→  networkInHistory: Array<{ t: string; v: number }>
+    59→  networkOutHistory: Array<{ t: string; v: number }>
+    60→}
+    61→
+    62→interface PipelineMetrics {
+    63→  epsIngested: number
+    64→  epsIngestedHistory: Array<{ t: string; v: number }>
+    65→  epsProcessed: number
+    66→  epsProcessedHistory: Array<{ t: string; v: number }>
+    67→  queueDepth: number
+    68→  queueDepthHistory: Array<{ t: string; v: number }>
+    69→  latencyP50: number
+    70→  latencyP95: number
+    71→  latencyP99: number
+    72→  latencyHistory: Array<{ t: string; p50: number; p95: number; p99: number }>
+    73→}
+    74→
+    75→interface AlertPipelineStats {
+    76→  alertRate: number
+    77→  alertRateHistory: Array<{ t: string; v: number }>
+    78→  mtta: number // Mean Time to Acknowledge (minutes)
+    79→  mttr: number // Mean Time to Resolve (minutes)
+    80→  escalationRate: number // percentage
+    81→}
+    82→
+    83→interface DiagnosticsData {
+    84→  services: ServiceInfo[]
+    85→  resources: ResourceUsage
+    86→  pipeline: PipelineMetrics
+    87→  alertPipeline: AlertPipelineStats
+    88→  lastUpdated: string
+    89→}
+    90→
+    91→// ===== Mock Data Generator =====
+    92→
+    93→function generateTimeSeries(length: number, base: number, variance: number): Array<{ t: string; v: number }> {
+    94→  const now = Date.now()
+    95→  return Array.from({ length }, (_, i) => {
+    96→    const ts = new Date(now - (length - 1 - i) * 5000)
+    97→    return {
+    98→      t: ts.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    99→      v: Math.max(0, Math.round(base + (Math.random() - 0.5) * variance * 2)),
+   100→    }
+   101→  })
+   102→}
+   103→
+   104→function generateLatencySeries(length: number): Array<{ t: string; p50: number; p95: number; p99: number }> {
+   105→  const now = Date.now()
+   106→  return Array.from({ length }, (_, i) => {
+   107→    const ts = new Date(now - (length - 1 - i) * 5000)
+   108→    const p50 = 12 + Math.round(Math.random() * 8)
+   109→    return {
+   110→      t: ts.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+   111→      p50,
+   112→      p95: p50 + 15 + Math.round(Math.random() * 10),
+   113→      p99: p50 + 45 + Math.round(Math.random() * 20),
+   114→    }
+   115→  })
+   116→}
+   117→
+   118→function generateMockData(): DiagnosticsData {
+   119→  const services: ServiceInfo[] = [
+   120→    { name: 'OpenSearch', status: 'healthy', uptime: '45d 12h', lastHealthCheck: '2s ago', responseMs: 23, icon: 'search' },
+   121→    { name: 'Suricata', status: 'healthy', uptime: '45d 12h', lastHealthCheck: '5s ago', responseMs: 8, icon: 'shield' },
+   122→    { name: 'Fluent Bit', status: 'degraded', uptime: '3d 7h', lastHealthCheck: '10s ago', responseMs: 145, icon: 'flow' },
+   123→    { name: 'Prometheus', status: 'healthy', uptime: '45d 12h', lastHealthCheck: '3s ago', responseMs: 12, icon: 'chart' },
+   124→    { name: 'Grafana', status: 'healthy', uptime: '45d 12h', lastHealthCheck: '1s ago', responseMs: 35, icon: 'dashboard' },
+   125→    { name: 'WebSocket', status: 'healthy', uptime: '12d 4h', lastHealthCheck: '1s ago', responseMs: 4, icon: 'link' },
+   126→  ]
+   127→
+   128→  const cpuBase = 42 + Math.round(Math.random() * 15)
+   129→  const memTotal = 64 // GB
+   130→  const memUsed = 35 + Math.round(Math.random() * 10) // 35-45 GB
+   131→  const memCached = 8 + Math.round(Math.random() * 5)  // 8-13 GB
+   132→  const memFree = Math.max(0, memTotal - memUsed - memCached) // always >= 0
+   133→
+   134→  const resources: ResourceUsage = {
+   135→    cpu: cpuBase,
+   136→    cpuHistory: generateTimeSeries(20, cpuBase, 8),
+   137→    memoryUsed: memUsed,
+   138→    memoryCached: memCached,
+   139→    memoryFree: memFree,
+   140→    memoryTotal: memTotal,
+   141→    diskReadMbps: 125 + Math.round(Math.random() * 40),
+   142→    diskWriteMbps: 78 + Math.round(Math.random() * 30),
+   143→    diskReadHistory: generateTimeSeries(20, 125, 30),
+   144→    diskWriteHistory: generateTimeSeries(20, 78, 20),
+   145→    networkInMbps: 340 + Math.round(Math.random() * 60),
+   146→    networkOutMbps: 95 + Math.round(Math.random() * 25),
+   147→    networkInHistory: generateTimeSeries(20, 340, 50),
+   148→    networkOutHistory: generateTimeSeries(20, 95, 20),
+   149→  }
+   150→
+   151→  const epsBase = 1247 + Math.round(Math.random() * 200)
+   152→  const epsProcessedBase = epsBase - Math.round(Math.random() * 30)
+   153→
+   154→  const pipeline: PipelineMetrics = {
+   155→    epsIngested: epsBase,
+   156→    epsIngestedHistory: generateTimeSeries(20, epsBase, 100),
+   157→    epsProcessed: epsProcessedBase,
+   158→    epsProcessedHistory: generateTimeSeries(20, epsProcessedBase, 80),
+   159→    queueDepth: 234 + Math.round(Math.random() * 100),
+   160→    queueDepthHistory: generateTimeSeries(20, 234, 80),
+   161→    latencyP50: 15 + Math.round(Math.random() * 5),
+   162→    latencyP95: 32 + Math.round(Math.random() * 8),
+   163→    latencyP99: 67 + Math.round(Math.random() * 15),
+   164→    latencyHistory: generateLatencySeries(20),
+   165→  }
+   166→
+   167→  const alertRateBase = 8 + Math.round(Math.random() * 3)
+   168→
+   169→  const alertPipeline: AlertPipelineStats = {
+   170→    alertRate: alertRateBase,
+   171→    alertRateHistory: generateTimeSeries(20, alertRateBase, 3),
+   172→    mtta: Math.round((4.2 + Math.random() * 1.0) * 10) / 10,
+   173→    mttr: Math.round((23.5 + Math.random() * 2.0) * 10) / 10,
+   174→    escalationRate: 12 + Math.round(Math.random() * 5),
+   175→  }
+   176→
+   177→  return {
+   178→    services,
+   179→    resources,
+   180→    pipeline,
+   181→    alertPipeline,
+   182→    lastUpdated: new Date().toISOString(),
+   183→  }
+   184→}
+   185→
+   186→// ===== Circular Gauge SVG =====
+   187→
+   188→function CircularGauge({ value, size = 80, strokeWidth = 6, label, unit, color }: {
+   189→  value: number
+   190→  size?: number
+   191→  strokeWidth?: number
+   192→  label: string
+   193→  unit: string
+   194→  color?: string
+   195→}) {
+   196→  const radius = (size - strokeWidth) / 2
+   197→  const circumference = 2 * Math.PI * radius
+   198→  const offset = circumference - (Math.min(value, 100) / 100) * circumference
+   199→
+   200→  const gaugeColor = color || (
+   201→    value >= 80 ? '#ef4444' : value >= 60 ? '#f97316' : value >= 40 ? '#eab308' : '#10b981'
+   202→  )
+   203→
+   204→  return (
+   205→    <div className="flex flex-col items-center gap-1">
+   206→      <div className="relative" style={{ width: size, height: size }}>
+   207→        <svg width={size} height={size} className="-rotate-90">
+   208→          <circle
+   209→            cx={size / 2}
+   210→            cy={size / 2}
+   211→            r={radius}
+   212→            fill="none"
+   213→            stroke="rgba(255,255,255,0.06)"
+   214→            strokeWidth={strokeWidth}
+   215→          />
+   216→          <circle
+   217→            cx={size / 2}
+   218→            cy={size / 2}
+   219→            r={radius}
+   220→            fill="none"
+   221→            stroke={gaugeColor}
+   222→            strokeWidth={strokeWidth}
+   223→            strokeDasharray={circumference}
+   224→            strokeDashoffset={offset}
+   225→            strokeLinecap="round"
+   226→            className="transition-all duration-700 ease-out"
+   227→            style={{ filter: `drop-shadow(0 0 4px ${gaugeColor}40)` }}
+   228→          />
+   229→        </svg>
+   230→        <div className="absolute inset-0 flex flex-col items-center justify-center">
+   231→          <span className="text-base font-bold" style={{ color: gaugeColor }}>{value}</span>
+   232→          <span className="text-[8px] text-zinc-500">{unit}</span>
+   233→        </div>
+   234→      </div>
+   235→      <span className="text-[10px] text-zinc-500">{label}</span>
+   236→    </div>
+   237→  )
+   238→}
+   239→
+   240→// ===== Sparkline Chart =====
+   241→
+   242→function Sparkline({ data, dataKey, color, height = 32, showArea = true }: {
+   243→  data: Array<Record<string, unknown>>
+   244→  dataKey: string
+   245→  color: string
+   246→  height?: number
+   247→  showArea?: boolean
+   248→}) {
+   249→  return (
+   250→    <ResponsiveContainer width="100%" height={height}>
+   251→      <AreaChart data={data} margin={{ left: 0, right: 0, top: 2, bottom: 2 }}>
+   252→        <defs>
+   253→          <linearGradient id={`spark-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
+   254→            <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+   255→            <stop offset="95%" stopColor={color} stopOpacity={0.02} />
+   256→          </linearGradient>
+   257→        </defs>
+   258→        {showArea && (
+   259→          <Area
+   260→            type="monotone"
+   261→            dataKey={dataKey}
+   262→            stroke={color}
+   263→            fill={`url(#spark-${dataKey})`}
+   264→            strokeWidth={1.5}
+   265→            dot={false}
+   266→            isAnimationActive={false}
+   267→          />
+   268→        )}
+   269→      </AreaChart>
+   270→    </ResponsiveContainer>
+   271→  )
+   272→}
+   273→
+   274→// ===== Multi-line Sparkline (for latency) =====
+   275→
+   276→function LatencySparkline({ data, height = 32 }: {
+   277→  data: Array<{ t: string; p50: number; p95: number; p99: number }>
+   278→  height?: number
+   279→}) {
+   280→  return (
+   281→    <ResponsiveContainer width="100%" height={height}>
+   282→      <AreaChart data={data} margin={{ left: 0, right: 0, top: 2, bottom: 2 }}>
+   283→        <defs>
+   284→          <linearGradient id="spark-p50" x1="0" y1="0" x2="0" y2="1">
+   285→            <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+   286→            <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+   287→          </linearGradient>
+   288→          <linearGradient id="spark-p95" x1="0" y1="0" x2="0" y2="1">
+   289→            <stop offset="5%" stopColor="#eab308" stopOpacity={0.2} />
+   290→            <stop offset="95%" stopColor="#eab308" stopOpacity={0.02} />
+   291→          </linearGradient>
+   292→          <linearGradient id="spark-p99" x1="0" y1="0" x2="0" y2="1">
+   293→            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2} />
+   294→            <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
+   295→          </linearGradient>
+   296→        </defs>
+   297→        <Area type="monotone" dataKey="p99" stroke="#ef4444" fill="url(#spark-p99)" strokeWidth={1} dot={false} isAnimationActive={false} />
+   298→        <Area type="monotone" dataKey="p95" stroke="#eab308" fill="url(#spark-p95)" strokeWidth={1} dot={false} isAnimationActive={false} />
+   299→        <Area type="monotone" dataKey="p50" stroke="#10b981" fill="url(#spark-p50)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+   300→      </AreaChart>
+   301→    </ResponsiveContainer>
+   302→  )
+   303→}
+   304→
+   305→// ===== Dual-line Sparkline =====
+   306→
+   307→function DualSparkline({ data, key1, key2, color1, color2, height = 40 }: {
+   308→  data: Array<Record<string, unknown>>
+   309→  key1: string
+   310→  key2: string
+   311→  color1: string
+   312→  color2: string
+   313→  height?: number
+   314→}) {
+   315→  return (
+   316→    <ResponsiveContainer width="100%" height={height}>
+   317→      <AreaChart data={data} margin={{ left: 0, right: 0, top: 2, bottom: 2 }}>
+   318→        <defs>
+   319→          <linearGradient id={`spark-${key1}-dual`} x1="0" y1="0" x2="0" y2="1">
+   320→            <stop offset="5%" stopColor={color1} stopOpacity={0.25} />
+   321→            <stop offset="95%" stopColor={color1} stopOpacity={0.02} />
+   322→          </linearGradient>
+   323→          <linearGradient id={`spark-${key2}-dual`} x1="0" y1="0" x2="0" y2="1">
+   324→            <stop offset="5%" stopColor={color2} stopOpacity={0.25} />
+   325→            <stop offset="95%" stopColor={color2} stopOpacity={0.02} />
+   326→          </linearGradient>
+   327→        </defs>
+   328→        <Area type="monotone" dataKey={key1} stroke={color1} fill={`url(#spark-${key1}-dual)`} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+   329→        <Area type="monotone" dataKey={key2} stroke={color2} fill={`url(#spark-${key2}-dual)`} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+   330→      </AreaChart>
+   331→    </ResponsiveContainer>
+   332→  )
+   333→}
+   334→
+   335→// ===== Memory Bar =====
+   336→
+   337→function MemoryBar({ used, cached, free, total }: { used: number; cached: number; free: number; total: number }) {
+   338→  // Clamp values to prevent negative percentages or overflows
+   339→  const clampedFree = Math.max(0, free)
+   340→  const clampedUsed = Math.min(used, total)
+   341→  const clampedCached = Math.min(cached, total - clampedUsed)
+   342→  const usedPct = (clampedUsed / total) * 100
+   343→  const cachedPct = (clampedCached / total) * 100
+   344→  const freePct = (clampedFree / total) * 100
+   345→
+   346→  return (
+   347→    <div className="space-y-1.5">
+   348→      <div className="flex items-center justify-between text-[10px]">
+   349→        <span className="text-zinc-500">Memory</span>
+   350→        <span className="text-zinc-400">{clampedUsed}GB / {total}GB</span>
+   351→      </div>
+   352→      <div className="flex h-3 overflow-hidden rounded-full bg-zinc-800">
+   353→        <motion.div
+   354→          initial={{ width: 0 }}
+   355→          animate={{ width: `${usedPct}%` }}
+   356→          transition={{ duration: 0.8, ease: 'easeOut' }}
+   357→          className="bg-emerald-500"
+   358→          title={`Used: ${clampedUsed}GB`}
+   359→        />
+   360→        <motion.div
+   361→          initial={{ width: 0 }}
+   362→          animate={{ width: `${cachedPct}%` }}
+   363→          transition={{ duration: 0.8, ease: 'easeOut', delay: 0.1 }}
+   364→          className="bg-amber-500/60"
+   365→          title={`Cached: ${clampedCached}GB`}
+   366→        />
+   367→        <motion.div
+   368→          initial={{ width: 0 }}
+   369→          animate={{ width: `${freePct}%` }}
+   370→          transition={{ duration: 0.8, ease: 'easeOut', delay: 0.2 }}
+   371→          className="bg-zinc-700"
+   372→          title={`Free: ${clampedFree}GB`}
+   373→        />
+   374→      </div>
+   375→      <div className="flex items-center gap-3 text-[8px] text-zinc-600">
+   376→        <span className="flex items-center gap-1">
+   377→          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Used ({Math.round(usedPct)}%)
+   378→        </span>
+   379→        <span className="flex items-center gap-1">
+   380→          <span className="h-1.5 w-1.5 rounded-full bg-amber-500/60" /> Cached ({Math.round(cachedPct)}%)
+   381→        </span>
+   382→        <span className="flex items-center gap-1">
+   383→          <span className="h-1.5 w-1.5 rounded-full bg-zinc-700" /> Free ({Math.round(freePct)}%)
+   384→        </span>
+   385→      </div>
+   386→    </div>
+   387→  )
+   388→}
+   389→
+   390→// ===== Status Dot =====
+   391→
+   392→function StatusDot({ status }: { status: ServiceStatus }) {
+   393→  const dotColor = status === 'healthy' ? 'bg-emerald-400' : status === 'degraded' ? 'bg-amber-400' : 'bg-red-400'
+   394→  const shouldPulse = status !== 'healthy'
+   395→
+   396→  return (
+   397→    <span className={cn('inline-block h-2 w-2 rounded-full', dotColor, shouldPulse && 'animate-pulse')} />
+   398→  )
+   399→}
+   400→
+   401→// ===== Main Component =====
+   402→
+   403→export function SystemDiagnostics() {
+   404→  const [data, setData] = useState<DiagnosticsData | null>(null)
+   405→  const [isOpen, setIsOpen] = useState(true)
+   406→  const [isRefreshing, setIsRefreshing] = useState(false)
+   407→  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+   408→
+   409→  const fetchDiagnostics = useCallback(async () => {
+   410→    setIsRefreshing(true)
+   411→    try {
+   412→      // Attempt real API integration first
+   413→      const res = await fetch('/api/dashboard')
+   414→      if (res.ok) {
+   415→        // API exists — augment with mock diagnostics data
+   416→        // In production, a dedicated /api/diagnostics endpoint would provide this
+   417→        const apiData = await res.json()
+   418→        // We still use mock for the detailed diagnostics, but overlay real data where available
+   419→        const mock = generateMockData()
+   420→        // If API has integration health, map it to services
+   421→        if (apiData.systemHealth?.integrationHealth) {
+   422→          const ih: Record<string, number> = apiData.systemHealth.integrationHealth
+   423→          mock.services = mock.services.map(s => {
+   424→            const status: ServiceStatus = (ih.success ?? 0) > 0 ? 'healthy' : (ih.failure ?? 0) > 0 ? 'down' : s.status
+   425→            return { ...s, status: s.name === 'Fluent Bit' ? s.status : status }
+   426→          })
+   427→        }
+   428→        setData(mock)
+   429→      } else {
+   430→        setData(generateMockData())
+   431→      }
+   432→    } catch {
+   433→      setData(generateMockData())
+   434→    } finally {
+   435→      setIsRefreshing(false)
+   436→    }
+   437→  }, [])
+   438→
+   439→  useEffect(() => {
+   440→    fetchDiagnostics()
+   441→    // Auto-refresh every 30 seconds
+   442→    intervalRef.current = setInterval(fetchDiagnostics, 30000)
+   443→    return () => {
+   444→      if (intervalRef.current) clearInterval(intervalRef.current)
+   445→    }
+   446→  }, [fetchDiagnostics])
+   447→
+   448→  // Compute service status counts
+   449→  const statusCounts = useMemo(() => {
+   450→    if (!data) return { healthy: 0, degraded: 0, down: 0 }
+   451→    return data.services.reduce(
+   452→      (acc, s) => { acc[s.status]++; return acc },
+   453→      { healthy: 0, degraded: 0, down: 0 } as Record<ServiceStatus, number>
+   454→    )
+   455→  }, [data])
+   456→
+   457→  const handleManualRefresh = useCallback(() => {
+   458→    if (intervalRef.current) clearInterval(intervalRef.current)
+   459→    fetchDiagnostics()
+   460→    intervalRef.current = setInterval(fetchDiagnostics, 30000)
+   461→  }, [fetchDiagnostics])
+   462→
+   463→  if (!data) {
+   464→    return (
+   465→      <Card className="border-zinc-800 bg-zinc-950">
+   466→        <CardContent className="p-4">
+   467→          <div className="flex items-center justify-center py-12 text-sm text-zinc-500">
+   468→            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+   469→            Loading diagnostics...
+   470→          </div>
+   471→        </CardContent>
+   472→      </Card>
+   473→    )
+   474→  }
+   475→
+   476→  return (
+   477→    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+   478→      <Card className="border-zinc-800 bg-zinc-950 overflow-hidden">
+   479→        <CollapsibleTrigger asChild>
+   480→          <CardHeader className="cursor-pointer select-none border-b border-zinc-800 bg-zinc-950 px-4 py-3 hover:bg-zinc-900/50 transition-colors">
+   481→            <div className="flex items-center justify-between">
+   482→              <div className="flex items-center gap-3">
+   483→                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10">
+   484→                  <Gauge className="h-4 w-4 text-emerald-400" />
+   485→                </div>
+   486→                <div>
+   487→                  <CardTitle className="text-sm font-medium text-zinc-200">System Diagnostics</CardTitle>
+   488→                  <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+   489→                    <span className="flex items-center gap-1">
+   490→                      <CheckCircle2 className="h-2.5 w-2.5 text-emerald-400" />
+   491→                      {statusCounts.healthy} healthy
+   492→                    </span>
+   493→                    {statusCounts.degraded > 0 && (
+   494→                      <span className="flex items-center gap-1">
+   495→                        <AlertTriangle className="h-2.5 w-2.5 text-amber-400" />
+   496→                        {statusCounts.degraded} degraded
+   497→                      </span>
+   498→                    )}
+   499→                    {statusCounts.down > 0 && (
+   500→                      <span className="flex items-center gap-1">
+   501→                        <XCircle className="h-2.5 w-2.5 text-red-400" />
+   502→                        {statusCounts.down} down
+   503→                      </span>
+   504→                    )}
+   505→                  </div>
+   506→                </div>
+   507→              </div>
+   508→              <div className="flex items-center gap-2">
+   509→                <Button
+   510→                  variant="ghost"
+   511→                  size="sm"
+   512→                  className="h-6 w-6 p-0 text-zinc-500 hover:text-zinc-300"
+   513→                  onClick={(e) => {
+   514→                    e.stopPropagation()
+   515→                    handleManualRefresh()
+   516→                  }}
+   517→                >
+   518→                  <RefreshCw className={cn('h-3 w-3', isRefreshing && 'animate-spin')} />
+   519→                </Button>
+   520→                <span className="text-[9px] text-zinc-600">
+   521→                  {new Date(data.lastUpdated).toLocaleTimeString()}
+   522→                </span>
+   523→                <ChevronDown className={cn('h-4 w-4 text-zinc-500 transition-transform duration-200', isOpen && 'rotate-180')} />
+   524→              </div>
+   525→            </div>
+   526→          </CardHeader>
+   527→        </CollapsibleTrigger>
+   528→
+   529→        <CollapsibleContent>
+   530→          <CardContent className="p-4 space-y-4">
+   531→            <AnimatePresence mode="wait">
+   532→              <motion.div
+   533→                key={data.lastUpdated}
+   534→                initial={{ opacity: 0.6 }}
+   535→                animate={{ opacity: 1 }}
+   536→                transition={{ duration: 0.4 }}
+   537→                className="space-y-4"
+   538→              >
+   539→                {/* ===== Service Status Grid ===== */}
+   540→                <div>
+   541→                  <h4 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">Services</h4>
+   542→                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+   543→                    {data.services.map((service) => (
+   544→                      <motion.div
+   545→                        key={service.name}
+   546→                        initial={{ opacity: 0, scale: 0.95 }}
+   547→                        animate={{ opacity: 1, scale: 1 }}
+   548→                        transition={{ duration: 0.3 }}
+   549→                        className={cn(
+   550→                          'rounded-lg border p-2.5 transition-colors',
+   551→                          service.status === 'healthy'
+   552→                            ? 'border-zinc-800 bg-zinc-900/50'
+   553→                            : service.status === 'degraded'
+   554→                              ? 'border-amber-500/20 bg-amber-500/5'
+   555→                              : 'border-red-500/20 bg-red-500/5'
+   556→                        )}
+   557→                      >
+   558→                        <div className="flex items-center justify-between">
+   559→                          <StatusDot status={service.status} />
+   560→                          <span className={cn(
+   561→                            'text-[8px] font-medium uppercase',
+   562→                            service.status === 'healthy' ? 'text-emerald-400' :
+   563→                            service.status === 'degraded' ? 'text-amber-400' : 'text-red-400'
+   564→                          )}>
+   565→                            {service.status}
+   566→                          </span>
+   567→                        </div>
+   568→                        <div className="mt-1.5">
+   569→                          <p className="text-xs font-medium text-zinc-200 truncate">{service.name}</p>
+   570→                          <div className="mt-1 space-y-0.5">
+   571→                            <div className="flex items-center justify-between text-[9px]">
+   572→                              <span className="text-zinc-600">Uptime</span>
+   573→                              <span className="text-zinc-400">{service.uptime}</span>
+   574→                            </div>
+   575→                            <div className="flex items-center justify-between text-[9px]">
+   576→                              <span className="text-zinc-600">Check</span>
+   577→                              <span className="text-zinc-400">{service.lastHealthCheck}</span>
+   578→                            </div>
+   579→                            <div className="flex items-center justify-between text-[9px]">
+   580→                              <span className="text-zinc-600">Resp</span>
+   581→                              <span className={cn(
+   582→                                'font-mono',
+   583→                                service.responseMs > 100 ? 'text-amber-400' :
+   584→                                service.responseMs > 500 ? 'text-red-400' : 'text-zinc-400'
+   585→                              )}>
+   586→                                {service.responseMs}ms
+   587→                              </span>
+   588→                            </div>
+   589→                          </div>
+   590→                        </div>
+   591→                      </motion.div>
+   592→                    ))}
+   593→                  </div>
+   594→                </div>
+   595→
+   596→                {/* ===== Resource Usage ===== */}
+   597→                <div>
+   598→                  <h4 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">Resources</h4>
+   599→                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+   600→                    {/* CPU Gauge */}
+   601→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   602→                      <div className="flex items-center justify-between">
+   603→                        <CircularGauge value={data.resources.cpu} label="CPU" unit="%" size={72} strokeWidth={5} />
+   604→                        <div className="flex-1 pl-3">
+   605→                          <Sparkline
+   606→                            data={data.resources.cpuHistory}
+   607→                            dataKey="v"
+   608→                            color="#10b981"
+   609→                            height={28}
+   610→                          />
+   611→                        </div>
+   612→                      </div>
+   613→                    </div>
+   614→
+   615→                    {/* Memory Bar */}
+   616→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   617→                      <MemoryBar
+   618→                        used={data.resources.memoryUsed}
+   619→                        cached={data.resources.memoryCached}
+   620→                        free={data.resources.memoryFree}
+   621→                        total={data.resources.memoryTotal}
+   622→                      />
+   623→                    </div>
+   624→
+   625→                    {/* Disk I/O */}
+   626→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   627→                      <div className="flex items-center justify-between mb-1.5">
+   628→                        <span className="text-[10px] text-zinc-500">Disk I/O</span>
+   629→                      </div>
+   630→                      <DualSparkline
+   631→                        data={data.resources.diskReadHistory.map((r, i) => ({
+   632→                          t: r.t,
+   633→                          read: r.v,
+   634→                          write: data.resources.diskWriteHistory[i]?.v ?? 0,
+   635→                        }))}
+   636→                        key1="read"
+   637→                        key2="write"
+   638→                        color1="#10b981"
+   639→                        color2="#6366f1"
+   640→                        height={40}
+   641→                      />
+   642→                      <div className="mt-1.5 flex items-center justify-between text-[9px]">
+   643→                        <span className="flex items-center gap-1 text-emerald-400">
+   644→                          <ArrowDownToLine className="h-2.5 w-2.5" />
+   645→                          {data.resources.diskReadMbps} MB/s
+   646→                        </span>
+   647→                        <span className="flex items-center gap-1 text-indigo-400">
+   648→                          <ArrowUpFromLine className="h-2.5 w-2.5" />
+   649→                          {data.resources.diskWriteMbps} MB/s
+   650→                        </span>
+   651→                      </div>
+   652→                    </div>
+   653→
+   654→                    {/* Network */}
+   655→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   656→                      <div className="flex items-center justify-between mb-1.5">
+   657→                        <span className="text-[10px] text-zinc-500">Network</span>
+   658→                      </div>
+   659→                      <DualSparkline
+   660→                        data={data.resources.networkInHistory.map((r, i) => ({
+   661→                          t: r.t,
+   662→                          inbound: r.v,
+   663→                          outbound: data.resources.networkOutHistory[i]?.v ?? 0,
+   664→                        }))}
+   665→                        key1="inbound"
+   666→                        key2="outbound"
+   667→                        color1="#06b6d4"
+   668→                        color2="#f97316"
+   669→                        height={40}
+   670→                      />
+   671→                      <div className="mt-1.5 flex items-center justify-between text-[9px]">
+   672→                        <span className="flex items-center gap-1 text-cyan-400">
+   673→                          <ArrowDownToLine className="h-2.5 w-2.5" />
+   674→                          {data.resources.networkInMbps} Mbps
+   675→                        </span>
+   676→                        <span className="flex items-center gap-1 text-orange-400">
+   677→                          <ArrowUpFromLine className="h-2.5 w-2.5" />
+   678→                          {data.resources.networkOutMbps} Mbps
+   679→                        </span>
+   680→                      </div>
+   681→                    </div>
+   682→                  </div>
+   683→                </div>
+   684→
+   685→                {/* ===== Event Pipeline Metrics ===== */}
+   686→                <div>
+   687→                  <h4 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">Event Pipeline</h4>
+   688→                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+   689→                    {/* EPS Ingested */}
+   690→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   691→                      <div className="flex items-center justify-between">
+   692→                        <span className="text-[10px] text-zinc-500">Ingested</span>
+   693→                        <Zap className="h-3 w-3 text-emerald-400" />
+   694→                      </div>
+   695→                      <p className="mt-0.5 text-lg font-bold text-emerald-400">
+   696→                        {data.pipeline.epsIngested.toLocaleString()}
+   697→                        <span className="ml-1 text-[9px] font-normal text-zinc-500">EPS</span>
+   698→                      </p>
+   699→                      <Sparkline data={data.pipeline.epsIngestedHistory} dataKey="v" color="#10b981" height={24} />
+   700→                    </div>
+   701→
+   702→                    {/* EPS Processed */}
+   703→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   704→                      <div className="flex items-center justify-between">
+   705→                        <span className="text-[10px] text-zinc-500">Processed</span>
+   706→                        <Activity className="h-3 w-3 text-cyan-400" />
+   707→                      </div>
+   708→                      <p className="mt-0.5 text-lg font-bold text-cyan-400">
+   709→                        {data.pipeline.epsProcessed.toLocaleString()}
+   710→                        <span className="ml-1 text-[9px] font-normal text-zinc-500">EPS</span>
+   711→                      </p>
+   712→                      <Sparkline data={data.pipeline.epsProcessedHistory} dataKey="v" color="#06b6d4" height={24} />
+   713→                    </div>
+   714→
+   715→                    {/* Queue Depth */}
+   716→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   717→                      <div className="flex items-center justify-between">
+   718→                        <span className="text-[10px] text-zinc-500">Queue Depth</span>
+   719→                        <Server className="h-3 w-3 text-amber-400" />
+   720→                      </div>
+   721→                      <p className="mt-0.5 text-lg font-bold text-amber-400">
+   722→                        {data.pipeline.queueDepth.toLocaleString()}
+   723→                        <span className="ml-1 text-[9px] font-normal text-zinc-500">pending</span>
+   724→                      </p>
+   725→                      <Sparkline data={data.pipeline.queueDepthHistory} dataKey="v" color="#f59e0b" height={24} />
+   726→                    </div>
+   727→
+   728→                    {/* Processing Latency */}
+   729→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   730→                      <div className="flex items-center justify-between">
+   731→                        <span className="text-[10px] text-zinc-500">Latency</span>
+   732→                        <Timer className="h-3 w-3 text-zinc-400" />
+   733→                      </div>
+   734→                      <div className="mt-0.5 flex items-baseline gap-2">
+   735→                        <span className="text-lg font-bold text-emerald-400">
+   736→                          {data.pipeline.latencyP50}
+   737→                          <span className="ml-0.5 text-[9px] font-normal text-zinc-500">ms</span>
+   738→                        </span>
+   739→                        <span className="text-[10px] text-amber-400">p95: {data.pipeline.latencyP95}ms</span>
+   740→                      </div>
+   741→                      <LatencySparkline data={data.pipeline.latencyHistory} height={24} />
+   742→                      <div className="mt-0.5 text-[9px] text-red-400">
+   743→                        p99: {data.pipeline.latencyP99}ms
+   744→                      </div>
+   745→                    </div>
+   746→                  </div>
+   747→                </div>
+   748→
+   749→                {/* ===== Alert Pipeline Stats ===== */}
+   750→                <div>
+   751→                  <h4 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">Alert Pipeline</h4>
+   752→                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+   753→                    {/* Alert Generation Rate */}
+   754→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   755→                      <div className="flex items-center justify-between">
+   756→                        <span className="text-[10px] text-zinc-500">Alert Rate</span>
+   757→                        <TrendingUp className="h-3 w-3 text-orange-400" />
+   758→                      </div>
+   759→                      <p className="mt-0.5 text-lg font-bold text-orange-400">
+   760→                        {data.alertPipeline.alertRate}
+   761→                        <span className="ml-1 text-[9px] font-normal text-zinc-500">/min</span>
+   762→                      </p>
+   763→                      <Sparkline data={data.alertPipeline.alertRateHistory} dataKey="v" color="#f97316" height={24} />
+   764→                    </div>
+   765→
+   766→                    {/* MTTA */}
+   767→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   768→                      <div className="flex items-center justify-between">
+   769→                        <span className="text-[10px] text-zinc-500">MTTA</span>
+   770→                        <Clock className="h-3 w-3 text-cyan-400" />
+   771→                      </div>
+   772→                      <p className="mt-0.5 text-lg font-bold text-cyan-400">
+   773→                        {data.alertPipeline.mtta.toFixed(1)}
+   774→                        <span className="ml-1 text-[9px] font-normal text-zinc-500">min</span>
+   775→                      </p>
+   776→                      <div className="mt-1 text-[9px] text-zinc-600">Mean Time to Acknowledge</div>
+   777→                    </div>
+   778→
+   779→                    {/* MTTR */}
+   780→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   781→                      <div className="flex items-center justify-between">
+   782→                        <span className="text-[10px] text-zinc-500">MTTR</span>
+   783→                        <Timer className="h-3 w-3 text-emerald-400" />
+   784→                      </div>
+   785→                      <p className="mt-0.5 text-lg font-bold text-emerald-400">
+   786→                        {data.alertPipeline.mttr.toFixed(1)}
+   787→                        <span className="ml-1 text-[9px] font-normal text-zinc-500">min</span>
+   788→                      </p>
+   789→                      <div className="mt-1 text-[9px] text-zinc-600">Mean Time to Resolve</div>
+   790→                    </div>
+   791→
+   792→                    {/* Escalation Rate */}
+   793→                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   794→                      <div className="flex items-center justify-between">
+   795→                        <span className="text-[10px] text-zinc-500">Escalation</span>
+   796→                        <TrendingDown className="h-3 w-3 text-red-400" />
+   797→                      </div>
+   798→                      <p className="mt-0.5 text-lg font-bold text-red-400">
+   799→                        {data.alertPipeline.escalationRate}
+   800→                        <span className="ml-1 text-[9px] font-normal text-zinc-500">%</span>
+   801→                      </p>
+   802→                      <div className="mt-2">
+   803→                        <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
+   804→                          <motion.div
+   805→                            initial={{ width: 0 }}
+   806→                            animate={{ width: `${data.alertPipeline.escalationRate}%` }}
+   807→                            transition={{ duration: 0.8, ease: 'easeOut' }}
+   808→                            className="h-full rounded-full bg-red-500/70"
+   809→                          />
+   810→                        </div>
+   811→                      </div>
+   812→                      <div className="mt-1 text-[9px] text-zinc-600">Alerts escalated</div>
+   813→                    </div>
+   814→                  </div>
+   815→                </div>
+   816→              </motion.div>
+   817→            </AnimatePresence>
+   818→          </CardContent>
+   819→        </CollapsibleContent>
+   820→      </Card>
+   821→    </Collapsible>
+   822→  )
+   823→}
+   824→
+   825→
+   826→

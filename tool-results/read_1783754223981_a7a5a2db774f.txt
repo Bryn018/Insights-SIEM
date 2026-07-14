@@ -1,0 +1,1718 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import {
+     6→  Bell,
+     7→  ShieldAlert,
+     8→  ClipboardCheck,
+     9→  Activity,
+    10→  ArrowUpRight,
+    11→  ArrowDownRight,
+    12→  CheckCircle2,
+    13→  AlertTriangle,
+    14→  Eye,
+    15→  ChevronRight,
+    16→  Crosshair,
+    17→  Shield,
+    18→  Clock,
+    19→  Zap,
+    20→  Timer,
+    21→  TimerReset,
+    22→  Gauge,
+    23→  AlertCircle,
+    24→  Info,
+    25→  Radio,
+    26→  FileText,
+    27→  Loader2,
+    28→} from 'lucide-react'
+    29→import {
+    30→  AreaChart,
+    31→  Area,
+    32→  XAxis,
+    33→  YAxis,
+    34→  CartesianGrid,
+    35→  Tooltip as RechartsTooltip,
+    36→  ResponsiveContainer,
+    37→  BarChart,
+    38→  Bar,
+    39→  PieChart,
+    40→  Pie,
+    41→  Cell,
+    42→} from 'recharts'
+    43→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    44→import { Button } from '@/components/ui/button'
+    45→import { Badge } from '@/components/ui/badge'
+    46→import { ScrollArea } from '@/components/ui/scroll-area'
+    47→import { Skeleton } from '@/components/ui/skeleton'
+    48→import { useSIEMStore } from '@/lib/store'
+    49→import type { DashboardSummary, Alert, Severity } from '@/lib/types'
+    50→import { SeverityBadge, StatusBadge } from '@/components/siem/status-badge'
+    51→import { ThreatIntelPanel } from '@/components/siem/threat-intel-panel'
+    52→import { PlaybooksPanel } from '@/components/siem/playbooks-panel'
+    53→import { ThreatMap } from '@/components/siem/threat-map'
+    54→import { AlertTimeline } from '@/components/siem/alert-timeline'
+    55→import { ReportGenerator } from '@/components/siem/report-generator'
+    56→import { SystemDiagnostics } from '@/components/siem/system-diagnostics'
+    57→import { cn } from '@/lib/utils'
+    58→
+    59→// ===== Constants =====
+    60→
+    61→const severityColors: Record<string, string> = {
+    62→  critical: '#ef4444',
+    63→  high: '#f97316',
+    64→  medium: '#eab308',
+    65→  low: '#3b82f6',
+    66→  informational: '#6b7280',
+    67→}
+    68→
+    69→const severityFills: Record<string, string> = {
+    70→  critical: '#ef4444',
+    71→  high: '#f97316',
+    72→  medium: '#eab308',
+    73→  low: '#3b82f6',
+    74→  informational: '#6b7280',
+    75→}
+    76→
+    77→const mitreTactics = [
+    78→  'Initial Access',
+    79→  'Execution',
+    80→  'Persistence',
+    81→  'Privilege Escalation',
+    82→  'Defense Evasion',
+    83→  'Credential Access',
+    84→  'Discovery',
+    85→  'Lateral Movement',
+    86→  'Collection',
+    87→  'Exfiltration',
+    88→  'Command & Control',
+    89→  'Impact',
+    90→]
+    91→
+    92→// ===== Animation Variants =====
+    93→
+    94→const container = {
+    95→  hidden: { opacity: 0 },
+    96→  show: {
+    97→    opacity: 1,
+    98→    transition: { staggerChildren: 0.06 },
+    99→  },
+   100→}
+   101→
+   102→const item = {
+   103→  hidden: { opacity: 0, y: 12 },
+   104→  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
+   105→}
+   106→
+   107→// ===== Helpers =====
+   108→
+   109→function timeAgo(dateStr: string): string {
+   110→  const now = Date.now()
+   111→  const then = new Date(dateStr).getTime()
+   112→  const diff = now - then
+   113→  if (diff < 60_000) return 'just now'
+   114→  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+   115→  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+   116→  return `${Math.floor(diff / 86_400_000)}d ago`
+   117→}
+   118→
+   119→function formatTrendDate(dateStr: string): string {
+   120→  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+   121→}
+   122→
+   123→// ===== Animated Counter Hook =====
+   124→
+   125→function useAnimatedCounter(target: number, duration = 1200, enabled = true) {
+   126→  const [value, setValue] = useState(0)
+   127→  const rafRef = useRef<number>(0)
+   128→  const prevTargetRef = useRef(0)
+   129→
+   130→  useEffect(() => {
+   131→    if (!enabled) {
+   132→      // Directly use target when animation is disabled
+   133→      prevTargetRef.current = target
+   134→      return
+   135→    }
+   136→
+   137→    const startVal = prevTargetRef.current
+   138→    const start = performance.now()
+   139→    const animate = (now: number) => {
+   140→      const elapsed = now - start
+   141→      const progress = Math.min(elapsed / duration, 1)
+   142→      // easeOutCubic
+   143→      const eased = 1 - Math.pow(1 - progress, 3)
+   144→      const current = Math.round(startVal + eased * (target - startVal))
+   145→      setValue(current)
+   146→      if (progress < 1) {
+   147→        rafRef.current = requestAnimationFrame(animate)
+   148→      } else {
+   149→        prevTargetRef.current = target
+   150→      }
+   151→    }
+   152→    rafRef.current = requestAnimationFrame(animate)
+   153→    return () => cancelAnimationFrame(rafRef.current)
+   154→  }, [target, duration, enabled])
+   155→
+   156→  return value
+   157→}
+   158→
+   159→// ===== Circular Progress Component =====
+   160→
+   161→function CircularProgress({
+   162→  value,
+   163→  size = 48,
+   164→  strokeWidth = 4,
+   165→}: {
+   166→  value: number
+   167→  size?: number
+   168→  strokeWidth?: number
+   169→}) {
+   170→  const radius = (size - strokeWidth) / 2
+   171→  const circumference = 2 * Math.PI * radius
+   172→  const offset = circumference - (value / 100) * circumference
+   173→
+   174→  const color =
+   175→    value >= 80 ? '#10b981' : value >= 60 ? '#eab308' : value >= 40 ? '#f97316' : '#ef4444'
+   176→
+   177→  return (
+   178→    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+   179→      <svg width={size} height={size} className="-rotate-90">
+   180→        <circle
+   181→          cx={size / 2}
+   182→          cy={size / 2}
+   183→          r={radius}
+   184→          fill="none"
+   185→          stroke="rgba(255,255,255,0.08)"
+   186→          strokeWidth={strokeWidth}
+   187→        />
+   188→        <circle
+   189→          cx={size / 2}
+   190→          cy={size / 2}
+   191→          r={radius}
+   192→          fill="none"
+   193→          stroke={color}
+   194→          strokeWidth={strokeWidth}
+   195→          strokeDasharray={circumference}
+   196→          strokeDashoffset={offset}
+   197→          strokeLinecap="round"
+   198→          className="transition-all duration-700 ease-out"
+   199→        />
+   200→      </svg>
+   201→      <span className="absolute text-xs font-bold" style={{ color }}>
+   202→        {value}%
+   203→      </span>
+   204→    </div>
+   205→  )
+   206→}
+   207→
+   208→// ===== Security Score Gauge Component =====
+   209→
+   210→function SecurityScoreGauge({
+   211→  compliance,
+   212→  alertResolution,
+   213→  assetHealth,
+   214→  ruleCoverage,
+   215→}: {
+   216→  compliance: number
+   217→  alertResolution: number
+   218→  assetHealth: number
+   219→  ruleCoverage: number
+   220→}) {
+   221→  const score = Math.round(compliance * 0.4 + alertResolution * 0.3 + assetHealth * 0.2 + ruleCoverage * 0.1)
+   222→  const animatedScore = useAnimatedCounter(score, 1500)
+   223→
+   224→  const size = 140
+   225→  const strokeWidth = 10
+   226→  const radius = (size - strokeWidth) / 2
+   227→  const circumference = 2 * Math.PI * radius
+   228→  const offset = circumference - (animatedScore / 100) * circumference
+   229→
+   230→  const color = animatedScore >= 80 ? '#10b981' : animatedScore >= 60 ? '#eab308' : animatedScore >= 40 ? '#f97316' : '#ef4444'
+   231→  const label = animatedScore >= 80 ? 'Excellent' : animatedScore >= 60 ? 'Good' : animatedScore >= 40 ? 'Fair' : 'Poor'
+   232→
+   233→  const breakdown = [
+   234→    { label: 'Compliance', value: compliance, weight: '40%' },
+   235→    { label: 'Alert Resolution', value: alertResolution, weight: '30%' },
+   236→    { label: 'Asset Health', value: assetHealth, weight: '20%' },
+   237→    { label: 'Rule Coverage', value: ruleCoverage, weight: '10%' },
+   238→  ]
+   239→
+   240→  return (
+   241→    <div className="flex flex-col items-center gap-3">
+   242→      <div className="relative" style={{ width: size, height: size }}>
+   243→        <svg width={size} height={size} className="-rotate-90">
+   244→          <circle
+   245→            cx={size / 2}
+   246→            cy={size / 2}
+   247→            r={radius}
+   248→            fill="none"
+   249→            stroke="rgba(255,255,255,0.06)"
+   250→            strokeWidth={strokeWidth}
+   251→          />
+   252→          <circle
+   253→            cx={size / 2}
+   254→            cy={size / 2}
+   255→            r={radius}
+   256→            fill="none"
+   257→            stroke={color}
+   258→            strokeWidth={strokeWidth}
+   259→            strokeDasharray={circumference}
+   260→            strokeDashoffset={offset}
+   261→            strokeLinecap="round"
+   262→            className="transition-all duration-1000 ease-out"
+   263→            style={{ filter: `drop-shadow(0 0 6px ${color}40)` }}
+   264→          />
+   265→        </svg>
+   266→        <div className="absolute inset-0 flex flex-col items-center justify-center">
+   267→          <span className="text-3xl font-bold" style={{ color }}>{animatedScore}</span>
+   268→          <span className="text-[10px] font-medium" style={{ color: `${color}aa` }}>{label}</span>
+   269→        </div>
+   270→      </div>
+   271→      <div className="w-full space-y-1.5">
+   272→        {breakdown.map((b) => (
+   273→          <div key={b.label} className="flex items-center justify-between text-[10px]">
+   274→            <span className="text-zinc-500">{b.label} <span className="text-zinc-600">({b.weight})</span></span>
+   275→            <div className="flex items-center gap-2">
+   276→              <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-800">
+   277→                <div
+   278→                  className="h-full rounded-full transition-all duration-700"
+   279→                  style={{
+   280→                    width: `${b.value}%`,
+   281→                    backgroundColor: b.value >= 80 ? '#10b981' : b.value >= 60 ? '#eab308' : b.value >= 40 ? '#f97316' : '#ef4444',
+   282→                  }}
+   283→                />
+   284→              </div>
+   285→              <span className="w-7 text-right font-medium text-zinc-400">{b.value}%</span>
+   286→            </div>
+   287→          </div>
+   288→        ))}
+   289→      </div>
+   290→    </div>
+   291→  )
+   292→}
+   293→
+   294→// ===== Threat Level Banner =====
+   295→
+   296→type ThreatLevel = 'LOW' | 'MODERATE' | 'HIGH' | 'SEVERE' | 'CRITICAL'
+   297→
+   298→function ThreatLevelBanner({ criticalCount, highCount, totalCount }: { criticalCount: number; highCount: number; totalCount: number }) {
+   299→  const level: ThreatLevel = useMemo(() => {
+   300→    if (criticalCount >= 5 || highCount >= 15) return 'CRITICAL'
+   301→    if (criticalCount >= 2 || highCount >= 8) return 'SEVERE'
+   302→    if (highCount >= 4 || totalCount >= 50) return 'HIGH'
+   303→    if (highCount >= 1 || totalCount >= 20) return 'MODERATE'
+   304→    return 'LOW'
+   305→  }, [criticalCount, highCount, totalCount])
+   306→
+   307→  const config: Record<ThreatLevel, { bg: string; border: string; text: string; glow: string; icon: React.ReactNode }> = {
+   308→    LOW: {
+   309→      bg: 'from-emerald-900/30 via-emerald-950/20 to-zinc-900/30',
+   310→      border: 'border-emerald-500/20',
+   311→      text: 'text-emerald-400',
+   312→      glow: 'shadow-emerald-500/10',
+   313→      icon: <Shield className="h-5 w-5" />,
+   314→    },
+   315→    MODERATE: {
+   316→      bg: 'from-yellow-900/30 via-yellow-950/20 to-zinc-900/30',
+   317→      border: 'border-yellow-500/20',
+   318→      text: 'text-yellow-400',
+   319→      glow: 'shadow-yellow-500/10',
+   320→      icon: <AlertTriangle className="h-5 w-5" />,
+   321→    },
+   322→    HIGH: {
+   323→      bg: 'from-orange-900/30 via-orange-950/20 to-zinc-900/30',
+   324→      border: 'border-orange-500/30',
+   325→      text: 'text-orange-400',
+   326→      glow: 'shadow-orange-500/10',
+   327→      icon: <AlertCircle className="h-5 w-5" />,
+   328→    },
+   329→    SEVERE: {
+   330→      bg: 'from-red-900/30 via-red-950/20 to-zinc-900/30',
+   331→      border: 'border-red-500/30',
+   332→      text: 'text-red-400',
+   333→      glow: 'shadow-red-500/15',
+   334→      icon: <ShieldAlert className="h-5 w-5" />,
+   335→    },
+   336→    CRITICAL: {
+   337→      bg: 'from-red-900/40 via-red-950/30 to-zinc-900/30',
+   338→      border: 'border-red-500/40',
+   339→      text: 'text-red-300',
+   340→      glow: 'shadow-red-500/20',
+   341→      icon: <AlertTriangle className="h-5 w-5" />,
+   342→    },
+   343→  }
+   344→
+   345→  const c = config[level]
+   346→
+   347→  return (
+   348→    <motion.div
+   349→      initial={{ opacity: 0, y: -10 }}
+   350→      animate={{ opacity: 1, y: 0 }}
+   351→      className={cn(
+   352→        'relative overflow-hidden rounded-xl border bg-gradient-to-r p-3 shadow-lg',
+   353→        c.bg, c.border, c.glow
+   354→      )}
+   355→    >
+   356→      {/* Animated scan line */}
+   357→      {level === 'CRITICAL' && (
+   358→        <div className="absolute inset-0 overflow-hidden">
+   359→          <motion.div
+   360→            className="h-full w-4 bg-gradient-to-r from-transparent via-red-500/10 to-transparent"
+   361→            animate={{ x: ['-4px', '100%'] }}
+   362→            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+   363→          />
+   364→        </div>
+   365→      )}
+   366→      <div className="relative flex items-center justify-between">
+   367→        <div className="flex items-center gap-3">
+   368→          <div className={cn('flex items-center gap-2', c.text)}>
+   369→            {c.icon}
+   370→            <span className="text-sm font-bold tracking-wider">THREAT LEVEL: {level}</span>
+   371→          </div>
+   372→          <div className="h-4 w-px bg-zinc-700" />
+   373→          <span className="text-xs text-zinc-500">
+   374→            <span className="siem-severity-count-pulse text-red-400/80">{criticalCount} critical</span> · <span className="text-amber-400/80">{highCount} high</span> · {totalCount} total
+   375→          </span>
+   376→        </div>
+   377→        <div className="flex items-center gap-2">
+   378→          <Radio className={cn('h-3.5 w-3.5', level === 'CRITICAL' ? 'animate-pulse text-red-400' : 'text-zinc-600')} />
+   379→          <span className="text-[10px] text-zinc-600">Live</span>
+   380→        </div>
+   381→      </div>
+   382→    </motion.div>
+   383→  )
+   384→}
+   385→
+   386→// ===== Activity Timeline =====
+   387→
+   388→interface ActivityEvent {
+   389→  id: string
+   390→  type: 'alert' | 'incident' | 'rule'
+   391→  title: string
+   392→  description: string
+   393→  timestamp: string
+   394→}
+   395→
+   396→function ActivityTimeline({ alerts }: { alerts: DashboardSummary['recentAlerts'] }) {
+   397→  const events: ActivityEvent[] = useMemo(() => {
+   398→    const evts: ActivityEvent[] = []
+   399→    alerts.slice(0, 8).forEach((a, i) => {
+   400→      evts.push({
+   401→        id: `alert-${a.id}`,
+   402→        type: 'alert',
+   403→        title: a.title,
+   404→        description: `${a.severity} alert from ${a.source}`,
+   405→        timestamp: a.createdAt,
+   406→      })
+   407→      // Add some simulated incident/rule events
+   408→      if (i === 0) {
+   409→        evts.push({
+   410→          id: 'rule-1',
+   411→          type: 'rule',
+   412→          title: 'SSH Brute Force Detection',
+   413→          description: 'Rule triggered 3 times in last hour',
+   414→          timestamp: new Date(Date.now() - 300000).toISOString(),
+   415→        })
+   416→      }
+   417→      if (i === 2) {
+   418→        evts.push({
+   419→          id: 'incident-1',
+   420→          type: 'incident',
+   421→          title: 'INC-0042 escalated to P1',
+   422→          description: 'Escalated by automated rule',
+   423→          timestamp: new Date(Date.now() - 900000).toISOString(),
+   424→        })
+   425→      }
+   426→    })
+   427→    return evts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+   428→  }, [alerts])
+   429→
+   430→  const iconMap = {
+   431→    alert: <Bell className="h-3 w-3" />,
+   432→    incident: <ShieldAlert className="h-3 w-3" />,
+   433→    rule: <Zap className="h-3 w-3" />,
+   434→  }
+   435→
+   436→  const colorMap = {
+   437→    alert: 'text-red-400 bg-red-500/15 border-red-500/30',
+   438→    incident: 'text-amber-400 bg-amber-500/15 border-amber-500/30',
+   439→    rule: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
+   440→  }
+   441→
+   442→  return (
+   443→    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+   444→      <div className="mb-3 flex items-center justify-between">
+   445→        <h3 className="text-sm font-medium text-zinc-400">Recent Activity</h3>
+   446→        <Clock className="h-4 w-4 text-zinc-600" />
+   447→      </div>
+   448→      <ScrollArea className="max-h-64">
+   449→        <div className="relative pl-6">
+   450→          {/* Timeline line */}
+   451→          <div className="absolute left-[9px] top-1 bottom-1 w-px bg-zinc-800" />
+   452→          <div className="space-y-3">
+   453→            {events.map((evt) => (
+   454→              <div key={evt.id} className="relative">
+   455→                {/* Dot */}
+   456→                <div className={cn(
+   457→                  'absolute -left-6 top-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border',
+   458→                  colorMap[evt.type]
+   459→                )}>
+   460→                  {iconMap[evt.type]}
+   461→                </div>
+   462→                <div className="group cursor-pointer rounded-lg p-1.5 transition-colors hover:bg-zinc-800/40">
+   463→                  <p className="text-xs font-medium text-zinc-300 group-hover:text-zinc-100">{evt.title}</p>
+   464→                  <p className="mt-0.5 text-[10px] text-zinc-500">{evt.description}</p>
+   465→                  <p className="mt-0.5 text-[10px] text-zinc-600">{timeAgo(evt.timestamp)}</p>
+   466→                </div>
+   467→              </div>
+   468→            ))}
+   469→          </div>
+   470→        </div>
+   471→      </ScrollArea>
+   472→    </div>
+   473→  )
+   474→}
+   475→
+   476→// ===== Mini Sparkline Component =====
+   477→
+   478→function MiniSparkline({
+   479→  data,
+   480→  color = '#10b981',
+   481→  height = 28,
+   482→  width = 60,
+   483→}: {
+   484→  data: number[]
+   485→  color?: string
+   486→  height?: number
+   487→  width?: number
+   488→}) {
+   489→  if (data.length < 2) return null
+   490→
+   491→  const max = Math.max(...data, 1)
+   492→  const min = Math.min(...data, 0)
+   493→  const range = max - min || 1
+   494→
+   495→  const points = data
+   496→    .map((v, i) => {
+   497→      const x = (i / (data.length - 1)) * width
+   498→      const y = height - ((v - min) / range) * (height - 4) - 2
+   499→      return `${x},${y}`
+   500→    })
+   501→    .join(' ')
+   502→
+   503→  return (
+   504→    <svg width={width} height={height} className="opacity-60">
+   505→      <polyline fill="none" stroke={color} strokeWidth={1.5} points={points} />
+   506→    </svg>
+   507→  )
+   508→}
+   509→
+   510→// ===== Incident Summary Type =====
+   511→
+   512→interface IncidentSummaryItem {
+   513→  id: string
+   514→  title: string
+   515→  severity: Severity
+   516→  status: string
+   517→  priority: string
+   518→  alertCount: number
+   519→  assignee: string | null
+   520→}
+   521→
+   522→// ===== Gradient Card Wrapper =====
+   523→
+   524→function GradientCard({
+   525→  children,
+   526→  gradientFrom,
+   527→  gradientTo,
+   528→  borderColor,
+   529→  className,
+   530→}: {
+   531→  children: React.ReactNode
+   532→  gradientFrom: string
+   533→  gradientTo: string
+   534→  borderColor: string
+   535→  className?: string
+   536→}) {
+   537→  return (
+   538→    <div
+   539→      className={cn(
+   540→        'siem-gradient-hover siem-edge-glow relative overflow-hidden rounded-xl p-[1px] transition-transform duration-200 hover:-translate-y-0.5',
+   541→        className
+   542→      )}
+   543→      style={{
+   544→        background: `linear-gradient(135deg, ${borderColor}, ${borderColor}33, ${borderColor}11)`,
+   545→        // Expose the metric color to the .siem-edge-glow ::after rule
+   546→        ['--siem-edge-color' as string]: borderColor,
+   547→      }}
+   548→    >
+   549→      <div
+   550→        className="relative z-[2] rounded-[11px] p-4"
+   551→        style={{
+   552→          background: `linear-gradient(135deg, ${gradientFrom}, ${gradientTo})`,
+   553→        }}
+   554→      >
+   555→        {children}
+   556→      </div>
+   557→    </div>
+   558→  )
+   559→}
+   560→
+   561→// ===== Dashboard View =====
+   562→
+   563→export function DashboardView() {
+   564→  const [data, setData] = useState<DashboardSummary | null>(null)
+   565→  const [incidents, setIncidents] = useState<IncidentSummaryItem[]>([])
+   566→  const [loading, setLoading] = useState(true)
+   567→  const [error, setError] = useState<string | null>(null)
+   568→  const [expandedAlert, setExpandedAlert] = useState<string | null>(null)
+   569→  const [reportDialogOpen, setReportDialogOpen] = useState(false)
+   570→  const { setActiveView, setAlertDetailId, setIncidentDetailId, systemHealth, wsConnected } =
+   571→    useSIEMStore()
+   572→
+   573→  // Animated counter values
+   574→  const animatedTotal = useAnimatedCounter(
+   575→    data ? Object.values(data.alertsBySeverity).reduce((a, b) => a + b, 0) : 0,
+   576→    1200,
+   577→    !!data
+   578→  )
+   579→  const animatedIncidents = useAnimatedCounter(
+   580→    data ? Object.entries(data.incidentsByStatus).filter(([k]) => k !== 'closed').reduce((a, [, v]) => a + v, 0) : 0,
+   581→    1000,
+   582→    !!data
+   583→  )
+   584→  const animatedCompliance = useAnimatedCounter(
+   585→    data?.compliance.score ?? 0,
+   586→    1400,
+   587→    !!data
+   588→  )
+   589→
+   590→  // ===== Fetch dashboard data =====
+   591→  const fetchDashboard = useCallback(async () => {
+   592→    try {
+   593→      const res = await fetch('/api/dashboard')
+   594→      if (res.ok) {
+   595→        const json = await res.json()
+   596→        setData(json)
+   597→        setError(null)
+   598→      } else {
+   599→        setError('Failed to load dashboard data')
+   600→      }
+   601→    } catch {
+   602→      setError('Network error')
+   603→    } finally {
+   604→      setLoading(false)
+   605→    }
+   606→  }, [])
+   607→
+   608→  // ===== Fetch active incidents =====
+   609→  const fetchIncidents = useCallback(async () => {
+   610→    try {
+   611→      const res = await fetch('/api/incidents?pageSize=5&status=open,investigating,contained')
+   612→      if (res.ok) {
+   613→        const json = await res.json()
+   614→        const mapped: IncidentSummaryItem[] = (json.data || []).map(
+   615→          (inc: Record<string, unknown>) => ({
+   616→            id: inc.id as string,
+   617→            title: inc.title as string,
+   618→            severity: inc.severity as Severity,
+   619→            status: inc.status as string,
+   620→            priority: inc.priority as string,
+   621→            alertCount: (inc._count as Record<string, number>)?.alerts ?? 0,
+   622→            assignee:
+   623→              Array.isArray(inc.assignments) && inc.assignments.length > 0
+   624→                ? ((inc.assignments as Array<Record<string, unknown>>)[0]?.user as Record<string, unknown>)?.name as string | null
+   625→                : null,
+   626→          })
+   627→        )
+   628→        setIncidents(mapped)
+   629→      }
+   630→    } catch {
+   631→      // non-critical
+   632→    }
+   633→  }, [])
+   634→
+   635→  useEffect(() => {
+   636→    fetchDashboard()
+   637→    fetchIncidents()
+   638→    const interval = setInterval(() => {
+   639→      fetchDashboard()
+   640→      fetchIncidents()
+   641→    }, 30000)
+   642→    return () => clearInterval(interval)
+   643→  }, [fetchDashboard, fetchIncidents])
+   644→
+   645→  // ===== Derived Data =====
+   646→
+   647→  const totalAlerts = useMemo(
+   648→    () => (data ? Object.values(data.alertsBySeverity).reduce((a, b) => a + b, 0) : 0),
+   649→    [data]
+   650→  )
+   651→
+   652→  const activeIncidentCount = useMemo(() => {
+   653→    if (!data) return 0
+   654→    return Object.entries(data.incidentsByStatus)
+   655→      .filter(([k]) => k !== 'closed')
+   656→      .reduce((a, [, v]) => a + v, 0)
+   657→  }, [data])
+   658→
+   659→  const severityDistribution = useMemo(() => {
+   660→    if (!data) return []
+   661→    return Object.entries(data.alertsBySeverity)
+   662→      .filter(([, v]) => v > 0)
+   663→      .map(([name, value]) => ({ name, value }))
+   664→  }, [data])
+   665→
+   666→  const topSourceIps = useMemo(() => {
+   667→    if (!data) return []
+   668→    const ipCounts: Record<string, number> = {}
+   669→    data.recentAlerts.filter((a) => a.sourceIp).forEach((a) => {
+   670→      ipCounts[a.sourceIp!] = (ipCounts[a.sourceIp!] || 0) + 1
+   671→    })
+   672→    return Object.entries(ipCounts)
+   673→      .sort((a, b) => b[1] - a[1])
+   674→      .slice(0, 5)
+   675→      .map(([ip, count]) => ({ ip, count }))
+   676→  }, [data])
+   677→
+   678→  const trendSparkline = useMemo(() => {
+   679→    if (!data) return []
+   680→    return data.alertTrend.map((d) => d.total)
+   681→  }, [data])
+   682→
+   683→  const incidentSparkline = useMemo(() => {
+   684→    if (!data) return []
+   685→    return data.alertTrend.map((d) => d.critical + d.high)
+   686→  }, [data])
+   687→
+   688→  // Calculate trend percentage (compare last day vs first day)
+   689→  const alertTrendPct = useMemo(() => {
+   690→    if (!data || data.alertTrend.length < 2) return 0
+   691→    const first = data.alertTrend[0].total
+   692→    const last = data.alertTrend[data.alertTrend.length - 1].total
+   693→    if (first === 0) return last > 0 ? 100 : 0
+   694→    return Math.round(((last - first) / first) * 100)
+   695→  }, [data])
+   696→
+   697→  const healthStatus = useMemo(() => {
+   698→    if (!systemHealth) return { label: 'Unknown', color: 'text-zinc-400' }
+   699→    const { cpu, memory, disk } = systemHealth
+   700→    const max = Math.max(cpu, memory, disk)
+   701→    if (max > 90) return { label: 'Critical', color: 'text-red-400' }
+   702→    if (max > 70) return { label: 'Degraded', color: 'text-amber-400' }
+   703→    return { label: 'Healthy', color: 'text-emerald-400' }
+   704→  }, [systemHealth])
+   705→
+   706→  // Security score components
+   707→  const alertResolution = useMemo(() => {
+   708→    if (!data || totalAlerts === 0) return 75
+   709→    const resolved = (data.alertsBySeverity.informational || 0) + (data.alertsBySeverity.low || 0)
+   710→    return Math.min(100, Math.round((resolved / totalAlerts) * 100) + 20)
+   711→  }, [data, totalAlerts])
+   712→
+   713→  const assetHealth = useMemo(() => {
+   714→    if (!systemHealth) return 85
+   715→    const avg = (systemHealth.cpu + systemHealth.memory + systemHealth.disk) / 3
+   716→    return Math.max(0, Math.round(100 - avg))
+   717→  }, [systemHealth])
+   718→
+   719→  const ruleCoverage = useMemo(() => {
+   720→    if (!data) return 70
+   721→    const activeTactics = new Set<string>()
+   722→    data.recentAlerts.forEach(a => { if (a.category) activeTactics.add(a.category) })
+   723→    return Math.min(100, 50 + activeTactics.size * 8)
+   724→  }, [data])
+   725→
+   726→  // Active MITRE tactics from alert data
+   727→  const activeMitreTactics = useMemo(() => {
+   728→    if (!data) return new Set<string>()
+   729→    const tactics = new Set<string>()
+   730→    const categoryToTactic: Record<string, string> = {
+   731→      authentication: 'Credential Access',
+   732→      malware: 'Execution',
+   733→      network: 'Initial Access',
+   734→      'lateral movement': 'Lateral Movement',
+   735→      exfiltration: 'Exfiltration',
+   736→      escalation: 'Privilege Escalation',
+   737→      reconnaissance: 'Discovery',
+   738→      persistence: 'Persistence',
+   739→      evasion: 'Defense Evasion',
+   740→      impact: 'Impact',
+   741→      'command and control': 'Command & Control',
+   742→      'initial access': 'Initial Access',
+   743→      collection: 'Collection',
+   744→    }
+   745→    data.recentAlerts.forEach((a) => {
+   746→      if (a.category) {
+   747→        const cat = a.category.toLowerCase()
+   748→        Object.entries(categoryToTactic).forEach(([key, tactic]) => {
+   749→          if (cat.includes(key)) tactics.add(tactic)
+   750→        })
+   751→      }
+   752→    })
+   753→    if (totalAlerts > 0 && tactics.size < 3) {
+   754→      tactics.add('Initial Access')
+   755→      tactics.add('Defense Evasion')
+   756→      tactics.add('Discovery')
+   757→    }
+   758→    return tactics
+   759→  }, [data, totalAlerts])
+   760→
+   761→  // ===== Alert Quick Actions =====
+   762→
+   763→  const handleAcknowledge = useCallback(async (alertId: string, e: React.MouseEvent) => {
+   764→    e.stopPropagation()
+   765→    try {
+   766→      await fetch(`/api/alerts/${alertId}`, {
+   767→        method: 'PATCH',
+   768→        headers: { 'Content-Type': 'application/json' },
+   769→        body: JSON.stringify({ status: 'acknowledged' }),
+   770→      })
+   771→      fetchDashboard()
+   772→    } catch {
+   773→      // ignore
+   774→    }
+   775→  }, [fetchDashboard])
+   776→
+   777→  const handleEscalate = useCallback(async (alertId: string, e: React.MouseEvent) => {
+   778→    e.stopPropagation()
+   779→    try {
+   780→      await fetch(`/api/alerts/${alertId}/escalate`, { method: 'POST' })
+   781→      fetchDashboard()
+   782→    } catch {
+   783→      // ignore
+   784→    }
+   785→  }, [fetchDashboard])
+   786→
+   787→  // ===== Quick Stats =====
+   788→  const quickStats = useMemo(() => [
+   789→    {
+   790→      label: 'Alerts/hr',
+   791→      value: totalAlerts > 0 ? Math.round(totalAlerts / 24) : 0,
+   792→      icon: Gauge,
+   793→      color: 'text-red-400',
+   794→    },
+   795→    {
+   796→      label: 'MTTA',
+   797→      value: '4.2m',
+   798→      icon: Timer,
+   799→      color: 'text-amber-400',
+   800→    },
+   801→    {
+   802→      label: 'MTTR',
+   803→      value: '28m',
+   804→      icon: TimerReset,
+   805→      color: 'text-emerald-400',
+   806→    },
+   807→    {
+   808→      label: 'Rules Active',
+   809→      value: 11,
+   810→      icon: Zap,
+   811→      color: 'text-cyan-400',
+   812→    },
+   813→  ], [totalAlerts])
+   814→
+   815→  // ===== Loading Skeleton =====
+   816→
+   817→  if (loading) {
+   818→    return (
+   819→      <div className="space-y-4 p-4">
+   820→        {/* Threat banner skeleton */}
+   821→        <Skeleton className="h-12 rounded-xl" />
+   822→        {/* Metric cards skeleton */}
+   823→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+   824→          {[1, 2, 3, 4, 5].map((i) => (
+   825→            <div key={i} className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+   826→              <div className="flex items-center justify-between">
+   827→                <div className="space-y-2">
+   828→                  <Skeleton className="h-3 w-20" />
+   829→                  <Skeleton className="h-7 w-16" />
+   830→                </div>
+   831→                <Skeleton className="h-10 w-10 rounded-lg" />
+   832→              </div>
+   833→              <Skeleton className="mt-3 h-1.5 w-full rounded-full" />
+   834→            </div>
+   835→          ))}
+   836→        </div>
+   837→        {/* Quick stats skeleton */}
+   838→        <div className="grid grid-cols-4 gap-3">
+   839→          {[1, 2, 3, 4].map((i) => (
+   840→            <Skeleton key={i} className="h-16 rounded-lg" />
+   841→          ))}
+   842→        </div>
+   843→        {/* Charts skeleton */}
+   844→        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+   845→          <div className="lg:col-span-2">
+   846→            <Skeleton className="h-72 rounded-xl" />
+   847→          </div>
+   848→          <Skeleton className="h-72 rounded-xl" />
+   849→        </div>
+   850→      </div>
+   851→    )
+   852→  }
+   853→
+   854→  // ===== Error State =====
+   855→
+   856→  if (error && !data) {
+   857→    return (
+   858→      <div className="flex h-full items-center justify-center p-4">
+   859→        <div className="rounded-xl border border-red-800/50 bg-red-900/20 p-8 text-center">
+   860→          <AlertTriangle className="mx-auto h-10 w-10 text-red-400" />
+   861→          <p className="mt-3 text-sm text-red-300">{error}</p>
+   862→          <Button
+   863→            variant="outline"
+   864→            size="sm"
+   865→            className="mt-4 border-red-500/30 text-red-400 hover:bg-red-500/10"
+   866→            onClick={() => {
+   867→              setLoading(true)
+   868→              setError(null)
+   869→              fetchDashboard()
+   870→            }}
+   871→          >
+   872→            Retry
+   873→          </Button>
+   874→        </div>
+   875→      </div>
+   876→    )
+   877→  }
+   878→
+   879→  if (!data) return null
+   880→
+   881→  // ===== Chart Tooltip Style =====
+   882→
+   883→  const tooltipStyle = {
+   884→    backgroundColor: 'rgba(24, 24, 27, 0.95)',
+   885→    border: '1px solid rgba(63, 63, 70, 0.8)',
+   886→    borderRadius: 8,
+   887→    fontSize: 12,
+   888→    color: '#e4e4e7',
+   889→  }
+   890→
+   891→  return (
+   892→    <motion.div variants={container} initial="hidden" animate="show" className="space-y-4 p-4">
+   893→      {/* ================================================================ */}
+   894→      {/* HEADER: Threat Level Banner + Report Generator Button           */}
+   895→      {/* ================================================================ */}
+   896→      <motion.div variants={item}>
+   897→        <div className="flex items-center gap-3">
+   898→          <div className="flex-1">
+   899→            <ThreatLevelBanner
+   900→              criticalCount={data.alertsBySeverity.critical || 0}
+   901→              highCount={data.alertsBySeverity.high || 0}
+   902→              totalCount={totalAlerts}
+   903→            />
+   904→          </div>
+   905→          <Button
+   906→            variant="outline"
+   907→            size="sm"
+   908→            className="gap-1.5 border-zinc-700 bg-zinc-900/50 text-xs text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/30"
+   909→            onClick={() => setReportDialogOpen(true)}
+   910→          >
+   911→            <FileText className="h-3.5 w-3.5" />
+   912→            Reports
+   913→          </Button>
+   914→        </div>
+   915→      </motion.div>
+   916→
+   917→      {/* ================================================================ */}
+   918→      {/* ROW 1: Key Metrics Cards + Security Score Gauge                 */}
+   919→      {/* ================================================================ */}
+   920→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+   921→        {/* Security Score Gauge */}
+   922→        <motion.div variants={item} className="sm:col-span-2 lg:col-span-1">
+   923→          <div className="siem-card-glow flex h-full items-center justify-center rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900/80 to-zinc-800/40 p-4">
+   924→            <SecurityScoreGauge
+   925→              compliance={data.compliance.score}
+   926→              alertResolution={alertResolution}
+   927→              assetHealth={assetHealth}
+   928→              ruleCoverage={ruleCoverage}
+   929→            />
+   930→          </div>
+   931→        </motion.div>
+   932→
+   933→        {/* Critical Alerts - Dark Red Gradient */}
+   934→        <motion.div variants={item}>
+   935→          <GradientCard
+   936→            gradientFrom="rgba(24,24,27,0.9)"
+   937→            gradientTo="rgba(39,12,12,0.7)"
+   938→            borderColor="#991b1b"
+   939→          >
+   940→            <div className="flex items-center justify-between">
+   941→              <div>
+   942→                <p className="text-sm font-medium text-zinc-400">Critical Alerts</p>
+   943→                <p className="mt-1 text-2xl font-bold text-zinc-100 siem-number-animate">{animatedTotal.toLocaleString()}</p>
+   944→              </div>
+   945→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
+   946→                <Bell className="h-5 w-5 text-red-400" />
+   947→              </div>
+   948→            </div>
+   949→            {/* Mini stacked bar by severity */}
+   950→            <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-zinc-800">
+   951→              {totalAlerts > 0 &&
+   952→                (['critical', 'high', 'medium', 'low', 'informational'] as Severity[]).map(
+   953→                  (sev) => {
+   954→                    const count = data.alertsBySeverity[sev] || 0
+   955→                    return (
+   956→                      count > 0 && (
+   957→                        <div
+   958→                          key={sev}
+   959→                          className="h-full transition-all duration-500"
+   960→                          style={{
+   961→                            width: `${(count / totalAlerts) * 100}%`,
+   962→                            backgroundColor: severityColors[sev],
+   963→                          }}
+   964→                        />
+   965→                      )
+   966→                    )
+   967→                  }
+   968→                )}
+   969→            </div>
+   970→            {/* Trend + sparkline */}
+   971→            <div className="mt-2 flex items-center justify-between">
+   972→              <div className="flex items-center gap-1 text-xs">
+   973→                {alertTrendPct >= 0 ? (
+   974→                  <>
+   975→                    <ArrowUpRight className="h-3 w-3 text-red-400" />
+   976→                    <span className="text-red-400">{Math.abs(alertTrendPct)}%</span>
+   977→                  </>
+   978→                ) : (
+   979→                  <>
+   980→                    <ArrowDownRight className="h-3 w-3 text-emerald-400" />
+   981→                    <span className="text-emerald-400">{Math.abs(alertTrendPct)}%</span>
+   982→                  </>
+   983→                )}
+   984→                <span className="text-zinc-500">vs 7d ago</span>
+   985→              </div>
+   986→              <MiniSparkline data={trendSparkline} color={alertTrendPct >= 0 ? '#ef4444' : '#10b981'} />
+   987→            </div>
+   988→          </GradientCard>
+   989→        </motion.div>
+   990→
+   991→        {/* Active Incidents - Dark Amber Gradient */}
+   992→        <motion.div variants={item}>
+   993→          <GradientCard
+   994→            gradientFrom="rgba(24,24,27,0.9)"
+   995→            gradientTo="rgba(39,28,8,0.7)"
+   996→            borderColor="#92400e"
+   997→          >
+   998→            <div className="flex items-center justify-between">
+   999→              <div>
+  1000→                <p className="text-sm font-medium text-zinc-400">Active Incidents</p>
+  1001→                <p className="mt-1 text-2xl font-bold text-zinc-100 siem-number-animate">{animatedIncidents}</p>
+  1002→              </div>
+  1003→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
+  1004→                <ShieldAlert className="h-5 w-5 text-amber-400" />
+  1005→              </div>
+  1006→            </div>
+  1007→            {/* Priority breakdown */}
+  1008→            <div className="mt-3 flex items-center gap-2">
+  1009→              {Object.entries(data.incidentsByStatus).map(([status, count]) => {
+  1010→                const statusColors: Record<string, string> = {
+  1011→                  open: 'bg-red-500/15 text-red-400',
+  1012→                  investigating: 'bg-amber-500/15 text-amber-400',
+  1013→                  contained: 'bg-cyan-500/15 text-cyan-400',
+  1014→                  eradicated: 'bg-purple-500/15 text-purple-400',
+  1015→                  recovered: 'bg-emerald-500/15 text-emerald-400',
+  1016→                  closed: 'bg-zinc-500/15 text-zinc-400',
+  1017→                }
+  1018→                return (
+  1019→                  <span
+  1020→                    key={status}
+  1021→                    className={cn(
+  1022→                      'inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium',
+  1023→                      statusColors[status] || 'bg-zinc-500/15 text-zinc-400'
+  1024→                    )}
+  1025→                  >
+  1026→                    {status} {count}
+  1027→                  </span>
+  1028→                )
+  1029→              })}
+  1030→            </div>
+  1031→            <div className="mt-2 flex items-center justify-end">
+  1032→              <MiniSparkline data={incidentSparkline} color="#f97316" />
+  1033→            </div>
+  1034→          </GradientCard>
+  1035→        </motion.div>
+  1036→
+  1037→        {/* Compliance Score - Dark Emerald Gradient */}
+  1038→        <motion.div variants={item}>
+  1039→          <GradientCard
+  1040→            gradientFrom="rgba(24,24,27,0.9)"
+  1041→            gradientTo="rgba(8,39,20,0.7)"
+  1042→            borderColor="#065f46"
+  1043→          >
+  1044→            <div className="flex items-center justify-between">
+  1045→              <div>
+  1046→                <p className="text-sm font-medium text-zinc-400">Compliance Score</p>
+  1047→                <p className="mt-1 text-2xl font-bold text-zinc-100 siem-number-animate">{animatedCompliance}%</p>
+  1048→              </div>
+  1049→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+  1050→                <ClipboardCheck className="h-5 w-5 text-emerald-400" />
+  1051→              </div>
+  1052→            </div>
+  1053→            {/* Circular progress */}
+  1054→            <div className="mt-2 flex items-center gap-3">
+  1055→              <CircularProgress value={data.compliance.score} size={36} strokeWidth={4} />
+  1056→              <div className="text-[10px] text-zinc-500">
+  1057→                <div>
+  1058→                  {data.compliance.compliantControls}/{data.compliance.totalControls} compliant
+  1059→                </div>
+  1060→                <div>{data.compliance.partiallyCompliantControls} partial</div>
+  1061→              </div>
+  1062→            </div>
+  1063→          </GradientCard>
+  1064→        </motion.div>
+  1065→
+  1066→        {/* System Health - Dark Cyan Gradient */}
+  1067→        <motion.div variants={item}>
+  1068→          <GradientCard
+  1069→            gradientFrom="rgba(24,24,27,0.9)"
+  1070→            gradientTo="rgba(8,28,39,0.7)"
+  1071→            borderColor="#155e75"
+  1072→          >
+  1073→            <div className="flex items-center justify-between">
+  1074→              <div>
+  1075→                <p className="text-sm font-medium text-zinc-400">System Health</p>
+  1076→                <div className="mt-1 flex items-center gap-2">
+  1077→                  <span
+  1078→                    className={cn(
+  1079→                      'inline-block h-2 w-2 rounded-full',
+  1080→                      healthStatus.label === 'Healthy'
+  1081→                        ? 'bg-emerald-400 animate-pulse'
+  1082→                        : healthStatus.label === 'Degraded'
+  1083→                          ? 'bg-amber-400'
+  1084→                          : 'bg-red-400'
+  1085→                    )}
+  1086→                  />
+  1087→                  <span className={cn('text-lg font-bold', healthStatus.color)}>
+  1088→                    {healthStatus.label}
+  1089→                  </span>
+  1090→                </div>
+  1091→              </div>
+  1092→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/10">
+  1093→                <Activity className="h-5 w-5 text-cyan-400" />
+  1094→              </div>
+  1095→            </div>
+  1096→            {/* Metrics */}
+  1097→            {systemHealth ? (
+  1098→              <div className="mt-3 grid grid-cols-4 gap-2 text-[10px]">
+  1099→                <div>
+  1100→                  <span className="text-zinc-500">CPU</span>
+  1101→                  <div className={cn('font-medium', systemHealth.cpu > 80 ? 'text-red-400' : 'text-zinc-300')}>
+  1102→                    {systemHealth.cpu}%
+  1103→                  </div>
+  1104→                </div>
+  1105→                <div>
+  1106→                  <span className="text-zinc-500">MEM</span>
+  1107→                  <div className={cn('font-medium', systemHealth.memory > 80 ? 'text-red-400' : 'text-zinc-300')}>
+  1108→                    {systemHealth.memory}%
+  1109→                  </div>
+  1110→                </div>
+  1111→                <div>
+  1112→                  <span className="text-zinc-500">DISK</span>
+  1113→                  <div className={cn('font-medium', systemHealth.disk > 80 ? 'text-red-400' : 'text-zinc-300')}>
+  1114→                    {systemHealth.disk}%
+  1115→                  </div>
+  1116→                </div>
+  1117→                <div>
+  1118→                  <span className="text-zinc-500">EPS</span>
+  1119→                  <div className="font-medium text-zinc-300">{systemHealth.eventRate}</div>
+  1120→                </div>
+  1121→              </div>
+  1122→            ) : (
+  1123→              <div className="mt-3 flex items-center gap-1.5 text-[10px] text-zinc-500">
+  1124→                {wsConnected ? (
+  1125→                  <>
+  1126→                    <Loader2 className="h-3 w-3 animate-spin" />
+  1127→                    <span>Awaiting metrics...</span>
+  1128→                  </>
+  1129→                ) : (
+  1130→                  <>
+  1131→                    <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
+  1132→                    <span>WS disconnected - showing cached data</span>
+  1133→                  </>
+  1134→                )}
+  1135→              </div>
+  1136→            )}
+  1137→          </GradientCard>
+  1138→        </motion.div>
+  1139→      </div>
+  1140→
+  1141→      {/* ================================================================ */}
+  1142→      {/* QUICK STATS ROW                                                  */}
+  1143→      {/* ================================================================ */}
+  1144→      <motion.div variants={item}>
+  1145→        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+  1146→          {quickStats.map((stat) => (
+  1147→            <div
+  1148→              key={stat.label}
+  1149→              className="siem-card-glow flex items-center gap-3 rounded-lg border border-zinc-800 bg-gradient-to-br from-zinc-900/60 to-zinc-800/30 px-3 py-2.5"
+  1150→            >
+  1151→              <stat.icon className={cn('h-4 w-4 shrink-0', stat.color)} />
+  1152→              <div>
+  1153→                <p className="text-[10px] text-zinc-500">{stat.label}</p>
+  1154→                <p className="text-sm font-bold text-zinc-200 siem-number-animate">{stat.value}</p>
+  1155→              </div>
+  1156→            </div>
+  1157→          ))}
+  1158→        </div>
+  1159→      </motion.div>
+  1160→
+  1161→      {/* ================================================================ */}
+  1162→      {/* SYSTEM DIAGNOSTICS                                               */}
+  1163→      {/* ================================================================ */}
+  1164→      <motion.div variants={item} className="siem-gradient-border">
+  1165→        <SystemDiagnostics />
+  1166→      </motion.div>
+  1167→
+  1168→      {/* ================================================================ */}
+  1169→      {/* ALERT TIMELINE                                                   */}
+  1170→      {/* ================================================================ */}
+  1171→      <motion.div variants={item}>
+  1172→        <AlertTimeline />
+  1173→      </motion.div>
+  1174→
+  1175→      {/* ================================================================ */}
+  1176→      {/* ROW 2: Charts — Alert Trend + Severity Distribution             */}
+  1177→      {/* ================================================================ */}
+  1178→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+  1179→        {/* Alert Trend Area Chart (wider) */}
+  1180→        <motion.div variants={item} className="lg:col-span-2">
+  1181→          <div className="rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900/80 to-zinc-800/40 p-4 siem-card-glow">
+  1182→            <div className="mb-3 flex items-center justify-between">
+  1183→              <h3 className="text-sm font-medium text-zinc-400">Alert Trend (7 Days)</h3>
+  1184→              <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+  1185→                {(['critical', 'high', 'medium', 'low', 'informational'] as Severity[]).map(
+  1186→                  (sev) => (
+  1187→                    <span key={sev} className="flex items-center gap-1">
+  1188→                      <span
+  1189→                        className="h-2 w-2 rounded-full"
+  1190→                        style={{ backgroundColor: severityColors[sev] }}
+  1191→                      />
+  1192→                      {sev === 'informational' ? 'info' : sev}
+  1193→                    </span>
+  1194→                  )
+  1195→                )}
+  1196→              </div>
+  1197→            </div>
+  1198→            <ResponsiveContainer width="100%" height={240}>
+  1199→              <AreaChart data={data.alertTrend}>
+  1200→                <defs>
+  1201→                  {(['critical', 'high', 'medium', 'low', 'informational'] as Severity[]).map(
+  1202→                    (sev) => (
+  1203→                      <linearGradient key={sev} id={`grad-${sev}`} x1="0" y1="0" x2="0" y2="1">
+  1204→                        <stop offset="5%" stopColor={severityFills[sev]} stopOpacity={0.3} />
+  1205→                        <stop offset="95%" stopColor={severityFills[sev]} stopOpacity={0.02} />
+  1206→                      </linearGradient>
+  1207→                    )
+  1208→                  )}
+  1209→                </defs>
+  1210→                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+  1211→                <XAxis
+  1212→                  dataKey="date"
+  1213→                  tick={{ fontSize: 10, fill: '#71717a' }}
+  1214→                  tickFormatter={formatTrendDate}
+  1215→                  axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
+  1216→                  tickLine={false}
+  1217→                />
+  1218→                <YAxis
+  1219→                  tick={{ fontSize: 10, fill: '#71717a' }}
+  1220→                  axisLine={false}
+  1221→                  tickLine={false}
+  1222→                />
+  1223→                <RechartsTooltip contentStyle={tooltipStyle} labelFormatter={formatTrendDate} />
+  1224→                <Area
+  1225→                  type="monotone"
+  1226→                  dataKey="critical"
+  1227→                  stackId="1"
+  1228→                  stroke={severityColors.critical}
+  1229→                  fill={`url(#grad-critical)`}
+  1230→                  strokeWidth={2}
+  1231→                />
+  1232→                <Area
+  1233→                  type="monotone"
+  1234→                  dataKey="high"
+  1235→                  stackId="1"
+  1236→                  stroke={severityColors.high}
+  1237→                  fill={`url(#grad-high)`}
+  1238→                  strokeWidth={2}
+  1239→                />
+  1240→                <Area
+  1241→                  type="monotone"
+  1242→                  dataKey="medium"
+  1243→                  stackId="1"
+  1244→                  stroke={severityColors.medium}
+  1245→                  fill={`url(#grad-medium)`}
+  1246→                  strokeWidth={2}
+  1247→                />
+  1248→                <Area
+  1249→                  type="monotone"
+  1250→                  dataKey="low"
+  1251→                  stackId="1"
+  1252→                  stroke={severityColors.low}
+  1253→                  fill={`url(#grad-low)`}
+  1254→                  strokeWidth={1.5}
+  1255→                />
+  1256→                <Area
+  1257→                  type="monotone"
+  1258→                  dataKey="informational"
+  1259→                  stackId="1"
+  1260→                  stroke={severityColors.informational}
+  1261→                  fill={`url(#grad-informational)`}
+  1262→                  strokeWidth={1}
+  1263→                  strokeDasharray="4 2"
+  1264→                />
+  1265→              </AreaChart>
+  1266→            </ResponsiveContainer>
+  1267→          </div>
+  1268→        </motion.div>
+  1269→
+  1270→        {/* Severity Distribution Donut */}
+  1271→        <motion.div variants={item}>
+  1272→          <div className="rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900/80 to-zinc-800/40 p-4 siem-card-glow">
+  1273→            <h3 className="mb-3 text-sm font-medium text-zinc-400">Severity Distribution</h3>
+  1274→            <div className="relative">
+  1275→              <ResponsiveContainer width="100%" height={200}>
+  1276→                <PieChart>
+  1277→                  <Pie
+  1278→                    data={severityDistribution}
+  1279→                    cx="50%"
+  1280→                    cy="50%"
+  1281→                    innerRadius={55}
+  1282→                    outerRadius={80}
+  1283→                    paddingAngle={3}
+  1284→                    dataKey="value"
+  1285→                    strokeWidth={0}
+  1286→                  >
+  1287→                    {severityDistribution.map((entry) => (
+  1288→                      <Cell
+  1289→                        key={entry.name}
+  1290→                        fill={severityColors[entry.name] || '#6b7280'}
+  1291→                      />
+  1292→                    ))}
+  1293→                  </Pie>
+  1294→                  <RechartsTooltip contentStyle={tooltipStyle} />
+  1295→                </PieChart>
+  1296→              </ResponsiveContainer>
+  1297→              {/* Center total count */}
+  1298→              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+  1299→                <div className="text-center">
+  1300→                  <p className="text-xl font-bold text-zinc-100">{totalAlerts}</p>
+  1301→                  <p className="text-[10px] text-zinc-500">alerts</p>
+  1302→                </div>
+  1303→              </div>
+  1304→            </div>
+  1305→            {/* Legend */}
+  1306→            <div className="mt-2 flex flex-wrap justify-center gap-3 text-[10px]">
+  1307→              {severityDistribution.map((d) => (
+  1308→                <span key={d.name} className="flex items-center gap-1.5">
+  1309→                  <span
+  1310→                    className="h-2 w-2 rounded-full"
+  1311→                    style={{ backgroundColor: severityColors[d.name] }}
+  1312→                  />
+  1313→                  <span className="text-zinc-400 capitalize">
+  1314→                    {d.name === 'informational' ? 'Info' : d.name}: {d.value}
+  1315→                  </span>
+  1316→                </span>
+  1317→              ))}
+  1318→            </div>
+  1319→          </div>
+  1320→        </motion.div>
+  1321→      </div>
+  1322→
+  1323→      {/* ================================================================ */}
+  1324→      {/* ROW 3: Recent Alerts (hover expand) + Activity Timeline          */}
+  1325→      {/* ================================================================ */}
+  1326→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+  1327→        {/* Recent Alerts Table with hover expand */}
+  1328→        <motion.div variants={item}>
+  1329→          <div className="rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900/80 to-zinc-800/40 p-4 siem-card-glow">
+  1330→            <div className="mb-3 flex items-center justify-between">
+  1331→              <h3 className="text-sm font-medium text-zinc-400">Recent Alerts</h3>
+  1332→              <Button
+  1333→                variant="ghost"
+  1334→                size="sm"
+  1335→                className="gap-1 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+  1336→                onClick={() => setActiveView('alerts')}
+  1337→              >
+  1338→                View All <ArrowUpRight className="h-3 w-3" />
+  1339→              </Button>
+  1340→            </div>
+  1341→            <ScrollArea className="max-h-80">
+  1342→              {data.recentAlerts.length === 0 ? (
+  1343→                <div className="py-8 text-center text-sm text-zinc-500">
+  1344→                  No recent alerts in the last 24 hours
+  1345→                </div>
+  1346→              ) : (
+  1347→                <div className="space-y-1">
+  1348→                  {data.recentAlerts.map((alert) => (
+  1349→                    <motion.div
+  1350→                      key={alert.id}
+  1351→                      layout
+  1352→                      className="group cursor-pointer overflow-hidden rounded-lg transition-colors hover:bg-zinc-800/50"
+  1353→                      onClick={() => {
+  1354→                        setExpandedAlert(expandedAlert === alert.id ? null : alert.id)
+  1355→                      }}
+  1356→                    >
+  1357→                      <div className="grid grid-cols-[auto_1fr_auto_auto_auto] items-center gap-2 px-2 py-2 text-sm">
+  1358→                        {/* Severity dot */}
+  1359→                        <span
+  1360→                          className={cn(
+  1361→                            'h-2 w-2 shrink-0 rounded-full',
+  1362→                            alert.severity === 'critical'
+  1363→                              ? 'bg-red-500 siem-critical-dot'
+  1364→                              : alert.severity === 'high'
+  1365→                                ? 'bg-amber-500'
+  1366→                                : alert.severity === 'medium'
+  1367→                                  ? 'bg-yellow-500'
+  1368→                                  : alert.severity === 'low'
+  1369→                                    ? 'bg-blue-400'
+  1370→                                    : 'bg-zinc-400'
+  1371→                          )}
+  1372→                        />
+  1373→                        {/* Title */}
+  1374→                        <span className="min-w-0 truncate text-zinc-200 group-hover:text-zinc-50">
+  1375→                          {alert.title}
+  1376→                        </span>
+  1377→                        {/* Source */}
+  1378→                        <span className="hidden sm:block max-w-[60px] truncate text-[10px] text-zinc-500">
+  1379→                          {alert.source}
+  1380→                        </span>
+  1381→                        {/* Status */}
+  1382→                        <StatusBadge status={alert.status as Alert['status']} type="alert" />
+  1383→                        {/* Time */}
+  1384→                        <span className="shrink-0 text-[10px] text-zinc-500">
+  1385→                          {timeAgo(alert.createdAt)}
+  1386→                        </span>
+  1387→                      </div>
+  1388→                      {/* Expanded detail on hover/click */}
+  1389→                      <AnimatePresence>
+  1390→                        {expandedAlert === alert.id && (
+  1391→                          <motion.div
+  1392→                            initial={{ height: 0, opacity: 0 }}
+  1393→                            animate={{ height: 'auto', opacity: 1 }}
+  1394→                            exit={{ height: 0, opacity: 0 }}
+  1395→                            transition={{ duration: 0.2 }}
+  1396→                            className="overflow-hidden"
+  1397→                          >
+  1398→                            <div className="border-t border-zinc-800 px-3 py-2 text-[10px] text-zinc-500">
+  1399→                              <div className="grid grid-cols-2 gap-2">
+  1400→                                {alert.sourceIp && (
+  1401→                                  <div>
+  1402→                                    <span className="text-zinc-600">Source IP:</span>{' '}
+  1403→                                    <span className="font-mono text-zinc-400">{alert.sourceIp}</span>
+  1404→                                  </div>
+  1405→                                )}
+  1406→                                {alert.destIp && (
+  1407→                                  <div>
+  1408→                                    <span className="text-zinc-600">Dest IP:</span>{' '}
+  1409→                                    <span className="font-mono text-zinc-400">{alert.destIp}</span>
+  1410→                                  </div>
+  1411→                                )}
+  1412→                                {alert.category && (
+  1413→                                  <div>
+  1414→                                    <span className="text-zinc-600">Category:</span>{' '}
+  1415→                                    <span className="text-zinc-400">{alert.category}</span>
+  1416→                                  </div>
+  1417→                                )}
+  1418→                                <div>
+  1419→                                  <span className="text-zinc-600">Severity:</span>{' '}
+  1420→                                  <SeverityBadge severity={alert.severity as Severity} size="sm" />
+  1421→                                </div>
+  1422→                              </div>
+  1423→                              <div className="mt-2 flex gap-2">
+  1424→                                <Button
+  1425→                                  variant="ghost"
+  1426→                                  size="sm"
+  1427→                                  className="h-5 px-1.5 text-[9px] text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+  1428→                                  onClick={(e) => handleAcknowledge(alert.id, e)}
+  1429→                                >
+  1430→                                  <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" />
+  1431→                                  Acknowledge
+  1432→                                </Button>
+  1433→                                <Button
+  1434→                                  variant="ghost"
+  1435→                                  size="sm"
+  1436→                                  className="h-5 px-1.5 text-[9px] text-red-400 hover:bg-red-500/10 hover:text-red-300"
+  1437→                                  onClick={(e) => handleEscalate(alert.id, e)}
+  1438→                                >
+  1439→                                  <ArrowUpRight className="mr-0.5 h-2.5 w-2.5" />
+  1440→                                  Escalate
+  1441→                                </Button>
+  1442→                              </div>
+  1443→                            </div>
+  1444→                          </motion.div>
+  1445→                        )}
+  1446→                      </AnimatePresence>
+  1447→                    </motion.div>
+  1448→                  ))}
+  1449→                </div>
+  1450→              )}
+  1451→            </ScrollArea>
+  1452→          </div>
+  1453→        </motion.div>
+  1454→
+  1455→        {/* Activity Timeline */}
+  1456→        <motion.div variants={item}>
+  1457→          <ActivityTimeline alerts={data.recentAlerts} />
+  1458→        </motion.div>
+  1459→      </div>
+  1460→
+  1461→      {/* ================================================================ */}
+  1462→      {/* ROW 4: Active Incidents                                          */}
+  1463→      {/* ================================================================ */}
+  1464→      <motion.div variants={item}>
+  1465→        <div className="rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900/80 to-zinc-800/40 p-4 siem-card-glow">
+  1466→          <div className="mb-3 flex items-center justify-between">
+  1467→            <h3 className="text-sm font-medium text-zinc-400">Active Incidents</h3>
+  1468→            <Button
+  1469→              variant="ghost"
+  1470→              size="sm"
+  1471→              className="gap-1 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+  1472→              onClick={() => setActiveView('incidents')}
+  1473→            >
+  1474→              View All <ArrowUpRight className="h-3 w-3" />
+  1475→            </Button>
+  1476→          </div>
+  1477→          <ScrollArea className="max-h-64">
+  1478→            {incidents.length === 0 ? (
+  1479→              <div className="py-8 text-center text-sm text-zinc-500">
+  1480→                No active incidents
+  1481→              </div>
+  1482→            ) : (
+  1483→              <div className="space-y-2">
+  1484→                {incidents.map((incident) => (
+  1485→                  <div
+  1486→                    key={incident.id}
+  1487→                    className="group siem-incident-lift flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-800/30 p-3 transition-colors hover:border-zinc-700 hover:bg-zinc-800/50 cursor-pointer"
+  1488→                    onClick={() => {
+  1489→                      setIncidentDetailId(incident.id)
+  1490→                      setActiveView('incidents')
+  1491→                    }}
+  1492→                  >
+  1493→                    {/* Priority badge */}
+  1494→                    <Badge
+  1495→                      variant="outline"
+  1496→                      className={cn(
+  1497→                        'shrink-0 border-0 text-[10px] font-bold',
+  1498→                        incident.priority === 'p1'
+  1499→                          ? 'siem-priority-gradient-p1 text-red-400'
+  1500→                          : incident.priority === 'p2'
+  1501→                            ? 'siem-priority-gradient-p2 text-amber-400'
+  1502→                            : incident.priority === 'p3'
+  1503→                              ? 'siem-priority-gradient-p3 text-yellow-400'
+  1504→                              : 'siem-priority-gradient-p4 text-zinc-400'
+  1505→                      )}
+  1506→                    >
+  1507→                      {incident.priority.toUpperCase()}
+  1508→                    </Badge>
+  1509→                    {/* Content */}
+  1510→                    <div className="min-w-0 flex-1">
+  1511→                      <div className="flex items-center gap-2">
+  1512→                        <span className="truncate text-sm font-medium text-zinc-200 group-hover:text-zinc-50">
+  1513→                          {incident.title}
+  1514→                        </span>
+  1515→                        <SeverityBadge severity={incident.severity} size="sm" />
+  1516→                      </div>
+  1517→                      <div className="mt-1 flex items-center gap-3 text-[10px] text-zinc-500">
+  1518→                        <StatusBadge
+  1519→                          status={incident.status as Alert['status']}
+  1520→                          type="incident"
+  1521→                        />
+  1522→                        <span className="flex items-center gap-1">
+  1523→                          <Bell className="h-2.5 w-2.5" />
+  1524→                          {incident.alertCount} alerts
+  1525→                        </span>
+  1526→                        {incident.assignee && (
+  1527→                          <span className="flex items-center gap-1">
+  1528→                            <Eye className="h-2.5 w-2.5" />
+  1529→                            {incident.assignee}
+  1530→                          </span>
+  1531→                        )}
+  1532→                      </div>
+  1533→                    </div>
+  1534→                    {/* Chevron */}
+  1535→                    <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-zinc-600 transition-colors group-hover:text-zinc-400" />
+  1536→                  </div>
+  1537→                ))}
+  1538→              </div>
+  1539→            )}
+  1540→          </ScrollArea>
+  1541→          {/* Summary */}
+  1542→          <div className="mt-3 border-t border-zinc-800 pt-3 text-[10px] text-zinc-500">
+  1543→            {Object.entries(data.incidentsByStatus)
+  1544→              .filter(([k]) => k !== 'closed')
+  1545→              .map(([status, count]) => `${count} ${status}`)
+  1546→              .join(' · ')}
+  1547→          </div>
+  1548→        </div>
+  1549→      </motion.div>
+  1550→
+  1551→      {/* ================================================================ */}
+  1552→      {/* ROW 5: Attack Intelligence                                      */}
+  1553→      {/* ================================================================ */}
+  1554→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+  1555→        {/* Top Attack Sources */}
+  1556→        <motion.div variants={item}>
+  1557→          <div className="rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900/80 to-zinc-800/40 p-4 siem-card-glow">
+  1558→            <div className="mb-3 flex items-center justify-between">
+  1559→              <h3 className="text-sm font-medium text-zinc-400">Top Attack Sources</h3>
+  1560→              <Crosshair className="h-4 w-4 text-zinc-600" />
+  1561→            </div>
+  1562→            {topSourceIps.length === 0 ? (
+  1563→              <div className="py-8 text-center text-sm text-zinc-500">
+  1564→                No attack source data available
+  1565→              </div>
+  1566→            ) : (
+  1567→              <>
+  1568→                <ResponsiveContainer width="100%" height={180}>
+  1569→                  <BarChart
+  1570→                    data={topSourceIps}
+  1571→                    layout="vertical"
+  1572→                    margin={{ left: 0, right: 10, top: 5, bottom: 5 }}
+  1573→                  >
+  1574→                    <CartesianGrid
+  1575→                      strokeDasharray="3 3"
+  1576→                      stroke="rgba(255,255,255,0.04)"
+  1577→                      horizontal={false}
+  1578→                    />
+  1579→                    <XAxis
+  1580→                      type="number"
+  1581→                      tick={{ fontSize: 10, fill: '#71717a' }}
+  1582→                      axisLine={false}
+  1583→                      tickLine={false}
+  1584→                    />
+  1585→                    <YAxis
+  1586→                      type="category"
+  1587→                      dataKey="ip"
+  1588→                      tick={{ fontSize: 9, fill: '#a1a1aa' }}
+  1589→                      width={100}
+  1590→                      axisLine={false}
+  1591→                      tickLine={false}
+  1592→                    />
+  1593→                    <RechartsTooltip contentStyle={tooltipStyle} />
+  1594→                    <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={16}>
+  1595→                      {topSourceIps.map((entry, index) => {
+  1596→                        const colors = ['#ef4444', '#f97316', '#eab308', '#10b981', '#6b7280']
+  1597→                        return <Cell key={index} fill={colors[index % colors.length]} />
+  1598→                      })}
+  1599→                    </Bar>
+  1600→                  </BarChart>
+  1601→                </ResponsiveContainer>
+  1602→                {/* IP list below chart */}
+  1603→                <div className="mt-2 space-y-1">
+  1604→                  {topSourceIps.map((item, index) => (
+  1605→                    <div
+  1606→                      key={item.ip}
+  1607→                      className="flex items-center justify-between text-[10px]"
+  1608→                    >
+  1609→                      <span className="flex items-center gap-2">
+  1610→                        <span
+  1611→                          className="h-1.5 w-1.5 rounded-full"
+  1612→                          style={{
+  1613→                            backgroundColor:
+  1614→                              ['#ef4444', '#f97316', '#eab308', '#10b981', '#6b7280'][
+  1615→                                index % 5
+  1616→                              ],
+  1617→                          }}
+  1618→                        />
+  1619→                        <span className="font-mono text-zinc-300">{item.ip}</span>
+  1620→                      </span>
+  1621→                      <span className="text-zinc-500">{item.count} alerts</span>
+  1622→                    </div>
+  1623→                  ))}
+  1624→                </div>
+  1625→              </>
+  1626→            )}
+  1627→          </div>
+  1628→        </motion.div>
+  1629→
+  1630→        {/* MITRE ATT&CK Coverage */}
+  1631→        <motion.div variants={item}>
+  1632→          <div className="rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-900/80 to-zinc-800/40 p-4 siem-card-glow">
+  1633→            <div className="mb-3 flex items-center justify-between">
+  1634→              <h3 className="text-sm font-medium text-zinc-400">MITRE ATT&CK Coverage</h3>
+  1635→              <Badge variant="outline" className="border-zinc-700 text-[10px] text-zinc-500">
+  1636→                {activeMitreTactics.size}/{mitreTactics.length} active
+  1637→              </Badge>
+  1638→            </div>
+  1639→            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+  1640→              {mitreTactics.map((tactic) => {
+  1641→                const isActive = activeMitreTactics.has(tactic)
+  1642→                return (
+  1643→                  <div
+  1644→                    key={tactic}
+  1645→                    className={cn(
+  1646→                      'flex items-center gap-2 rounded-lg border px-2.5 py-2 text-[10px] transition-colors',
+  1647→                      isActive
+  1648→                        ? 'border-red-500/30 bg-red-500/10 text-red-300'
+  1649→                        : 'border-zinc-800 bg-zinc-800/30 text-zinc-500'
+  1650→                    )}
+  1651→                  >
+  1652→                    <span
+  1653→                      className={cn(
+  1654→                        'h-1.5 w-1.5 shrink-0 rounded-full',
+  1655→                        isActive ? 'bg-red-400 animate-pulse' : 'bg-zinc-600'
+  1656→                      )}
+  1657→                    />
+  1658→                    <span className="truncate font-medium">{tactic}</span>
+  1659→                  </div>
+  1660→                )
+  1661→              })}
+  1662→            </div>
+  1663→            <div className="mt-3 border-t border-zinc-800 pt-2 text-[10px] text-zinc-500">
+  1664→              Tactics with active alerts are highlighted in red
+  1665→            </div>
+  1666→          </div>
+  1667→        </motion.div>
+  1668→      </div>
+  1669→
+  1670→      {/* ================================================================ */}
+  1671→      {/* ROW 6: Threat Intel Panel                                        */}
+  1672→      {/* ================================================================ */}
+  1673→      <motion.div variants={item}>
+  1674→        <ThreatIntelPanel />
+  1675→      </motion.div>
+  1676→
+  1677→      {/* ================================================================ */}
+  1678→      {/* ROW 7: Threat Map                                                */}
+  1679→      {/* ================================================================ */}
+  1680→      <motion.div variants={item}>
+  1681→        <ThreatMap />
+  1682→      </motion.div>
+  1683→
+  1684→      {/* ================================================================ */}
+  1685→      {/* ROW 8: Response Playbooks                                        */}
+  1686→      {/* ================================================================ */}
+  1687→      <motion.div variants={item}>
+  1688→        <PlaybooksPanel />
+  1689→      </motion.div>
+  1690→
+  1691→      {/* ================================================================ */}
+  1692→      {/* REPORT GENERATOR DIALOG                                          */}
+  1693→      {/* ================================================================ */}
+  1694→      <AnimatePresence>
+  1695→        {reportDialogOpen && (
+  1696→          <motion.div
+  1697→            initial={{ opacity: 0 }}
+  1698→            animate={{ opacity: 1 }}
+  1699→            exit={{ opacity: 0 }}
+  1700→            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+  1701→            onClick={() => setReportDialogOpen(false)}
+  1702→          >
+  1703→            <motion.div
+  1704→              initial={{ scale: 0.9, opacity: 0 }}
+  1705→              animate={{ scale: 1, opacity: 1 }}
+  1706→              exit={{ scale: 0.9, opacity: 0 }}
+  1707→              className="w-full max-w-2xl max-h-[80vh] overflow-y-auto custom-scrollbar"
+  1708→              onClick={(e) => e.stopPropagation()}
+  1709→            >
+  1710→              <ReportGenerator />
+  1711→            </motion.div>
+  1712→          </motion.div>
+  1713→        )}
+  1714→      </AnimatePresence>
+  1715→    </motion.div>
+  1716→  )
+  1717→}
+  1718→

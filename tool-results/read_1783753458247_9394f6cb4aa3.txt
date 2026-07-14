@@ -1,0 +1,974 @@
+   260→@layer components {
+   261→  .siem-table-scroll::-webkit-scrollbar {
+   262→    width: 6px;
+   263→    height: 6px;
+   264→  }
+   265→  .siem-table-scroll::-webkit-scrollbar-track {
+   266→    background: rgba(24, 24, 27, 0.5);
+   267→    border-radius: 3px;
+   268→  }
+   269→  .siem-table-scroll::-webkit-scrollbar-thumb {
+   270→    background: rgba(63, 63, 70, 0.5);
+   271→    border-radius: 3px;
+   272→  }
+   273→  .siem-table-scroll::-webkit-scrollbar-thumb:hover {
+   274→    background: rgba(82, 82, 91, 0.7);
+   275→  }
+   276→}
+   277→
+   278→/* ===== ENHANCED SCROLLBAR (zinc-800 track, zinc-600 thumb) ===== */
+   279→@layer base {
+   280→  ::-webkit-scrollbar {
+   281→    width: 6px;
+   282→    height: 6px;
+   283→  }
+   284→  ::-webkit-scrollbar-track {
+   285→    background: #27272a; /* zinc-800 */
+   286→    border-radius: 3px;
+   287→  }
+   288→  ::-webkit-scrollbar-thumb {
+   289→    background: #52525b; /* zinc-600 */
+   290→    border-radius: 3px;
+   291→    border: 1px solid transparent;
+   292→    background-clip: padding-box;
+   293→  }
+   294→  ::-webkit-scrollbar-thumb:hover {
+   295→    background: #71717a; /* zinc-500 */
+   296→    border: 1px solid transparent;
+   297→    background-clip: padding-box;
+   298→  }
+   299→  ::-webkit-scrollbar-corner {
+   300→    background: #27272a;
+   301→  }
+   302→}
+   303→
+   304→/* ===== PAGE FADE-IN ANIMATION ===== */
+   305→@layer components {
+   306→  @keyframes page-fade-in {
+   307→    from { opacity: 0; }
+   308→    to { opacity: 1; }
+   309→  }
+   310→  .animate-page-fade-in {
+   311→    animation: page-fade-in 0.3s ease-out both;
+   312→  }
+   313→}
+   314→
+   315→/* ===== CARD HOVER LIFT EFFECT ===== */
+   316→@layer components {
+   317→  .siem-card-interactive {
+   318→    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+   319→  }
+   320→  .siem-card-interactive:hover {
+   321→    transform: translateY(-1px);
+   322→    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 20px rgba(16, 185, 129, 0.06);
+   323→  }
+   324→}
+   325→
+   326→/* ===== STATUS DOT PULSE (critical/high severity) ===== */
+   327→@layer components {
+   328→  @keyframes status-dot-pulse {
+   329→    0%, 100% { opacity: 1; transform: scale(1); }
+   330→    50% { opacity: 0.6; transform: scale(1.8); }
+   331→  }
+   332→  .animate-status-dot-pulse {
+   333→    animation: status-dot-pulse 2s ease-in-out infinite;
+   334→  }
+   335→}
+   336→
+   337→/* ===== SUBTLE GRID PATTERN BACKGROUND ===== */
+   338→@layer components {
+   339→  body::before {
+   340→    content: '';
+   341→    position: fixed;
+   342→    inset: 0;
+   343→    pointer-events: none;
+   344→    z-index: -1;
+   345→    background-image:
+   346→      linear-gradient(rgba(63, 63, 70, 0.07) 1px, transparent 1px),
+   347→      linear-gradient(90deg, rgba(63, 63, 70, 0.07) 1px, transparent 1px);
+   348→    background-size: 40px 40px;
+   349→  }
+   350→  html:not(.dark) body::before {
+   351→    background-image:
+   352→      linear-gradient(rgba(161, 161, 170, 0.08) 1px, transparent 1px),
+   353→      linear-gradient(90deg, rgba(161, 161, 170, 0.08) 1px, transparent 1px);
+   354→  }
+   355→}
+   356→
+   357→/* ===== EMERALD FOCUS RING ===== */
+   358→@layer base {
+   359→  *:focus-visible {
+   360→    outline: 2px solid #10b981; /* emerald-500 */
+   361→    outline-offset: 2px;
+   362→  }
+   363→}
+   364→
+   365→/* ===== SKELETON SHIMMER ANIMATION ===== */
+   366→@keyframes skeleton-shimmer {
+   367→  0% { background-position: -200% 0; }
+   368→  100% { background-position: 200% 0; }
+   369→}
+   370→.skeleton-shimmer {
+   371→  background: linear-gradient(
+   372→    90deg,
+   373→    rgba(63, 63, 70, 0.2) 25%,
+   374→    rgba(82, 82, 91, 0.35) 50%,
+   375→    rgba(63, 63, 70, 0.2) 75%
+   376→  );
+   377→  background-size: 200% 100%;
+   378→  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+   379→}
+   380→html:not(.dark) .skeleton-shimmer {
+   381→  background: linear-gradient(
+   382→    90deg,
+   383→    rgba(212, 212, 216, 0.4) 25%,
+   384→    rgba(228, 228, 231, 0.7) 50%,
+   385→    rgba(212, 212, 216, 0.4) 75%
+   386→  );
+   387→  background-size: 200% 100%;
+   388→  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+   389→}
+   390→
+   391→/* ===== TABLE ROW SELECTION HIGHLIGHT ===== */
+   392→@keyframes row-select-flash {
+   393→  0% { background-color: rgba(16, 185, 129, 0.15); }
+   394→  100% { background-color: rgba(16, 185, 129, 0.04); }
+   395→}
+   396→.siem-row-selected {
+   397→  background-color: rgba(16, 185, 129, 0.04) !important;
+   398→  animation: row-select-flash 0.4s ease-out;
+   399→}
+   400→
+   401→/* ===== SIDEBAR HOVER GLOW ===== */
+   402→@layer components {
+   403→  .siem-nav-item {
+   404→    position: relative;
+   405→    overflow: visible;
+   406→  }
+   407→  .siem-nav-item::before {
+   408→    content: '';
+   409→    position: absolute;
+   410→    left: -8px;
+   411→    top: 50%;
+   412→    transform: translateY(-50%) scaleY(0);
+   413→    width: 2px;
+   414→    height: 60%;
+   415→    background: #10b981;
+   416→    border-radius: 1px;
+   417→    transition: transform 0.2s ease, height 0.2s ease;
+   418→    pointer-events: none;
+   419→  }
+   420→  .siem-nav-item-active::before {
+   421→    transform: translateY(-50%) scaleY(1);
+   422→    height: 70%;
+   423→  }
+   424→  .siem-nav-item:not(.siem-nav-item-active):hover::before {
+   425→    transform: translateY(-50%) scaleY(0.4);
+   426→    height: 50%;
+   427→    background: rgba(16, 185, 129, 0.4);
+   428→  }
+   429→}
+   430→
+   431→/* ===== HEADER BOTTOM BORDER GRADIENT ===== */
+   432→@layer components {
+   433→  .siem-header-border::after {
+   434→    content: '';
+   435→    position: absolute;
+   436→    bottom: 0;
+   437→    left: 0;
+   438→    right: 0;
+   439→    height: 1px;
+   440→    background: linear-gradient(to right, #27272a, rgba(63, 63, 70, 0.3) 30%, rgba(63, 63, 70, 0.3) 70%, #27272a);
+   441→    pointer-events: none;
+   442→  }
+   443→}
+   444→
+   445→/* ===== LIVE TOGGLE PULSING BORDER ===== */
+   446→@layer components {
+   447→  @keyframes live-border-pulse {
+   448→    0%, 100% { border-color: rgba(16, 185, 129, 0.3); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+   449→    50% { border-color: rgba(16, 185, 129, 0.6); box-shadow: 0 0 8px rgba(16, 185, 129, 0.15); }
+   450→  }
+   451→  .siem-live-active {
+   452→    animation: live-border-pulse 2s ease-in-out infinite;
+   453→    border: 1px solid rgba(16, 185, 129, 0.3);
+   454→    border-radius: 6px;
+   455→  }
+   456→}
+   457→
+   458→/* ===== SEARCH BAR SHINE ===== */
+   459→@layer components {
+   460→  @keyframes search-shine {
+   461→    0% { background-position: -200% center; }
+   462→    100% { background-position: 200% center; }
+   463→  }
+   464→  .siem-search-focus:focus-within {
+   465→    background-image: linear-gradient(
+   466→      90deg,
+   467→      transparent 0%,
+   468→      rgba(16, 185, 129, 0.06) 45%,
+   469→      rgba(16, 185, 129, 0.1) 50%,
+   470→      rgba(16, 185, 129, 0.06) 55%,
+   471→      transparent 100%
+   472→    );
+   473→    background-size: 200% 100%;
+   474→    animation: search-shine 1.2s ease-out;
+   475→  }
+   476→}
+   477→
+   478→/* ===== FOOTER TOP BORDER GRADIENT ===== */
+   479→@layer components {
+   480→  .siem-footer-border::before {
+   481→    content: '';
+   482→    position: absolute;
+   483→    top: 0;
+   484→    left: 0;
+   485→    right: 0;
+   486→    height: 1px;
+   487→    background: linear-gradient(to right, transparent, #27272a 30%, #27272a 70%, transparent);
+   488→    pointer-events: none;
+   489→  }
+   490→}
+   491→
+   492→/* ===== RECONNECTING SPIN ===== */
+   493→@layer components {
+   494→  @keyframes reconnect-spin {
+   495→    from { transform: rotate(0deg); }
+   496→    to { transform: rotate(360deg); }
+   497→  }
+   498→  .animate-reconnect-spin {
+   499→    animation: reconnect-spin 1.5s linear infinite;
+   500→  }
+   501→}
+   502→
+   503→/* ===== NOTIFICATION BADGE PULSE ===== */
+   504→@layer components {
+   505→  @keyframes notif-badge-pulse {
+   506→    0%, 100% { transform: scale(1); }
+   507→    50% { transform: scale(1.15); }
+   508→  }
+   509→  .siem-notif-badge-pulse {
+   510→    animation: notif-badge-pulse 1.5s ease-in-out infinite;
+   511→  }
+   512→}
+   513→
+   514→/* ===== LIGHT MODE OVERRIDES =====
+   515→   The SIEM components use hardcoded zinc-* Tailwind classes
+   516→   that assume a dark background. When the user toggles to the
+   517→   light theme, we override those classes to provide proper
+   518→   contrast without refactoring every component. */
+   519→html:not(.dark) {
+   520→  --background: oklch(0.99 0 0);
+   521→  --foreground: oklch(0.18 0 0);
+   522→  --card: oklch(1 0 0);
+   523→  --card-foreground: oklch(0.18 0 0);
+   524→  --popover: oklch(1 0 0);
+   525→  --popover-foreground: oklch(0.18 0 0);
+   526→  --primary: oklch(0.55 0.15 160);
+   527→  --primary-foreground: oklch(0.99 0 0);
+   528→  --secondary: oklch(0.96 0 0);
+   529→  --secondary-foreground: oklch(0.2 0 0);
+   530→  --muted: oklch(0.96 0 0);
+   531→  --muted-foreground: oklch(0.45 0 0);
+   532→  --accent: oklch(0.95 0.02 160);
+   533→  --accent-foreground: oklch(0.2 0 0);
+   534→  --destructive: oklch(0.55 0.22 25);
+   535→  --border: oklch(0.9 0 0);
+   536→  --input: oklch(0.92 0 0);
+   537→  --ring: oklch(0.55 0.15 160);
+   538→  --sidebar: oklch(0.98 0 0);
+   539→  --sidebar-foreground: oklch(0.2 0 0);
+   540→}
+   541→
+   542→/* In light mode, remap the hardcoded zinc backgrounds to light variants */
+   543→html:not(.dark) .bg-zinc-950 { background-color: oklch(0.97 0 0) !important; }
+   544→html:not(.dark) .bg-zinc-900 { background-color: oklch(0.99 0 0) !important; }
+   545→html:not(.dark) .bg-zinc-900\/80 { background-color: oklch(0.99 0 0 / 0.95) !important; }
+   546→html:not(.dark) .bg-zinc-900\/50 { background-color: oklch(0.99 0 0 / 0.9) !important; }
+   547→html:not(.dark) .bg-zinc-800 { background-color: oklch(0.93 0 0) !important; }
+   548→html:not(.dark) .bg-zinc-800\/50 { background-color: oklch(0.95 0 0) !important; }
+   549→html:not(.dark) .bg-zinc-800\/80 { background-color: oklch(0.95 0 0) !important; }
+   550→html:not(.dark) .bg-zinc-800\/30 { background-color: oklch(0.96 0 0) !important; }
+   551→html:not(.dark) .bg-zinc-700 { background-color: oklch(0.88 0 0) !important; }
+   552→html:not(.dark) .bg-zinc-700\/50 { background-color: oklch(0.88 0 0 / 0.6) !important; }
+   553→html:not(.dark) .bg-zinc-800\/60 { background-color: oklch(0.94 0 0) !important; }
+   554→
+   555→/* Text color overrides for light mode */
+   556→html:not(.dark) .text-zinc-100 { color: oklch(0.15 0 0) !important; }
+   557→html:not(.dark) .text-zinc-200 { color: oklch(0.2 0 0) !important; }
+   558→html:not(.dark) .text-zinc-300 { color: oklch(0.3 0 0) !important; }
+   559→html:not(.dark) .text-zinc-400 { color: oklch(0.4 0 0) !important; }
+   560→html:not(.dark) .text-zinc-500 { color: oklch(0.45 0 0) !important; }
+   561→html:not(.dark) .text-zinc-600 { color: oklch(0.5 0 0) !important; }
+   562→
+   563→/* Border overrides for light mode */
+   564→html:not(.dark) .border-zinc-700 { border-color: oklch(0.88 0 0) !important; }
+   565→html:not(.dark) .border-zinc-800 { border-color: oklch(0.9 0 0) !important; }
+   566→html:not(.dark) .border-zinc-700\/50 { border-color: oklch(0.88 0 0 / 0.6) !important; }
+   567→html:not(.dark) .border-b { border-color: oklch(0.9 0 0) !important; }
+   568→html:not(.dark) .border-r { border-color: oklch(0.9 0 0) !important; }
+   569→html:not(.dark) .divide-zinc-800 > * + * { border-color: oklch(0.9 0 0) !important; }
+   570→html:not(.dark) .divide-zinc-700\/50 > * + * { border-color: oklch(0.9 0 0) !important; }
+   571→
+   572→/* Hover state overrides for light mode */
+   573→html:not(.dark) .hover\:bg-zinc-800:hover { background-color: oklch(0.93 0 0) !important; }
+   574→html:not(.dark) .hover\:bg-zinc-800\/50:hover { background-color: oklch(0.94 0 0) !important; }
+   575→html:not(.dark) .hover\:text-zinc-200:hover { color: oklch(0.2 0 0) !important; }
+   576→html:not(.dark) .hover\:text-zinc-100:hover { color: oklch(0.15 0 0) !important; }
+   577→html:not(.dark) .hover\:text-zinc-300:hover { color: oklch(0.3 0 0) !important; }
+   578→html:not(.dark) .hover\:bg-zinc-700\/50:hover { background-color: oklch(0.9 0 0) !important; }
+   579→
+   580→/* Emerald accents stay similar in light mode but slightly darker for contrast */
+   581→html:not(.dark) .text-emerald-400 { color: oklch(0.5 0.15 160) !important; }
+   582→html:not(.dark) .bg-emerald-900\/30 { background-color: oklch(0.92 0.05 160) !important; }
+   583→html:not(.dark) .bg-emerald-900\/20 { background-color: oklch(0.94 0.04 160) !important; }
+   584→
+   585→/* Backdrop overrides */
+   586→html:not(.dark) .bg-black\/60 { background-color: oklch(0 0 0 / 0.4) !important; }
+   587→html:not(.dark) .bg-zinc-950\/95 { background-color: oklch(0.97 0 0 / 0.95) !important; }
+   588→
+   589→/* Scrollbar styling for light mode */
+   590→html:not(.dark) ::-webkit-scrollbar-thumb {
+   591→  background: oklch(0.7 0 0 / 40%);
+   592→}
+   593→html:not(.dark) ::-webkit-scrollbar-thumb:hover {
+   594→  background: oklch(0.6 0 0 / 60%);
+   595→}
+   596→html:not(.dark) .siem-table-scroll::-webkit-scrollbar-track {
+   597→  background: rgba(244, 244, 245, 0.5);
+   598→}
+   599→html:not(.dark) .siem-table-scroll::-webkit-scrollbar-thumb {
+   600→  background: rgba(161, 161, 170, 0.5);
+   601→}
+   602→
+   603→/* Card glow effect: subtle in light mode */
+   604→html:not(.dark) .siem-card-glow:hover {
+   605→  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.12);
+   606→  border-color: rgba(16, 185, 129, 0.3);
+   607→}
+   608→
+   609→/* Threat level banner: use stronger colors in light mode for visibility */
+   610→html:not(.dark) .from-emerald-900\/30 { --tw-gradient-from: oklch(0.92 0.05 160) var(--tw-gradient-from-position); }
+   611→html:not(.dark) .via-emerald-950\/20 { --tw-gradient-via: oklch(0.95 0.03 160) var(--tw-gradient-via-position); }
+   612→html:not(.dark) .from-yellow-900\/30 { --tw-gradient-from: oklch(0.93 0.06 90) var(--tw-gradient-from-position); }
+   613→html:not(.dark) .via-yellow-950\/20 { --tw-gradient-via: oklch(0.96 0.04 90) var(--tw-gradient-via-position); }
+   614→html:not(.dark) .from-orange-900\/30 { --tw-gradient-from: oklch(0.92 0.06 50) var(--tw-gradient-from-position); }
+   615→html:not(.dark) .via-orange-950\/20 { --tw-gradient-via: oklch(0.95 0.04 50) var(--tw-gradient-via-position); }
+   616→html:not(.dark) .from-red-900\/30,
+   617→html:not(.dark) .from-red-900\/40 { --tw-gradient-from: oklch(0.92 0.06 25) var(--tw-gradient-from-position); }
+   618→html:not(.dark) .via-red-950\/20,
+   619→html:not(.dark) .via-red-950\/30 { --tw-gradient-via: oklch(0.95 0.04 25) var(--tw-gradient-via-position); }
+   620→html:not(.dark) .to-zinc-900\/30 { --tw-gradient-to: oklch(0.98 0 0) var(--tw-gradient-to-position); }
+   621→
+   622→/* Severity text in light mode - keep colors but slightly darker for contrast */
+   623→html:not(.dark) .text-red-400 { color: oklch(0.5 0.22 25) !important; }
+   624→html:not(.dark) .text-amber-400 { color: oklch(0.55 0.18 65) !important; }
+   625→html:not(.dark) .text-yellow-400 { color: oklch(0.55 0.18 90) !important; }
+   626→html:not(.dark) .text-orange-400 { color: oklch(0.55 0.2 50) !important; }
+   627→html:not(.dark) .text-red-300 { color: oklch(0.45 0.22 25) !important; }
+   628→
+   629→/* Inline severity color swatches (used in dashboard charts) stay vibrant in light mode */
+   630→html:not(.dark) .bg-red-500\/40 { background-color: oklch(0.6 0.22 25 / 0.6) !important; }
+   631→html:not(.dark) .bg-amber-500\/40 { background-color: oklch(0.7 0.18 65 / 0.6) !important; }
+   632→html:not(.dark) .bg-yellow-500\/40 { background-color: oklch(0.75 0.18 90 / 0.6) !important; }
+   633→html:not(.dark) .bg-blue-500\/40 { background-color: oklch(0.55 0.22 250 / 0.6) !important; }
+   634→html:not(.dark) .bg-zinc-500\/40 { background-color: oklch(0.5 0 0 / 0.6) !important; }
+   635→
+   636→/* Hover states for severity swatches */
+   637→html:not(.dark) .hover\:bg-red-500\/60:hover { background-color: oklch(0.6 0.22 25 / 0.8) !important; }
+   638→html:not(.dark) .hover\:bg-amber-500\/60:hover { background-color: oklch(0.7 0.18 65 / 0.8) !important; }
+   639→html:not(.dark) .hover\:bg-yellow-500\/60:hover { background-color: oklch(0.75 0.18 90 / 0.8) !important; }
+   640→html:not(.dark) .hover\:bg-blue-500\/60:hover { background-color: oklch(0.55 0.22 250 / 0.8) !important; }
+   641→html:not(.dark) .hover\:bg-zinc-500\/60:hover { background-color: oklch(0.5 0 0 / 0.8) !important; }
+   642→
+   643→/* ===== SHIMMER ANIMATION (horizontal sweep) ===== */
+   644→@layer components {
+   645→  @keyframes shimmer {
+   646→    0% { transform: translateX(-100%); }
+   647→    100% { transform: translateX(100%); }
+   648→  }
+   649→  .animate-shimmer {
+   650→    animation: shimmer 2s ease-in-out infinite;
+   651→  }
+   652→}
+   653→
+   654→/* ===== GLOW PULSE ANIMATION ===== */
+   655→@layer components {
+   656→  @keyframes glow-pulse {
+   657→    0%, 100% { transform: scale(1); opacity: 0.5; }
+   658→    50% { transform: scale(1.05); opacity: 1; }
+   659→  }
+   660→  .animate-glow-pulse {
+   661→    animation: glow-pulse 2s ease-in-out infinite;
+   662→  }
+   663→}
+   664→
+   665→/* ===== SEVERITY ROW LEFT BORDER ===== */
+   666→@layer components {
+   667→  .siem-severity-border-critical { border-left: 2px solid #ef4444; }
+   668→  .siem-severity-border-high { border-left: 2px solid #f97316; }
+   669→  .siem-severity-border-medium { border-left: 2px solid #eab308; }
+   670→  .siem-severity-border-low { border-left: 2px solid #10b981; }
+   671→  .siem-severity-border-informational { border-left: 2px solid #71717a; }
+   672→}
+   673→
+   674→/* ===== SEVERITY BADGE GLOW SHADOWS ===== */
+   675→@layer components {
+   676→  .siem-badge-glow-critical { box-shadow: 0 0 8px rgba(239, 68, 68, 0.25); }
+   677→  .siem-badge-glow-high { box-shadow: 0 0 8px rgba(249, 115, 22, 0.2); }
+   678→  .siem-badge-glow-medium { box-shadow: 0 0 8px rgba(234, 179, 8, 0.2); }
+   679→  .siem-badge-glow-low { box-shadow: 0 0 8px rgba(16, 185, 129, 0.2); }
+   680→}
+   681→
+   682→/* ===== GLASS CARD EFFECT ===== */
+   683→@layer components {
+   684→  .siem-glass-card {
+   685→    background: rgba(24, 24, 27, 0.6);
+   686→    backdrop-filter: blur(12px);
+   687→    -webkit-backdrop-filter: blur(12px);
+   688→    border: 1px solid rgba(63, 63, 70, 0.4);
+   689→  }
+   690→}
+   691→
+   692→/* ===== REFRESH the alert timeline severity dots for better contrast in light mode ===== */
+   693→html:not(.dark) .bg-red-500 { background-color: oklch(0.55 0.22 25) !important; }
+   694→html:not(.dark) .bg-amber-500 { background-color: oklch(0.65 0.18 65) !important; }
+   695→html:not(.dark) .bg-yellow-500 { background-color: oklch(0.7 0.18 90) !important; }
+   696→html:not(.dark) .bg-blue-500 { background-color: oklch(0.55 0.22 250) !important; }
+   697→
+   698→/* ===== GRADIENT SWEEP HOVER (for dashboard metric cards) =====
+   699→   A diagonal emerald-tinted gradient sweeps across the card on hover.
+   700→   Uses a ::before pseudo-element so it layers over the card background
+   701→   without affecting layout or content. */
+   702→@layer components {
+   703→  @keyframes gradient-sweep {
+   704→    0% { transform: translateX(-120%) skewX(-12deg); opacity: 0; }
+   705→    25% { opacity: 1; }
+   706→    75% { opacity: 1; }
+   707→    100% { transform: translateX(120%) skewX(-12deg); opacity: 0; }
+   708→  }
+   709→  .siem-gradient-hover {
+   710→    position: relative;
+   711→    isolation: isolate;
+   712→  }
+   713→  .siem-gradient-hover::before {
+   714→    content: '';
+   715→    position: absolute;
+   716→    inset: 0;
+   717→    z-index: 1;
+   718→    pointer-events: none;
+   719→    background: linear-gradient(
+   720→      115deg,
+   721→      transparent 0%,
+   722→      rgba(16, 185, 129, 0) 35%,
+   723→      rgba(16, 185, 129, 0.18) 50%,
+   724→      rgba(16, 185, 129, 0) 65%,
+   725→      transparent 100%
+   726→    );
+   727→    transform: translateX(-120%) skewX(-12deg);
+   728→    opacity: 0;
+   729→    transition: opacity 0.2s ease;
+   730→  }
+   731→  .siem-gradient-hover:hover::before {
+   732→    animation: gradient-sweep 1.1s ease-out;
+   733→    opacity: 1;
+   734→  }
+   735→}
+   736→
+   737→/* ===== PROGRESS RING (CSS conic-gradient with SVG fallback) =====
+   738→   Set --siem-ring-value (0..100) and --siem-ring-color inline.
+   739→   Sizes via width/height on the element. */
+   740→@layer components {
+   741→  .siem-progress-ring {
+   742→    position: relative;
+   743→    display: inline-flex;
+   744→    align-items: center;
+   745→    justify-content: center;
+   746→    border-radius: 9999px;
+   747→    background:
+   748→      conic-gradient(
+   749→        var(--siem-ring-color, #10b981) calc(var(--siem-ring-value, 0) * 1%),
+   750→        rgba(255, 255, 255, 0.08) 0
+   751→      );
+   752→    -webkit-mask: radial-gradient(circle, transparent 56%, #000 58%);
+   753→            mask: radial-gradient(circle, transparent 56%, #000 58%);
+   754→  }
+   755→  html:not(.dark) .siem-progress-ring {
+   756→    background:
+   757→      conic-gradient(
+   758→        var(--siem-ring-color, #10b981) calc(var(--siem-ring-value, 0) * 1%),
+   759→        rgba(0, 0, 0, 0.08) 0
+   760→      );
+   761→    -webkit-mask: radial-gradient(circle, transparent 56%, #000 58%);
+   762→            mask: radial-gradient(circle, transparent 56%, #000 58%);
+   763→  }
+   764→}
+   765→
+   766→/* ===== INCIDENT PRIORITY LEFT BORDER =====
+   767→   Tiny colored left border applied to incident rows. The /70 opacity
+   768→   keeps it subtle on the dark SOC theme. */
+   769→@layer components {
+   770→  .siem-priority-border-p1 { border-left: 4px solid #ef4444 !important; box-shadow: inset 2px 0 0 rgba(239, 68, 68, 0.3); }
+   771→  .siem-priority-border-p2 { border-left: 4px solid #f59e0b !important; box-shadow: inset 2px 0 0 rgba(245, 158, 11, 0.3); }
+   772→  .siem-priority-border-p3 { border-left: 4px solid #eab308 !important; box-shadow: inset 2px 0 0 rgba(234, 179, 8, 0.3); }
+   773→  .siem-priority-border-p4 { border-left: 4px solid #71717a !important; }
+   774→}
+   775→
+   776→/* ===== PULSE GLOW (soft card border glow for active playbooks) ===== */
+   777→@layer components {
+   778→  @keyframes pulse-glow {
+   779→    0%, 100% {
+   780→      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.0), 0 0 14px 0 rgba(16, 185, 129, 0.18);
+   781→      border-color: rgba(16, 185, 129, 0.45);
+   782→    }
+   783→    50% {
+   784→      box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.15), 0 0 22px 4px rgba(16, 185, 129, 0.32);
+   785→      border-color: rgba(16, 185, 129, 0.7);
+   786→    }
+   787→  }
+   788→  .siem-pulse-glow {
+   789→    animation: pulse-glow 2.6s ease-in-out infinite;
+   790→  }
+   791→  html:not(.dark) .siem-pulse-glow {
+   792→    animation: none;
+   793→    border-color: rgba(16, 185, 129, 0.5) !important;
+   794→    box-shadow: 0 0 12px rgba(16, 185, 129, 0.18);
+   795→  }
+   796→}
+   797→
+   798→/* ===== CRITICALITY LEFT BORDER (asset rows) ===== */
+   799→@layer components {
+   800→  .siem-criticality-border-critical {
+   801→    border-left: 3px solid #ef4444 !important;
+   802→    box-shadow: inset 2px 0 0 rgba(239, 68, 68, 0.25);
+   803→  }
+   804→  .siem-criticality-border-high {
+   805→    border-left: 3px solid #f59e0b !important;
+   806→    box-shadow: inset 2px 0 0 rgba(245, 158, 11, 0.25);
+   807→  }
+   808→  .siem-criticality-border-medium {
+   809→    border-left: 3px solid #eab308 !important;
+   810→    box-shadow: inset 2px 0 0 rgba(234, 179, 8, 0.25);
+   811→  }
+   812→  .siem-criticality-border-low {
+   813→    border-left: 3px solid #71717a !important;
+   814→  }
+   815→}
+   816→
+   817→/* ===== LOG LEVEL LEFT BORDER (log rows) ===== */
+   818→@layer components {
+   819→  .siem-log-level-error {
+   820→    border-left: 2px solid #ef4444 !important;
+   821→  }
+   822→  .siem-log-level-warn {
+   823→    border-left: 2px solid #f59e0b !important;
+   824→  }
+   825→  .siem-log-level-info {
+   826→    border-left: 2px solid #10b981 !important;
+   827→  }
+   828→  .siem-log-level-debug {
+   829→    border-left: 2px solid #71717a !important;
+   830→  }
+   831→}
+   832→
+   833→/* ===== ASSET ROW EMERALD HOVER GLOW =====
+   834→   Subtle emerald outer-glow that fades in on hover. Pairs with the
+   835→   existing hover:bg-zinc-800/30 background tint. */
+   836→@layer components {
+   837→  .siem-asset-row {
+   838→    transition: background-color 0.2s ease, box-shadow 0.25s ease, border-color 0.2s ease;
+   839→  }
+   840→  .siem-asset-row:hover {
+   841→    box-shadow: inset 3px 0 0 0 #10b981, 0 0 0 1px rgba(16, 185, 129, 0.12);
+   842→  }
+   843→  html:not(.dark) .siem-asset-row:hover {
+   844→    box-shadow: inset 3px 0 0 0 #10b981, 0 0 0 1px rgba(16, 185, 129, 0.18);
+   845→  }
+   846→}
+   847→
+   848→/* ===== HUNT SCAN OVERLAY (executing-hunt progress) =====
+   849→   A thin indeterminate progress bar that slides across the top of the
+   850→   results container while a hunt is running. */
+   851→@layer components {
+   852→  @keyframes hunt-scan {
+   853→    0%   { transform: translateX(-100%); }
+   854→    100% { transform: translateX(100%); }
+   855→  }
+   856→  .siem-scan-bar {
+   857→    position: absolute;
+   858→    inset: 0 0 auto 0;
+   859→    height: 2px;
+   860→    overflow: hidden;
+   861→    pointer-events: none;
+   862→    z-index: 5;
+   863→  }
+   864→  .siem-scan-bar::after {
+   865→    content: '';
+   866→    position: absolute;
+   867→    inset: 0;
+   868→    background: linear-gradient(
+   869→      90deg,
+   870→      transparent 0%,
+   871→      rgba(16, 185, 129, 0.0) 10%,
+   872→      rgba(16, 185, 129, 0.8) 50%,
+   873→      rgba(16, 185, 129, 0.0) 90%,
+   874→      transparent 100%
+   875→    );
+   876→    animation: hunt-scan 1.4s ease-in-out infinite;
+   877→  }
+   878→
+   879→  /* Subtle radial sweep overlay covering the whole results area */
+   880→  @keyframes hunt-scan-sweep {
+   881→    0%   { background-position: -50% 0; }
+   882→    100% { background-position: 150% 0; }
+   883→  }
+   884→  .siem-scan-overlay {
+   885→    position: absolute;
+   886→    inset: 0;
+   887→    pointer-events: none;
+   888→    background: linear-gradient(
+   889→      90deg,
+   890→      transparent 0%,
+   891→      rgba(16, 185, 129, 0.05) 50%,
+   892→      transparent 100%
+   893→    );
+   894→    background-size: 50% 100%;
+   895→    background-repeat: no-repeat;
+   896→    animation: hunt-scan-sweep 1.6s linear infinite;
+   897→    z-index: 1;
+   898→  }
+   899→}
+   900→
+   901→/* ===== HUNT INTENSITY BAR (animated level meter) ===== */
+   902→@layer components {
+   903→  @keyframes hunt-intensity-pulse {
+   904→    0%, 100% { opacity: 0.65; transform: scaleY(1); }
+   905→    50%      { opacity: 1;    transform: scaleY(1.15); }
+   906→  }
+   907→  .siem-intensity-segment {
+   908→    transform-origin: bottom;
+   909→    animation: hunt-intensity-pulse 1.2s ease-in-out infinite;
+   910→  }
+   911→}
+   912→
+   913→/* ===== IOC COPY-SUCCESS CHECKMARK ANIMATION ===== */
+   914→@layer components {
+   915→  @keyframes ioc-copy-pop {
+   916→    0%   { transform: scale(0.4); opacity: 0; }
+   917→    50%  { transform: scale(1.25); opacity: 1; }
+   918→    100% { transform: scale(1);    opacity: 1; }
+   919→  }
+   920→  .siem-ioc-copied {
+   921→    animation: ioc-copy-pop 0.35s ease-out;
+   922→  }
+   923→}
+   924→
+   925→/* ===== SETTINGS ACTIVE TAB GRADIENT =====
+   926→   Subtle emerald gradient backdrop applied to the active TabsTrigger. */
+   927→@layer components {
+   928→  .siem-tab-active {
+   929→    background-image: linear-gradient(180deg, rgba(16, 185, 129, 0.12) 0%, rgba(16, 185, 129, 0.04) 100%) !important;
+   930→    box-shadow: inset 0 -1px 0 0 rgba(16, 185, 129, 0.5);
+   931→  }
+   932→  html:not(.dark) .siem-tab-active {
+   933→    background-image: linear-gradient(180deg, rgba(16, 185, 129, 0.18) 0%, rgba(16, 185, 129, 0.06) 100%) !important;
+   934→  }
+   935→}
+   936→
+   937→/* ===== SAVE BUTTON SUCCESS ANIMATION =====
+   938→   Brief emerald "pop" when the save action succeeds. Apply by toggling
+   939→   the .siem-save-success class for ~900ms after a successful save. */
+   940→@layer components {
+   941→  @keyframes save-success-pop {
+   942→    0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+   943→    35%  { transform: scale(1.04); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.18); }
+   944→    100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+   945→  }
+   946→  .siem-save-success {
+   947→    animation: save-success-pop 0.7s ease-out;
+   948→  }
+   949→}
+   950→
+   951→/* ===== LIVE MODE PULSE INDICATOR (log explorer) =====
+   952→   A soft emerald pulse for the "LIVE" badge. */
+   953→@layer components {
+   954→  @keyframes live-pulse {
+   955→    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+   956→    50%      { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+   957→  }
+   958→  .siem-live-pulse {
+   959→    animation: live-pulse 1.6s ease-out infinite;
+   960→  }
+   961→}
+   962→
+   963→/* ===== LOG MESSAGE SYNTAX HINTS =====
+   964→   Inline span color helpers used when rendering message substrings. */
+   965→@layer components {
+   966→  .siem-log-ts     { color: #71717a; }
+   967→  .siem-log-ip     { color: #22d3ee; }
+   968→  .siem-log-url    { color: #34d399; }
+   969→  .siem-log-sev    { color: #f87171; font-weight: 600; }
+   970→  .siem-log-kw     { color: #fbbf24; }
+   971→  .siem-log-num    { color: #a78bfa; }
+   972→  html:not(.dark) .siem-log-ts  { color: #6b7280; }
+   973→  html:not(.dark) .siem-log-ip  { color: #0891b2; }
+   974→  html:not(.dark) .siem-log-url { color: #059669; }
+   975→  html:not(.dark) .siem-log-sev { color: #dc2626; }
+   976→  html:not(.dark) .siem-log-kw  { color: #d97706; }
+   977→  html:not(.dark) .siem-log-num { color: #7c3aed; }
+   978→}
+   979→
+   980→/* ===== SOAR MINI STEP FLOW CONNECTOR =====
+   981→   A dashed emerald-tinted connector between step icons. */
+   982→@layer components {
+   983→  .siem-step-connector {
+   984→    width: 10px;
+   985→    height: 1px;
+   986→    background-image: linear-gradient(to right, rgba(16, 185, 129, 0.5) 50%, transparent 0%);
+   987→    background-size: 4px 1px;
+   988→    background-repeat: repeat-x;
+   989→    flex-shrink: 0;
+   990→  }
+   991→}
+   992→
+   993→/* ===== SOAR PLAYBOOK SUCCESS RATE BAR ===== */
+   994→@layer components {
+   995→  .siem-rate-bar {
+   996→    position: relative;
+   997→    height: 4px;
+   998→    border-radius: 9999px;
+   999→    background: rgba(39, 39, 42, 0.8);
+  1000→    overflow: hidden;
+  1001→  }
+  1002→  .siem-rate-bar > span {
+  1003→    display: block;
+  1004→    height: 100%;
+  1005→    border-radius: 9999px;
+  1006→    transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  1007→    background-image: linear-gradient(90deg, rgba(16, 185, 129, 0.5), rgba(16, 185, 129, 1));
+  1008→    box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+  1009→  }
+  1010→  html:not(.dark) .siem-rate-bar {
+  1011→    background: rgba(228, 228, 231, 0.8);
+  1012→  }
+  1013→}
+  1014→
+  1015→/* ===== METRIC CARD LEFT EDGE GLOW (per metric color) =====
+  1016→   A vertical accent bar on the left edge of the card that glows on hover.
+  1017→   Applied via .siem-edge-glow + .siem-edge-{color} modifiers. */
+  1018→@layer components {
+  1019→  .siem-edge-glow {
+  1020→    position: relative;
+  1021→  }
+  1022→  .siem-edge-glow::after {
+  1023→    content: '';
+  1024→    position: absolute;
+  1025→    left: 0;
+  1026→    top: 12%;
+  1027→    bottom: 12%;
+  1028→    width: 3px;
+  1029→    border-radius: 0 3px 3px 0;
+  1030→    background: var(--siem-edge-color, #10b981);
+  1031→    box-shadow: 0 0 12px 0 var(--siem-edge-color, #10b981);
+  1032→    opacity: 0.85;
+  1033→    transition: opacity 0.25s ease, top 0.25s ease, bottom 0.25s ease;
+  1034→    pointer-events: none;
+  1035→    z-index: 2;
+  1036→  }
+  1037→  .siem-edge-glow:hover::after {
+  1038→    opacity: 1;
+  1039→    top: 6%;
+  1040→    bottom: 6%;
+  1041→  }
+  1042→}
+  1043→
+  1044→
+  1045→
+  1046→/* ===== REPORTS: Stat Card Hover Lift =====
+  1047→   Subtle lift + border glow on stat cards in the Reports view. */
+  1048→@layer components {
+  1049→  .siem-stat-card {
+  1050→    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  1051→  }
+  1052→  .siem-stat-card:hover {
+  1053→    transform: translateY(-2px);
+  1054→    border-color: rgba(16, 185, 129, 0.3);
+  1055→    box-shadow: 0 8px 24px -8px rgba(16, 185, 129, 0.25);
+  1056→  }
+  1057→}
+  1058→
+  1059→/* ===== REPORTS: Report Type Card Selected State Glow =====
+  1060→   Soft inner glow for selected report type cards. */
+  1061→@layer components {
+  1062→  .siem-type-card-selected {
+  1063→    box-shadow:
+  1064→      0 0 0 1px rgba(16, 185, 129, 0.4),
+  1065→      0 0 20px -4px rgba(16, 185, 129, 0.3),
+  1066→      inset 0 0 12px -6px rgba(16, 185, 129, 0.2);
+  1067→  }
+  1068→}
+  1069→
+  1070→/* ===== REPORTS: Progress Bar Gradient Shimmer =====
+  1071→   A subtle moving shimmer on the report generation progress bar. */
+  1072→@layer components {
+  1073→  @keyframes siem-progress-shimmer {
+  1074→    0%   { background-position: -200% 0; }
+  1075→    100% { background-position: 200% 0; }
+  1076→  }
+  1077→  .siem-progress-shimmer > div {
+  1078→    background-image: linear-gradient(
+  1079→      90deg,
+  1080→      rgba(16, 185, 129, 0.8) 0%,
+  1081→      rgba(110, 231, 183, 1) 50%,
+  1082→      rgba(16, 185, 129, 0.8) 100%
+  1083→    ) !important;
+  1084→    background-size: 200% 100% !important;
+  1085→    animation: siem-progress-shimmer 1.4s linear infinite;
+  1086→  }
+  1087→}
+  1088→
+  1089→/* ===== REPORTS: History Row Hover Accent =====
+  1090→   Left border accent appears on hover for history table rows. */
+  1091→@layer components {
+  1092→  .siem-history-row {
+  1093→    position: relative;
+  1094→    transition: background-color 0.15s ease;
+  1095→  }
+  1096→  .siem-history-row::before {
+  1097→    content: '';
+  1098→    position: absolute;
+  1099→    left: 0;
+  1100→    top: 0;
+  1101→    bottom: 0;
+  1102→    width: 2px;
+  1103→    background: transparent;
+  1104→    transition: background 0.2s ease;
+  1105→  }
+  1106→  .siem-history-row:hover::before {
+  1107→    background: rgba(16, 185, 129, 0.6);
+  1108→  }
+  1109→}
+  1110→
+  1111→/* ===== REPORTS: Template Card Corner Accent =====
+  1112→   A diagonal corner accent that fades in on template card hover. */
+  1113→@layer components {
+  1114→  .siem-template-card {
+  1115→    position: relative;
+  1116→  }
+  1117→  .siem-template-card::before {
+  1118→    content: '';
+  1119→    position: absolute;
+  1120→    top: 0;
+  1121→    right: 0;
+  1122→    width: 0;
+  1123→    height: 0;
+  1124→    border-style: solid;
+  1125→    border-width: 0 18px 18px 0;
+  1126→    border-color: transparent rgba(16, 185, 129, 0.4) transparent transparent;
+  1127→    opacity: 0;
+  1128→    transition: opacity 0.25s ease;
+  1129→    pointer-events: none;
+  1130→  }
+  1131→  .siem-template-card:hover::before {
+  1132→    opacity: 1;
+  1133→  }
+  1134→}
+  1135→
+  1136→/* ===== GLOBAL: Subtle scan-line shimmer for loading states =====
+  1137→   Used by lazy-loaded view transitions. */
+  1138→@layer components {
+  1139→  @keyframes siem-scan-shimmer {
+  1140→    0%   { transform: translateX(-100%); }
+  1141→    100% { transform: translateX(100%); }
+  1142→  }
+  1143→  .siem-scan-line {
+  1144→    position: relative;
+  1145→    overflow: hidden;
+  1146→  }
+  1147→  .siem-scan-line::after {
+  1148→    content: '';
+  1149→    position: absolute;
+  1150→    top: 0;
+  1151→    left: 0;
+  1152→    width: 50%;
+  1153→    height: 100%;
+  1154→    background: linear-gradient(
+  1155→      90deg,
+  1156→      transparent,
+  1157→      rgba(16, 185, 129, 0.08),
+  1158→      transparent
+  1159→    );
+  1160→    animation: siem-scan-shimmer 1.6s ease-in-out infinite;
+  1161→    pointer-events: none;
+  1162→  }
+  1163→}
+  1164→
+  1165→/* ===== GLOBAL: Severity dot pulse for critical alerts =====
+  1166→   Pulsing red dot for critical-severity items in lists. */
+  1167→@layer components {
+  1168→  @keyframes siem-critical-pulse {
+  1169→    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  1170→    50%      { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+  1171→  }
+  1172→  .siem-critical-dot {
+  1173→    animation: siem-critical-pulse 1.8s ease-out infinite;
+  1174→  }
+  1175→}
+  1176→
+  1177→/* ===== GLOBAL: Tabular numerals for IDs and counters =====
+  1178→   Improves readability of monospace-style numeric displays. */
+  1179→@layer components {
+  1180→  .siem-tabular-nums {
+  1181→    font-variant-numeric: tabular-nums;
+  1182→    font-feature-settings: 'tnum';
+  1183→  }
+  1184→}
+  1185→
+  1186→/* ===== GLOBAL: Sidebar nav item icon micro-interaction =====
+  1187→   Active nav item icon gets a subtle bounce + glow. */
+  1188→@layer components {
+  1189→  .siem-nav-item-active svg {
+  1190→    filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.5));
+  1191→    transition: filter 0.2s ease, transform 0.2s ease;
+  1192→  }
+  1193→  .siem-nav-item-active:hover svg {
+  1194→    transform: scale(1.1);
+  1195→    filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.7));
+  1196→  }
+  1197→}
+  1198→
+  1199→/* ===== REPORTS: Schedule row "next run" countdown bar =====
+  1200→   A thin progress bar showing time-until-next-run for scheduled reports. */
+  1201→@layer components {
+  1202→  .siem-schedule-bar {
+  1203→    height: 2px;
+  1204→    border-radius: 9999px;
+  1205→    background: rgba(39, 39, 42, 0.6);
+  1206→    overflow: hidden;
+  1207→    position: relative;
+  1208→  }
+  1209→  .siem-schedule-bar > span {
+  1210→    display: block;
+  1211→    height: 100%;
+  1212→    background: linear-gradient(90deg, rgba(6, 182, 212, 0.6), rgba(16, 185, 129, 1));
+  1213→    border-radius: 9999px;
+  1214→    box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+  1215→    transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  1216→  }
+  1217→  html:not(.dark) .siem-schedule-bar {
+  1218→    background: rgba(228, 228, 231, 0.6);
+  1219→  }
+  1220→}
+  1221→
+  1222→/* ===== REPORTS: Format badge hover lift =====
+  1223→   Format badges get a subtle lift on hover for affordance. */
+  1224→@layer components {
+  1225→  .siem-format-badge {
+  1226→    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  1227→  }
+  1228→  .siem-format-badge:hover {
+  1229→    transform: translateY(-1px);
+  1230→    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.3);
+  1231→  }
+  1232→}
+  1233→

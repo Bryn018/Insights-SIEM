@@ -1,0 +1,28 @@
+{
+  "index_patterns": ["insights-host-logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "refresh_interval": "10s"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "message": { "type": "text" },
+        "hostname": { "type": "keyword" },
+        "siem": { "type": "keyword" },
+        "log": {
+          "properties": {
+            "file": {
+              "properties": {
+                "path": { "type": "keyword" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "priority": 100
+}

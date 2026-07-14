@@ -1,0 +1,26 @@
+groups:
+  - name: insights_host_alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: (100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 90
+        for: 5m
+        labels: { severity: high }
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage > 90% for 5m"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels: { severity: high }
+        annotations:
+          summary: "High memory usage"
+          description: "RAM usage > 90% for 5m"
+
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes{fstype!="tmpfs",mountpoint="/"} / node_filesystem_size_bytes{fstype!="tmpfs",mountpoint="/"}) * 100 < 10
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "Low disk space"
+          description: "Root filesystem free space below 10%"

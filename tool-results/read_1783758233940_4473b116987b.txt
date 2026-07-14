@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import {
+     6→  Plus,
+     7→  RefreshCw,
+     8→  Upload,
+     9→  ToggleLeft,
+    10→  ToggleRight,
+    11→  ChevronDown,
+    12→  ChevronUp,
+    13→  Play,
+    14→  LastPing,
+    15→  ChevronLeft,
+    16→  ChevronRight,
+    17→  Check,
+    18→  FileCode2,
+    19→  Shield,
+    20→  Copy,
+    21→  Download,
+    22→  Search,
+    23→  Filter,
+    24→  Code2,
+    25→  Terminal,
+    26→  Zap,
+    27→  Clock,
+    28→  AlertTriangle,
+    29→  Loader2,
+    30→  X,
+    31→  Tag,
+    32→  Library,
+    33→  Sparkles,
+    34→  Pencil,
+    35→  FlaskConical,
+    36→  Mail,
+    37→  Webhook,
+    38→  Bell,
+    39→  Workflow,
+    40→} from 'lucide-react'
+    41→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    42→import { Button } from '@/components/ui/button'
+    43→import { Input } from '@/components/ui/input'
+    44→import { Textarea } from '@/components/ui/textarea'
+    45→import { Badge } from '@/components/ui/badge'
+    46→import { Switch } from '@/components/ui/switch'
+    47→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    48→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+    49→import { ScrollArea } from '@/components/ui/scroll-area'
+    50→import { Skeleton } from '@/components/ui/skeleton'
+    51→import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+    52→import { useSIEMStore, type Severity } from '@/lib/store'
+    53→import { SeverityBadge } from '@/components/siem/status-badge'
+    54→import { ExportButton } from '@/components/siem/export-button'
+    55→import { cn } from '@/lib/utils'
+    56→import { toast } from 'sonner'
+    57→import type { ReactNode } from 'react'
+    58→
+    59→interface RuleRow {
+    60→  id: string
+    61→  name: string
+    62→  description: string
+    63→  query: string
+    64→  queryLanguage: string
+    65→  severity: string
+    66→  category: string | null
+    67→  mitreTactic: string | null
+    68→  mitreTechnique: string | null
+    69→  tags: string | null
+    70→  enabled: boolean
+    71→  isDefault: boolean
+    72→  schedule: string | null
+    73→  lookback: string | null
+    74→  threshold: number | null
+    75→  indexPattern: string | null
+    76→  lastRunAt: string | null
+    77→  lastHitAt: string | null
+    78→  hitCount: number
+    79→  falsePositiveCount: number
+    80→  createdBy: string | null
+    81→  createdAt: string
+    82→  updatedAt: string
+    83→}
+    84→
+    85→// ===== Rule editor types =====
+    86→type RuleType = 'sigma' | 'yara' | 'kql' | 'lucene'
+    87→
+    88→interface EditorRule {
+    89→  id?: string
+    90→  name: string
+    91→  description: string
+    92→  ruleType: RuleType
+    93→  severity: Severity
+    94→  category: string
+    95→  tags: string
+    96→  query: string
+    97→  schedule: string
+    98→  lookback: string
+    99→  threshold: number
+   100→  alertActions: string[]
+   101→  mitreTactic: string
+   102→  mitreTechnique: string
+   103→  indexPattern: string
+   104→}
+   105→
+   106→interface TestMatch {
+   107→  timestamp: string
+   108→  source: string
+   109→  matchedField: string
+   110→  sampleValue: string
+   111→}
+   112→
+   113→interface TemplateCardData {
+   114→  id: string
+   115→  name: string
+   116→  type: RuleType
+   117→  category: string
+   118→  description: string
+   119→  mitre: string
+   120→  severity: Severity
+   121→  query: string
+   122→}
+   123→
+   124→const RULE_CATEGORIES = [
+   125→  'Malware Detection',
+   126→  'Lateral Movement',
+   127→  'Credential Access',
+   128→  'Persistence',
+   129→  'Defense Evasion',
+   130→  'Exfiltration',
+   131→]
+   132→
+   133→const SCHEDULE_OPTIONS = [
+   134→  { value: 'realtime', label: 'Real-time' },
+   135→  { value: '*/5 * * * *', label: 'Every 5 minutes' },
+   136→  { value: '0 * * * *', label: 'Hourly' },
+   137→  { value: '0 0 * * *', label: 'Daily' },
+   138→]
+   139→
+   140→const LOOKBACK_OPTIONS = ['1m', '5m', '15m', '30m', '1h', '6h', '24h']
+   141→
+   142→const ALERT_ACTIONS = [
+   143→  { id: 'email', label: 'Email Notification', icon: Mail },
+   144→  { id: 'siem', label: 'SIEM Alert', icon: Bell },
+   145→  { id: 'webhook', label: 'Webhook', icon: Webhook },
+   146→  { id: 'soar', label: 'SOAR Playbook', icon: Workflow },
+   147→]
+   148→
+   149→const COMMON_LOG_FIELDS = [
+   150→  'EventID', 'Image', 'CommandLine', 'DestinationIp', 'DestinationPort',
+   151→  'SourceIp', 'SourcePort', 'User', 'TargetFilename', 'ParentImage',
+   152→  'ProcessGuid', 'ComputerName', 'RegistryKey', 'RegistryValue',
+   153→  'LogonType', 'IpAddress', 'WorkstationName', 'Hashes', 'Protocol',
+   154→]
+   155→
+   156→// ===== Sigma YAML templates (5) =====
+   157→const SIGMA_TEMPLATES: Record<string, string> = {
+   158→  'Process Creation': `title: Suspicious PowerShell Execution
+   159→status: experimental
+   160→description: Detects suspicious PowerShell command line arguments commonly used by attackers
+   161→author: SOC Team
+   162→date: 2024/01/15
+   163→logsource:
+   164→  product: windows
+   165→  service: process_creation
+   166→detection:
+   167→  selection:
+   168→    Image|endswith: '\\\\powershell.exe'
+   169→    CommandLine|contains:
+   170→      - '-enc '
+   171→      - '-ExecutionPolicy Bypass'
+   172→      - 'DownloadString'
+   173→      - 'Invoke-Shellcode'
+   174→  condition: selection
+   175→fields:
+   176→  - CommandLine
+   177→  - User
+   178→  - ComputerName
+   179→falsepositives:
+   180→  - Administrative scripts
+   181→level: high
+   182→`,
+   183→  'Network Connection': `title: Suspicious Outbound Network Connection
+   184→status: experimental
+   185→description: Detects outbound connections to known suspicious ports or rare destination IPs
+   186→author: SOC Team
+   187→date: 2024/01/15
+   188→logsource:
+   189→  product: windows
+   190→  service: network_connection
+   191→detection:
+   192→  selection:
+   193→    DestinationPort:
+   194→      - 4444
+   195→      - 6667
+   196→      - 1337
+   197→    Initiated: 'true'
+   198→  condition: selection
+   199→fields:
+   200→  - Image
+   201→  - DestinationIp
+   202→  - DestinationPort
+   203→  - User
+   204→falsepositives:
+   205→  - Legitimate IRC clients
+   206→level: medium
+   207→`,
+   208→  'File Creation': `title: Ransomware File Extension Dropped
+   209→status: experimental
+   210→description: Detects creation of files with known ransomware extensions
+   211→author: SOC Team
+   212→date: 2024/01/15
+   213→logsource:
+   214→  product: windows
+   215→  service: file_create
+   216→detection:
+   217→  selection:
+   218→    TargetFilename|endswith:
+   219→      - '.locked'
+   220→      - '.encrypted'
+   221→      - '.crypt'
+   222→      - '.ryuk'
+   223→      - '.locky'
+   224→  condition: selection
+   225→fields:
+   226→  - TargetFilename
+   227→  - Image
+   228→  - User
+   229→falsepositives:
+   230→  - Backup software using custom extensions
+   231→level: critical
+   232→`,
+   233→  'Registry Modification': `title: Registry Run Key Persistence
+   234→status: experimental
+   235→description: Detects modifications to the Run registry key for persistence
+   236→author: SOC Team
+   237→date: 2024/01/15
+   238→logsource:
+   239→  product: windows
+   240→  service: registry_event
+   241→detection:
+   242→  selection:
+   243→    EventType: SetValue
+   244→    TargetObject|contains:
+   245→      - 'CurrentVersion\\\\Run'
+   246→      - 'CurrentVersion\\\\RunOnce'
+   247→  condition: selection
+   248→fields:
+   249→  - TargetObject
+   250→  - Details
+   251→  - Image
+   252→falsepositives:
+   253→  - Legitimate startup programs
+   254→level: high
+   255→`,
+   256→  'Authentication': `title: Brute Force Authentication Detection
+   257→status: experimental
+   258→description: Detects multiple failed authentication attempts from a single source
+   259→author: SOC Team
+   260→date: 2024/01/15
+   261→logsource:
+   262→  product: windows
+   263→  service: security
+   264→detection:
+   265→  selection:
+   266→    EventID: 4625
+   267→  timeframe: 5m
+   268→  condition: selection | count() by IpAddress > 10
+   269→fields:
+   270→  - IpAddress
+   271→  - TargetUserName
+   272→  - LogonType
+   273→falsepositives:
+   274→  - Misconfigured service accounts
+   275→level: high
+   276→`,
+   277→}
+   278→
+   279→// ===== YARA templates (5) =====
+   280→const YARA_TEMPLATES: Record<string, string> = {
+   281→  'Malware Family': `rule MalwareFamily_Generic {
+   282→  meta:
+   283→    description = "Detects generic malware family indicators"
+   284→    author = "SOC Team"
+   285→    date = "2024-01-15"
+   286→    severity = "high"
+   287→    family = "generic"
+   288→  strings:
+   289→    $s1 = "CreateRemoteThread" nocase
+   290→    $s2 = "VirtualAllocEx" nocase
+   291→    $s3 = "WriteProcessMemory" nocase
+   292→    $hex = { 4D 5A 90 00 03 00 00 00 04 00 00 00 FF FF }
+   293→    $regex = /hxxps?:\\/\\/[^\\/]+\\/[a-z]{8}\\.exe/i
+   294→  condition:
+   295→    uint16(0) == 0x5A4D and 2 of them
+   296→}
+   297→`,
+   298→  'Ransomware': `rule Ransomware_Note_Detection {
+   299→  meta:
+   300→    description = "Detects common ransom note filenames and content"
+   301→    author = "SOC Team"
+   302→    date = "2024-01-15"
+   303→    severity = "critical"
+   304→  strings:
+   305→    $note1 = "YOUR FILES ARE ENCRYPTED" nocase
+   306→    $note2 = "HOW_TO_DECRYPT" nocase
+   307→    $note3 = "send BTC to" nocase
+   308→    $wallet = /\\b(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,42}\\b/
+   309→    $ext = /\\.(locked|encrypted|ryuk|locky|crypt)$/i
+   310→  condition:
+   311→    any of ($note*) or $wallet or $ext
+   312→}
+   313→`,
+   314→  'Web Shell': `rule WebShell_Detection {
+   315→  meta:
+   316→    description = "Detects common web shell signatures"
+   317→    author = "SOC Team"
+   318→    date = "2024-01-15"
+   319→    severity = "critical"
+   320→  strings:
+   321→    $php1 = "eval(base64_decode(" nocase
+   322→    $php2 = "system($_" nocase
+   323→    $php3 = "passthru($_" nocase
+   324→    $jsp1 = "Runtime.getRuntime().exec(" nocase
+   325→    $asp1 = "WScript.Shell" nocase
+   326→    $generic = "c99shell" nocase
+   327→    $b374k = "b374k" nocase
+   328→  condition:
+   329→    1 of them
+   330→}
+   331→`,
+   332→  'RAT': `rule Remote_Access_Trojan {
+   333→  meta:
+   334→    description = "Detects remote access trojan beacon patterns"
+   335→    author = "SOC Team"
+   336→    date = "2024-01-15"
+   337→    severity = "critical"
+   338→  strings:
+   339→    $beacon1 = "C2_CALLBACK" nocase
+   340→    $beacon2 = "REGISTRY_PERSIST" nocase
+   341→    $keylog = "GetAsyncKeyState" nocase
+   342→    $screen = "BitBlt" nocase
+   343→    $inject = "NtUnmapViewOfSection" nocase
+   344→    $mutex = "Global\\\\\\\\MutEx_C2_" ascii
+   345→  condition:
+   346→    2 of them
+   347→}
+   348→`,
+   349→  'Exploit Kit': `rule ExploitKit_Landing {
+   350→  meta:
+   351→    description = "Detects exploit kit landing page patterns"
+   352→    author = "SOC Team"
+   353→    date = "2024-01-15"
+   354→    severity = "high"
+   355→  strings:
+   356→    $flash = "application/x-shockwave-flash" nocase
+   357→    $java1 = "sun.audio." nocase
+   358→    $java2 = "java.applet" nocase
+   359→    $obf1 = "unescape(unescape" nocase
+   360→    $obf2 = "String.fromCharCode" nocase
+   361→    $shellcode = { FC E8 89 00 00 00 60 89 E5 31 D2 }
+   362→  condition:
+   363→    2 of them
+   364→}
+   365→`,
+   366→}
+   367→
+   368→// ===== Templates library (10 mix) =====
+   369→const TEMPLATE_LIBRARY: TemplateCardData[] = [
+   370→  {
+   371→    id: 'tpl-1',
+   372→    name: 'Suspicious PowerShell Execution',
+   373→    type: 'sigma',
+   374→    category: 'Malware Detection',
+   375→    description: 'Detects suspicious PowerShell command line arguments commonly used by attackers for execution and lateral movement.',
+   376→    mitre: 'T1059.001',
+   377→    severity: 'high',
+   378→    query: SIGMA_TEMPLATES['Process Creation'],
+   379→  },
+   380→  {
+   381→    id: 'tpl-2',
+   382→    name: 'C2 Beacon Network Activity',
+   383→    type: 'sigma',
+   384→    category: 'Exfiltration',
+   385→    description: 'Detects outbound connections to suspicious ports associated with command-and-control beacons.',
+   386→    mitre: 'T1071',
+   387→    severity: 'medium',
+   388→    query: SIGMA_TEMPLATES['Network Connection'],
+   389→  },
+   390→  {
+   391→    id: 'tpl-3',
+   392→    name: 'Ransomware File Extension Drop',
+   393→    type: 'sigma',
+   394→    category: 'Defense Evasion',
+   395→    description: 'Detects creation of files with known ransomware extensions indicating encryption activity.',
+   396→    mitre: 'T1486',
+   397→    severity: 'critical',
+   398→    query: SIGMA_TEMPLATES['File Creation'],
+   399→  },
+   400→  {
+   401→    id: 'tpl-4',
+   402→    name: 'Registry Run Key Persistence',
+   403→    type: 'sigma',
+   404→    category: 'Persistence',
+   405→    description: 'Detects modifications to the Windows Run registry key used for malware persistence.',
+   406→    mitre: 'T1547.001',
+   407→    severity: 'high',
+   408→    query: SIGMA_TEMPLATES['Registry Modification'],
+   409→  },
+   410→  {
+   411→    id: 'tpl-5',
+   412→    name: 'Brute Force Authentication',
+   413→    type: 'sigma',
+   414→    category: 'Credential Access',
+   415→    description: 'Detects multiple failed authentication attempts from a single source indicating brute force.',
+   416→    mitre: 'T1110',
+   417→    severity: 'high',
+   418→    query: SIGMA_TEMPLATES['Authentication'],
+   419→  },
+   420→  {
+   421→    id: 'tpl-6',
+   422→    name: 'Generic Malware Family Strings',
+   423→    type: 'yara',
+   424→    category: 'Malware Detection',
+   425→    description: 'YARA rule detecting generic malware family indicators including API hooking and process injection.',
+   426→    mitre: 'T1027',
+   427→    severity: 'high',
+   428→    query: YARA_TEMPLATES['Malware Family'],
+   429→  },
+   430→  {
+   431→    id: 'tpl-7',
+   432→    name: 'Ransomware Note Detection',
+   433→    type: 'yara',
+   434→    category: 'Exfiltration',
+   435→    description: 'YARA rule detecting common ransom note content, Bitcoin wallet addresses, and encrypted file extensions.',
+   436→    mitre: 'T1486',
+   437→    severity: 'critical',
+   438→    query: YARA_TEMPLATES['Ransomware'],
+   439→  },
+   440→  {
+   441→    id: 'tpl-8',
+   442→    name: 'Web Shell Detection',
+   443→    type: 'yara',
+   444→    category: 'Persistence',
+   445→    description: 'YARA rule detecting common web shell signatures across PHP, JSP, and ASP platforms.',
+   446→    mitre: 'T1505.003',
+   447→    severity: 'critical',
+   448→    query: YARA_TEMPLATES['Web Shell'],
+   449→  },
+   450→  {
+   451→    id: 'tpl-9',
+   452→    name: 'Remote Access Trojan Beacon',
+   453→    type: 'yara',
+   454→    category: 'Lateral Movement',
+   455→    description: 'YARA rule detecting RAT beacon patterns, keylogging, screen capture, and process injection APIs.',
+   456→    mitre: 'T1071',
+   457→    severity: 'critical',
+   458→    query: YARA_TEMPLATES['RAT'],
+   459→  },
+   460→  {
+   461→    id: 'tpl-10',
+   462→    name: 'Exploit Kit Landing Page',
+   463→    type: 'yara',
+   464→    category: 'Defense Evasion',
+   465→    description: 'YARA rule detecting exploit kit landing page patterns including Flash, Java exploits, and shellcode.',
+   466→    mitre: 'T1190',
+   467→    severity: 'high',
+   468→    query: YARA_TEMPLATES['Exploit Kit'],
+   469→  },
+   470→]
+   471→
+   472→const RULE_TYPE_INFO: Record<RuleType, { label: string; icon: typeof Code2; color: string; desc: string }> = {
+   473→  sigma: { label: 'Sigma', icon: Shield, color: 'text-emerald-400', desc: 'YAML-based detection rules for SIEM log sources' },
+   474→  yara: { label: 'YARA', icon: FileCode2, color: 'text-cyan-400', desc: 'Pattern-matching rules for files and memory' },
+   475→  kql: { label: 'KQL', icon: Terminal, color: 'text-purple-400', desc: 'Kusto Query Language for structured queries' },
+   476→  lucene: { label: 'Lucene', icon: Search, color: 'text-amber-400', desc: 'Apache Lucene full-text search syntax' },
+   477→}
+   478→
+   479→const DEFAULT_EDITOR_RULE: EditorRule = {
+   480→  name: '',
+   481→  description: '',
+   482→  ruleType: 'sigma',
+   483→  severity: 'medium',
+   484→  category: '',
+   485→  tags: '',
+   486→  query: '',
+   487→  schedule: 'realtime',
+   488→  lookback: '5m',
+   489→  threshold: 1,
+   490→  alertActions: ['email', 'siem'],
+   491→  mitreTactic: '',
+   492→  mitreTechnique: '',
+   493→  indexPattern: 'insights-*',
+   494→}
+   495→
+   496→// ===== Syntax highlighting =====
+   497→// Lightweight per-line tokenizers that emit <span> elements with CSS classes.
+   498→// Designed to be fast and dependency-free; not a full parser.
+   499→
+   500→function highlightValue(s: string): ReactNode[] {
+   501→  const tokens: ReactNode[] = []
+   502→  const regex = /("(?:[^"\\]|\\.)*"|'[^']*'|-?\b\d+\.?\d*\b)/g
+   503→  let lastIdx = 0
+   504→  let m: RegExpExecArray | null
+   505→  let i = 0
+   506→  while ((m = regex.exec(s)) !== null) {
+   507→    if (m.index > lastIdx) tokens.push(s.slice(lastIdx, m.index))
+   508→    const val = m[0]
+   509→    if (val.startsWith('"') || val.startsWith("'")) {
+   510→      tokens.push(<span key={i++} className="siem-syntax-string">{val}</span>)
+   511→    } else {
+   512→      tokens.push(<span key={i++} className="siem-syntax-number">{val}</span>)
+   513→    }
+   514→    lastIdx = m.index + val.length
+   515→  }
+   516→  if (lastIdx < s.length) tokens.push(s.slice(lastIdx))
+   517→  return tokens
+   518→}
+   519→
+   520→function highlightSigma(code: string): ReactNode {
+   521→  const lines = code.split('\n')
+   522→  return lines.map((line, i) => {
+   523→    if (line.trimStart().startsWith('#')) {
+   524→      return <div key={i}><span className="siem-syntax-comment">{line || ' '}</span></div>
+   525→    }
+   526→    const keyMatch = line.match(/^(\s*)([A-Za-z_][\w.]*)(\|[\w]+)*(:)(.*)$/)
+   527→    if (keyMatch) {
+   528→      const indent = keyMatch[1]
+   529→      const key = keyMatch[2]
+   530→      const modifier = keyMatch[3] || ''
+   531→      const colon = keyMatch[4]
+   532→      const rest = keyMatch[5]
+   533→      return (
+   534→        <div key={i}>
+   535→          {indent}
+   536→          <span className="siem-syntax-keyword">{key}</span>
+   537→          {modifier && <span className="siem-syntax-operator">{modifier}</span>}
+   538→          <span className="siem-syntax-operator">{colon}</span>
+   539→          {highlightValue(rest)}
+   540→        </div>
+   541→      )
+   542→    }
+   543→    const listMatch = line.match(/^(\s*)(-)(\s+)(.*)$/)
+   544→    if (listMatch) {
+   545→      return (
+   546→        <div key={i}>
+   547→          {listMatch[1]}<span className="siem-syntax-operator">{listMatch[2]}</span>{listMatch[3]}
+   548→          {highlightValue(listMatch[4])}
+   549→        </div>
+   550→      )
+   551→    }
+   552→    return <div key={i}>{line || ' '}</div>
+   553→  })
+   554→}
+   555→
+   556→const YARA_KEYWORDS = new Set([
+   557→  'rule', 'meta', 'strings', 'condition', 'any', 'of', 'them', 'and', 'or',
+   558→  'not', 'true', 'false', 'import', 'global', 'private', 'ascii', 'wide',
+   559→  'nocase', 'fullword', 'int8', 'int16', 'int32', 'uint8', 'uint16', 'uint32',
+   560→  'all', 'for', 'in', 'filesize', 'entrypoint', 'at',
+   561→])
+   562→
+   563→function highlightYara(code: string): ReactNode {
+   564→  const lines = code.split('\n')
+   565→  return lines.map((line, i) => {
+   566→    const trimmed = line.trimStart()
+   567→    if (trimmed.startsWith('//')) {
+   568→      return <div key={i}><span className="siem-syntax-comment">{line || ' '}</span></div>
+   569→    }
+   570→    const tokens: ReactNode[] = []
+   571→    const regex = /(\s+)|("(?:[^"\\]|\\.)*"|'[^']*')|(\/[^/\n]+\/[gimsux]*)|(\$\w+)|(\{[^}]*\})|([A-Za-z_]\w*)|(\b\d+(?:\.\d+)?\b)|([{}():,=<>!|&])/g
+   572→    let m: RegExpExecArray | null
+   573→    let ti = 0
+   574→    while ((m = regex.exec(line)) !== null) {
+   575→      const [full, ws, str, regexVal, variable, hex, word, num, op] = m
+   576→      if (ws !== undefined) { tokens.push(ws); continue }
+   577→      if (str !== undefined) { tokens.push(<span key={ti++} className="siem-syntax-string">{str}</span>); continue }
+   578→      if (regexVal !== undefined) { tokens.push(<span key={ti++} className="siem-syntax-string">{regexVal}</span>); continue }
+   579→      if (variable !== undefined) { tokens.push(<span key={ti++} className="siem-syntax-variable">{variable}</span>); continue }
+   580→      if (hex !== undefined) { tokens.push(<span key={ti++} className="siem-syntax-number">{hex}</span>); continue }
+   581→      if (word !== undefined) {
+   582→        if (YARA_KEYWORDS.has(word)) tokens.push(<span key={ti++} className="siem-syntax-keyword">{word}</span>)
+   583→        else tokens.push(word)
+   584→        continue
+   585→      }
+   586→      if (num !== undefined) { tokens.push(<span key={ti++} className="siem-syntax-number">{num}</span>); continue }
+   587→      if (op !== undefined) { tokens.push(<span key={ti++} className="siem-syntax-operator">{op}</span>); continue }
+   588→      tokens.push(full)
+   589→    }
+   590→    return <div key={i}>{tokens.length ? tokens : (line || ' ')}</div>
+   591→  })
+   592→}
+   593→
+   594→const KQL_KEYWORDS = new Set([
+   595→  'where', 'project', 'summarize', 'extend', 'join', 'limit', 'order', 'by',
+   596→  'desc', 'asc', 'let', 'and', 'or', 'not', 'contains', 'has', 'startswith',
+   597→  'endswith', 'matches', 'regex', 'in', 'between', 'ago', 'now', 'bin', 'count',
+   598→  'sum', 'avg', 'min', 'max', 'AND', 'OR', 'NOT', 'take', 'sort', 'distinct',
+   599→  'union', 'make', 'list', 'set', 'dcount', 'iff',
+   600→])
+   601→
+   602→function highlightKqlLike(code: string): ReactNode {
+   603→  const lines = code.split('\n')
+   604→  return lines.map((line, i) => {
+   605→    if (line.trimStart().startsWith('//') || line.trimStart().startsWith('#')) {
+   606→      return <div key={i}><span className="siem-syntax-comment">{line || ' '}</span></div>
+   607→    }
+   608→    const tokens: ReactNode[] = []
+   609→    const regex = /(\s+)|("(?:[^"\\]|\\.)*"|'[^']*')|(\*|:|=|\(|\)|\||<|>)/g
+   610→    let m: RegExpExecArray | null
+   611→    let ti = 0
+   612→    let lastIdx = 0
+   613→    while ((m = regex.exec(line)) !== null) {
+   614→      if (m.index > lastIdx) {
+   615→        const chunk = line.slice(lastIdx, m.index)
+   616→        // split chunk into words and numbers
+   617→        const sub = chunk.split(/(\b\d+(?:\.\d+)?\b)/)
+   618→        for (const part of sub) {
+   619→          if (!part) continue
+   620→          if (/^\d+(\.\d+)?$/.test(part)) {
+   621→            tokens.push(<span key={ti++} className="siem-syntax-number">{part}</span>)
+   622→          } else {
+   623→            const words = part.split(/(\s+)/)
+   624→            for (const w of words) {
+   625→              if (!w) continue
+   626→              if (/^\s+$/.test(w)) { tokens.push(w); continue }
+   627→              if (KQL_KEYWORDS.has(w)) tokens.push(<span key={ti++} className="siem-syntax-keyword">{w}</span>)
+   628→              else tokens.push(w)
+   629→            }
+   630→          }
+   631→        }
+   632→      }
+   633→      const [, ws, str, op] = m
+   634→      if (ws !== undefined) { tokens.push(ws); lastIdx = m.index + ws.length; continue }
+   635→      if (str !== undefined) { tokens.push(<span key={ti++} className="siem-syntax-string">{str}</span>); lastIdx = m.index + str.length; continue }
+   636→      if (op !== undefined) { tokens.push(<span key={ti++} className="siem-syntax-operator">{op}</span>); lastIdx = m.index + op.length; continue }
+   637→      lastIdx = m.index + m[0].length
+   638→    }
+   639→    if (lastIdx < line.length) {
+   640→      const chunk = line.slice(lastIdx)
+   641→      const sub = chunk.split(/(\b\d+(?:\.\d+)?\b)/)
+   642→      for (const part of sub) {
+   643→        if (!part) continue
+   644→        if (/^\d+(\.\d+)?$/.test(part)) {
+   645→          tokens.push(<span key={ti++} className="siem-syntax-number">{part}</span>)
+   646→        } else {
+   647→          const words = part.split(/(\s+)/)
+   648→          for (const w of words) {
+   649→            if (!w) continue
+   650→            if (/^\s+$/.test(w)) { tokens.push(w); continue }
+   651→            if (KQL_KEYWORDS.has(w)) tokens.push(<span key={ti++} className="siem-syntax-keyword">{w}</span>)
+   652→            else tokens.push(w)
+   653→          }
+   654→        }
+   655→      }
+   656→    }
+   657→    return <div key={i}>{tokens.length ? tokens : (line || ' ')}</div>
+   658→  })
+   659→}
+   660→
+   661→function highlightCode(code: string, lang: RuleType): ReactNode {
+   662→  if (lang === 'sigma') return highlightSigma(code)
+   663→  if (lang === 'yara') return highlightYara(code)
+   664→  return highlightKqlLike(code)
+   665→}
+   666→
+   667→// ===== Code editor (overlay technique) =====
+   668→function CodeEditor({
+   669→  value,
+   670→  onChange,
+   671→  lang,
+   672→  minHeight = 260,
+   673→}: {
+   674→  value: string
+   675→  onChange: (v: string) => void
+   676→  lang: RuleType
+   677→  minHeight?: number
+   678→}) {
+   679→  const taRef = useRef<HTMLTextAreaElement>(null)
+   680→  const preRef = useRef<HTMLPreElement>(null)
+   681→  const gutterRef = useRef<HTMLDivElement>(null)
+   682→
+   683→  const lineCount = useMemo(() => value.split('\n').length, [value])
+   684→
+   685→  const handleScroll = useCallback(() => {
+   686→    if (taRef.current && preRef.current && gutterRef.current) {
+   687→      preRef.current.scrollTop = taRef.current.scrollTop
+   688→      preRef.current.scrollLeft = taRef.current.scrollLeft
+   689→      gutterRef.current.scrollTop = taRef.current.scrollTop
+   690→    }
+   691→  }, [])
+   692→
+   693→  return (
+   694→    <div className="siem-code-editor flex" style={{ minHeight }}>
+   695→      {/* Line numbers gutter */}
+   696→      <div
+   697→        ref={gutterRef}
+   698→        className="siem-code-gutter w-10 shrink-0 py-2 text-xs"
+   699→        aria-hidden="true"
+   700→      >
+   701→        {Array.from({ length: Math.max(lineCount, 12) }, (_, i) => (
+   702→          <div key={i} className="px-2">{i + 1}</div>
+   703→        ))}
+   704→      </div>
+   705→      {/* Code area: pre (highlighted) behind transparent textarea */}
+   706→      <div className="relative flex-1 overflow-hidden">
+   707→        <pre
+   708→          ref={preRef}
+   709→          className="absolute inset-0 overflow-hidden px-3 py-2 text-xs"
+   710→          aria-hidden="true"
+   711→        >
+   712→          <code>{highlightCode(value, lang)}{'\n'}</code>
+   713→        </pre>
+   714→        <textarea
+   715→          ref={taRef}
+   716→          value={value}
+   717→          onChange={(e) => onChange(e.target.value)}
+   718→          onScroll={handleScroll}
+   719→          spellCheck={false}
+   720→          className="siem-code-scroll absolute inset-0 px-3 py-2 text-xs"
+   721→          style={{ caretColor: '#34d399' }}
+   722→          aria-label="Rule definition"
+   723→        />
+   724→      </div>
+   725→    </div>
+   726→  )
+   727→}
+   728→
+   729→// ===== Tiny deterministic sparkline (preserved from original) =====
+   730→function hashString(s: string): number {
+   731→  let h = 2166136261
+   732→  for (let i = 0; i < s.length; i++) {
+   733→    h ^= s.charCodeAt(i)
+   734→    h = (h * 16777619) >>> 0
+   735→  }
+   736→  return h
+   737→}
+   738→
+   739→function generateSparklinePoints(ruleId: string, hitCount: number): number[] {
+   740→  if (hitCount <= 0) return [0, 0, 0, 0, 0, 0, 0, 0]
+   741→  const seed = hashString(ruleId)
+   742→  const points: number[] = []
+   743→  let prev = hitCount * 0.4
+   744→  for (let i = 0; i < 8; i++) {
+   745→    const r = ((seed >> (i * 3)) & 0xff) / 255 - 0.45
+   746→    prev = Math.max(0, prev + r * hitCount * 0.25)
+   747→    points.push(prev)
+   748→  }
+   749→  points[points.length - 1] = hitCount
+   750→  return points
+   751→}
+   752→
+   753→function HitsSparkline({ ruleId, hitCount }: { ruleId: string; hitCount: number }) {
+   754→  const points = useMemo(
+   755→    () => generateSparklinePoints(ruleId, hitCount),
+   756→    [ruleId, hitCount]
+   757→  )
+   758→  const max = Math.max(1, ...points)
+   759→  const w = 44
+   760→  const h = 14
+   761→  const stepX = w / (points.length - 1)
+   762→  const path = points
+   763→    .map((p, i) => {
+   764→      const x = i * stepX
+   765→      const y = h - (p / max) * (h - 2) - 1
+   766→      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+   767→    })
+   768→    .join(' ')
+   769→  const areaPath = `${path} L${w},${h} L0,${h} Z`
+   770→  const color =
+   771→    hitCount > 100 ? '#ef4444' : hitCount > 20 ? '#f97316' : hitCount > 0 ? '#10b981' : '#52525b'
+   772→
+   773→  if (hitCount === 0) {
+   774→    return (
+   775→      <svg width={w} height={h} className="shrink-0 opacity-50" aria-hidden="true">
+   776→        <line x1="0" y1={h - 1} x2={w} y2={h - 1} stroke={color} strokeWidth="1" strokeDasharray="2 2" />
+   777→      </svg>
+   778→    )
+   779→  }
+   780→
+   781→  return (
+   782→    <svg width={w} height={h} className="shrink-0" aria-hidden="true">
+   783→      <defs>
+   784→        <linearGradient id={`spark-${ruleId}`} x1="0" y1="0" x2="0" y2="1">
+   785→          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+   786→          <stop offset="100%" stopColor={color} stopOpacity="0" />
+   787→        </linearGradient>
+   788→      </defs>
+   789→      <path d={areaPath} fill={`url(#spark-${ruleId})`} />
+   790→      <path d={path} fill="none" stroke={color} strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+   791→    </svg>
+   792→  )
+   793→}
+   794→
+   795→// ===== MITRE tooltip map (preserved) =====
+   796→const MITRE_TECHNIQUE_DESCRIPTIONS: Record<string, string> = {
+   797→  T1059: 'Command and Scripting Interpreter — Adversaries may abuse command and script interpreters to execute commands.',
+   798→  T1059_001: 'PowerShell — Adversaries may abuse PowerShell commands and scripts for execution.',
+   799→  T1059_004: 'Unix Shell — Adversaries may abuse Unix shell commands and scripts for execution.',
+   800→  T1078: 'Valid Accounts — Adversaries may compromise accounts with existing access to systems.',
+   801→  T1110: 'Brute Force — Adversaries may use brute-force techniques to attempt access to accounts.',
+   802→  T1003: 'OS Credential Dumping — Adversaries may attempt to dump credentials to obtain account login material.',
+   803→  T1566: 'Phishing — Adversaries may send phishing messages to gain access to victims.',
+   804→  T1566_001: 'Spearphishing Attachment — Phishing with a malicious attachment.',
+   805→  T1566_002: 'Spearphishing Link — Phishing with a malicious link.',
+   806→  T1486: 'Data Encrypted for Impact — Adversaries may encrypt data on target systems to interrupt availability.',
+   807→  T1190: 'Exploit Public-Facing Application — Adversaries may attempt to exploit a weakness in an internet-facing host.',
+   808→  T1048: 'Exfiltration Over Alternative Protocol — Exfiltration using a different protocol than the standard.',
+   809→  T1041: 'Exfiltration Over C2 Channel — Exfiltration over an existing command-and-control channel.',
+   810→  T1053: 'Scheduled Task/Job — Adversaries may abuse task scheduling utilities to execute code.',
+   811→  T1547: 'Boot or Logon Autostart Execution — Persistence via autostart mechanisms.',
+   812→  T1547_001: 'Boot or Logon Autostart Execution: Registry Run Keys — Persistence via Windows registry Run keys.',
+   813→  T1027: 'Obfuscated Files or Information — Adversaries may attempt to make payloads difficult to discover or analyze.',
+   814→  T1071: 'Application Layer Protocol — Adversaries may communicate using application layer protocols to blend with normal traffic.',
+   815→  T1090: 'Proxy — Adversaries may use proxy chains to hide their origin.',
+   816→  T1133: 'External Remote Services — Adversaries may leverage external remote services to maintain access.',
+   817→  T1485: 'Data Destruction — Adversaries may destroy data to disrupt operations.',
+   818→  T1505: 'Server Software Component — Adversaries may create or modify server software components.',
+   819→  T1505_003: 'Server Software Component: Web Shell — Adversaries may install a web shell to maintain access.',
+   820→}
+   821→
+   822→function getMitreTooltipText(tactic: string | null, technique: string | null): string {
+   823→  if (technique) {
+   824→    const key = technique.replace('.', '_')
+   825→    const desc = MITRE_TECHNIQUE_DESCRIPTIONS[key]
+   826→    if (desc) return `${technique}: ${desc}`
+   827→  }
+   828→  if (tactic && technique) return `Tactic: ${tactic}\nTechnique: ${technique}`
+   829→  if (tactic) return `Tactic: ${tactic}`
+   830→  if (technique) return `Technique: ${technique}`
+   831→  return 'No MITRE ATT&CK mapping available'
+   832→}
+   833→
+   834→// ===== Rule Test Panel =====
+   835→interface TestState {
+   836→  status: 'idle' | 'running' | 'complete'
+   837→  results: TestMatch[] | null
+   838→  execTime: number
+   839→  fpEstimate: number
+   840→}
+   841→
+   842→function RuleTestPanel({
+   843→  testState,
+   844→  onRun,
+   845→  ruleName,
+   846→}: {
+   847→  testState: TestState
+   848→  onRun: () => void
+   849→  ruleName: string
+   850→}) {
+   851→  const matches = testState.results || []
+   852→  return (
+   853→    <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+   854→      <div className="flex items-center justify-between">
+   855→        <div className="flex items-center gap-2">
+   856→          <FlaskConical className={cn('h-4 w-4', testState.status === 'running' ? 'text-emerald-400 animate-pulse' : 'text-zinc-400')} />
+   857→          <span className="text-xs font-medium text-zinc-200">Rule Test</span>
+   858→          {testState.status === 'running' && (
+   859→            <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0 text-[10px] text-emerald-400">
+   860→              <Loader2 className="mr-1 h-2.5 w-2.5 animate-spin" /> Running
+   861→            </Badge>
+   862→          )}
+   863→          {testState.status === 'complete' && (
+   864→            <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0 text-[10px] text-emerald-400">
+   865→              <Check className="mr-1 h-2.5 w-2.5" /> Complete
+   866→            </Badge>
+   867→          )}
+   868→        </div>
+   869→        <Button
+   870→          size="sm"
+   871→          variant="outline"
+   872→          className="h-7 gap-1 border-zinc-700 text-xs hover:border-emerald-500/50 hover:text-emerald-400"
+   873→          onClick={onRun}
+   874→          disabled={testState.status === 'running' || !ruleName}
+   875→        >
+   876→          {testState.status === 'running' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+   877→          {testState.status === 'running' ? 'Testing...' : 'Test Rule'}
+   878→        </Button>
+   879→      </div>
+   880→
+   881→      <AnimatePresence mode="wait">
+   882→        {testState.status === 'running' && (
+   883→          <motion.div
+   884→            key="running"
+   885→            initial={{ opacity: 0 }}
+   886→            animate={{ opacity: 1 }}
+   887→            exit={{ opacity: 0 }}
+   888→            className="space-y-2"
+   889→          >
+   890→            <div className="flex items-center justify-between text-[10px] text-zinc-500">
+   891→              <span>Scanning log indices over the lookback window...</span>
+   892→              <span>Simulated</span>
+   893→            </div>
+   894→            <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+   895→              <motion.div
+   896→                className="h-full bg-gradient-to-r from-emerald-500/60 to-emerald-400"
+   897→                initial={{ width: '0%' }}
+   898→                animate={{ width: '100%' }}
+   899→                transition={{ duration: 1.5, ease: 'easeInOut' }}
+   900→              />
+   901→            </div>
+   902→          </motion.div>
+   903→        )}
+   904→
+   905→        {testState.status === 'complete' && (
+   906→          <motion.div
+   907→            key="complete"
+   908→            initial={{ opacity: 0, y: 4 }}
+   909→            animate={{ opacity: 1, y: 0 }}
+   910→            exit={{ opacity: 0 }}
+   911→            className="space-y-3"
+   912→          >
+   913→            {/* Stats row */}
+   914→            <div className="grid grid-cols-3 gap-2">
+   915→              <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2">
+   916→                <div className="text-[10px] uppercase tracking-wide text-zinc-500">Match Count</div>
+   917→                <div className="mt-0.5 text-lg font-semibold text-emerald-400 tabular-nums">{matches.length}</div>
+   918→              </div>
+   919→              <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2">
+   920→                <div className="text-[10px] uppercase tracking-wide text-zinc-500">Execution Time</div>
+   921→                <div className="mt-0.5 text-lg font-semibold text-cyan-400 tabular-nums">{testState.execTime}ms</div>
+   922→              </div>
+   923→              <div className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2">
+   924→                <div className="text-[10px] uppercase tracking-wide text-zinc-500">FP Estimate</div>
+   925→                <div className={cn('mt-0.5 text-lg font-semibold tabular-nums', testState.fpEstimate > 20 ? 'text-amber-400' : 'text-emerald-400')}>
+   926→                  {testState.fpEstimate}%
+   927→                </div>
+   928→              </div>
+   929→            </div>
+   930→
+   931→            {/* Sample matches table */}
+   932→            <div>
+   933→              <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">Sample Matches</div>
+   934→              <div className="max-h-44 overflow-y-auto rounded-md border border-zinc-800 siem-code-scroll">
+   935→                <table className="w-full text-left text-[10px]">
+   936→                  <thead className="sticky top-0 bg-zinc-900 text-zinc-500">
+   937→                    <tr>
+   938→                      <th className="px-2 py-1.5 font-medium">Timestamp</th>
+   939→                      <th className="px-2 py-1.5 font-medium">Source</th>
+   940→                      <th className="px-2 py-1.5 font-medium">Matched Field</th>
+   941→                      <th className="px-2 py-1.5 font-medium">Sample Value</th>
+   942→                    </tr>
+   943→                  </thead>
+   944→                  <tbody>
+   945→                    {matches.map((m, i) => (
+   946→                      <tr key={i} className="border-t border-zinc-800/60 hover:bg-zinc-800/30">
+   947→                        <td className="px-2 py-1.5 font-mono text-zinc-400">{new Date(m.timestamp).toLocaleTimeString()}</td>
+   948→                        <td className="px-2 py-1.5 text-zinc-300">{m.source}</td>
+   949→                        <td className="px-2 py-1.5"><span className="text-emerald-400">{m.matchedField}</span></td>
+   950→                        <td className="px-2 py-1.5 font-mono text-amber-300 truncate max-w-[180px]">{m.sampleValue}</td>
+   951→                      </tr>
+   952→                    ))}
+   953→                  </tbody>
+   954→                </table>
+   955→              </div>
+   956→            </div>
+   957→          </motion.div>
+   958→        )}
+   959→
+   960→        {testState.status === 'idle' && (
+   961→          <motion.div
+   962→            key="idle"
+   963→            initial={{ opacity: 0 }}
+   964→            animate={{ opacity: 1 }}
+   965→            exit={{ opacity: 0 }}
+   966→            className="flex items-center gap-2 rounded-md border border-dashed border-zinc-800 bg-zinc-900/30 px-3 py-2.5 text-[11px] text-zinc-500"
+   967→          >
+   968→            <Zap className="h-3.5 w-3.5 text-zinc-600" />
+   969→            Run a simulated test against the last 24h of logs to preview matches and estimate false-positive rate.
+   970→          </motion.div>
+   971→        )}
+   972→      </AnimatePresence>
+   973→    </div>
+   974→  )
+   975→}
+   976→
+   977→// ===== Main view =====
+   978→export function DetectionRulesView() {
+   979→  const { ruleFilters, setRuleFilters } = useSIEMStore()
+   980→  const [rules, setRules] = useState<RuleRow[]>([])
+   981→  const [total, setTotal] = useState(0)
+   982→  const [loading, setLoading] = useState(true)
+   983→  const [expandedRule, setExpandedRule] = useState<string | null>(null)
+   984→
+   985→  // Tab: rules table vs templates library
+   986→  const [activeTab, setActiveTab] = useState<'rules' | 'templates'>('rules')
+   987→
+   988→  // Rule editor wizard
+   989→  const [editorOpen, setEditorOpen] = useState(false)
+   990→  const [editMode, setEditMode] = useState<'create' | 'edit'>('create')
+   991→  const [editorStep, setEditorStep] = useState(1)
+   992→  const [editorRule, setEditorRule] = useState<EditorRule>(DEFAULT_EDITOR_RULE)
+   993→  const [testState, setTestState] = useState<TestState>({
+   994→    status: 'idle',
+   995→    results: null,
+   996→    execTime: 0,
+   997→    fpEstimate: 0,
+   998→  })
+   999→  const [fieldHintOpen, setFieldHintOpen] = useState(false)
+  1000→
+  1001→  // Templates library filters
+  1002→  const [templateSearch, setTemplateSearch] = useState('')
+  1003→  const [templateTypeFilter, setTemplateTypeFilter] = useState<'all' | 'sigma' | 'yara'>('all')
+  1004→
+  1005→  const fetchRules = useCallback(async () => {
+  1006→    setLoading(true)
+  1007→    try {
+  1008→      const params = new URLSearchParams()
+  1009→      params.set('page', String(ruleFilters.page))
+  1010→      params.set('pageSize', String(ruleFilters.pageSize))
+  1011→      if (ruleFilters.search) params.set('search', ruleFilters.search)
+  1012→      if (ruleFilters.severity.length) params.set('severity', ruleFilters.severity.join(','))
+  1013→      if (ruleFilters.category.length) params.set('category', ruleFilters.category.join(','))
+  1014→      if (ruleFilters.enabled !== undefined) params.set('enabled', String(ruleFilters.enabled))
+  1015→
+  1016→      const res = await fetch(`/api/rules?${params}`)
+  1017→      if (res.ok) {
+  1018→        const json = await res.json()
+  1019→        setRules(json.data || [])
+  1020→        setTotal(json.pagination?.total || 0)
+  1021→      }
+  1022→    } catch {
+  1023→      // ignore
+  1024→    } finally {
+  1025→      setLoading(false)
+  1026→    }
+  1027→  }, [ruleFilters])
+  1028→
+  1029→  useEffect(() => {
+  1030→    fetchRules()
+  1031→  }, [fetchRules])
+  1032→
+  1033→  const handleToggleRule = async (ruleId: string, currentEnabled: boolean) => {
+  1034→    try {
+  1035→      const res = await fetch(`/api/rules/${ruleId}/toggle`, { method: 'POST' })
+  1036→      if (res.ok) {
+  1037→        toast.success(`Rule ${currentEnabled ? 'disabled' : 'enabled'}`)
+  1038→        fetchRules()
+  1039→      }
+  1040→    } catch {
+  1041→      toast.error('Failed to toggle rule')
+  1042→    }
+  1043→  }
+  1044→
+  1045→  // ===== Editor helpers =====
+  1046→  const openCreateEditor = useCallback(() => {
+  1047→    setEditMode('create')
+  1048→    setEditorStep(1)
+  1049→    setEditorRule({ ...DEFAULT_EDITOR_RULE })
+  1050→    setTestState({ status: 'idle', results: null, execTime: 0, fpEstimate: 0 })
+  1051→    setEditorOpen(true)
+  1052→  }, [])
+  1053→
+  1054→  const openEditEditor = useCallback((rule: RuleRow) => {
+  1055→    setEditMode('edit')
+  1056→    setEditorStep(1)
+  1057→    const lang = (['sigma', 'yara', 'kql', 'lucene'].includes(rule.queryLanguage)
+  1058→      ? rule.queryLanguage
+  1059→      : 'kql') as RuleType
+  1060→    setEditorRule({
+  1061→      id: rule.id,
+  1062→      name: rule.name,
+  1063→      description: rule.description,
+  1064→      ruleType: lang,
+  1065→      severity: rule.severity as Severity,
+  1066→      category: rule.category || '',
+  1067→      tags: rule.tags || '',
+  1068→      query: rule.query,
+  1069→      schedule: rule.schedule || 'realtime',
+  1070→      lookback: rule.lookback || '5m',
+  1071→      threshold: rule.threshold || 1,
+  1072→      alertActions: ['email', 'siem'],
+  1073→      mitreTactic: rule.mitreTactic || '',
+  1074→      mitreTechnique: rule.mitreTechnique || '',
+  1075→      indexPattern: rule.indexPattern || 'insights-*',
+  1076→    })
+  1077→    setTestState({ status: 'idle', results: null, execTime: 0, fpEstimate: 0 })
+  1078→    setEditorOpen(true)
+  1079→    setExpandedRule(null)
+  1080→  }, [])
+  1081→
+  1082→  const handleDuplicate = useCallback(async (rule: RuleRow) => {
+  1083→    try {
+  1084→      const res = await fetch('/api/rules', {
+  1085→        method: 'POST',
+  1086→        headers: { 'Content-Type': 'application/json' },
+  1087→        body: JSON.stringify({
+  1088→          name: `${rule.name} (Copy)`,
+  1089→          description: rule.description,
+  1090→          query: rule.query,
+  1091→          queryLanguage: rule.queryLanguage,
+  1092→          severity: rule.severity,
+  1093→          category: rule.category,
+  1094→          mitreTactic: rule.mitreTactic,
+  1095→          mitreTechnique: rule.mitreTechnique,
+  1096→          tags: rule.tags,
+  1097→          schedule: rule.schedule,
+  1098→          lookback: rule.lookback,
+  1099→          threshold: rule.threshold,
+  1100→          indexPattern: rule.indexPattern,
+  1101→          enabled: false,
+  1102→        }),
+  1103→      })
+  1104→      if (res.ok) {
+  1105→        toast.success('Rule duplicated (disabled)')
+  1106→        fetchRules()
+  1107→      } else {
+  1108→        toast.error('Failed to duplicate rule')
+  1109→      }
+  1110→    } catch {
+  1111→      toast.error('Failed to duplicate rule')
+  1112→    }
+  1113→  }, [fetchRules])
+  1114→
+  1115→  const handleExportRule = useCallback((rule: RuleRow) => {
+  1116→    const ext = rule.queryLanguage === 'sigma' ? 'yml' : rule.queryLanguage === 'yara' ? 'yara' : 'txt'
+  1117→    const filename = `${rule.name.replace(/\s+/g, '_').toLowerCase()}.${ext}`
+  1118→    try {
+  1119→      const blob = new Blob([rule.query], { type: 'text/plain' })
+  1120→      const url = URL.createObjectURL(blob)
+  1121→      const a = document.createElement('a')
+  1122→      a.href = url
+  1123→      a.download = filename
+  1124→      a.click()
+  1125→      URL.revokeObjectURL(url)
+  1126→      toast.success(`Exported ${filename}`)
+  1127→    } catch {
+  1128→      toast.success(`Rule "${rule.name}" exported`)
+  1129→    }
+  1130→  }, [])
+  1131→
+  1132→  const loadTemplate = useCallback((templateName: string) => {
+  1133→    const lang = editorRule.ruleType
+  1134→    const templates = lang === 'sigma' ? SIGMA_TEMPLATES : lang === 'yara' ? YARA_TEMPLATES : null
+  1135→    if (!templates) return
+  1136→    const tpl = templates[templateName]
+  1137→    if (tpl) {
+  1138→      setEditorRule((r) => ({ ...r, query: tpl }))
+  1139→      toast.success(`Loaded "${templateName}" template`)
+  1140→    }
+  1141→  }, [editorRule.ruleType])
+  1142→
+  1143→  const loadLibraryTemplate = useCallback((tpl: TemplateCardData) => {
+  1144→    setEditMode('create')
+  1145→    setEditorStep(1)
+  1146→    setEditorRule({
+  1147→      name: tpl.name,
+  1148→      description: tpl.description,
+  1149→      ruleType: tpl.type,
+  1150→      severity: tpl.severity,
+  1151→      category: tpl.category,
+  1152→      tags: tpl.mitre,
+  1153→      query: tpl.query,
+  1154→      schedule: 'realtime',
+  1155→      lookback: '5m',
+  1156→      threshold: 1,
+  1157→      alertActions: ['email', 'siem'],
+  1158→      mitreTactic: '',
+  1159→      mitreTechnique: tpl.mitre,
+  1160→      indexPattern: 'insights-*',
+  1161→    })
+  1162→    setTestState({ status: 'idle', results: null, execTime: 0, fpEstimate: 0 })
+  1163→    setActiveTab('rules')
+  1164→    setEditorOpen(true)
+  1165→  }, [])
+  1166→
+  1167→  // When rule type changes and query is empty or matches a known template, seed default
+  1168→  const handleRuleTypeChange = useCallback((newType: RuleType) => {
+  1169→    setEditorRule((r) => {
+  1170→      let newQuery = r.query
+  1171→      const isEmptyOrTemplate =
+  1172→        !r.query.trim() ||
+  1173→        Object.values(SIGMA_TEMPLATES).includes(r.query) ||
+  1174→        Object.values(YARA_TEMPLATES).includes(r.query)
+  1175→      if (isEmptyOrTemplate) {
+  1176→        if (newType === 'sigma') newQuery = SIGMA_TEMPLATES['Process Creation']
+  1177→        else if (newType === 'yara') newQuery = YARA_TEMPLATES['Malware Family']
+  1178→        else if (newType === 'kql') newQuery = '// KQL query\nSecurityEvent\n| where EventID == 4625\n| summarize count() by Account, IpAddress\n| where count_ > 10'
+  1179→        else newQuery = '// Lucene query\nEventID:4625 AND source:sshd'
+  1180→      }
+  1181→      return { ...r, ruleType: newType, query: newQuery }
+  1182→    })
+  1183→  }, [])
+  1184→
+  1185→  const runRuleTest = useCallback(() => {
+  1186→    if (!editorRule.name || !editorRule.query) {
+  1187→      toast.error('Rule name and query are required to test')
+  1188→      return
+  1189→    }
+  1190→    setTestState({ status: 'running', results: null, execTime: 0, fpEstimate: 0 })
+  1191→    setTimeout(() => {
+  1192→      const count = Math.floor(Math.random() * 3) + 3
+  1193→      const sources = ['DC01.corp.local', 'WS-3421.corp.local', 'SQL-PROD-01', 'FW-Edge-02', 'web-app-03', 'jumphost-02']
+  1194→      const fields = ['CommandLine', 'DestinationIp', 'Image', 'TargetFilename', 'EventID', 'User']
+  1195→      const values = [
+  1196→        'powershell.exe -enc SGVsbG8=',
+  1197→        '185.220.101.45:4444',
+  1198→        'C:\\Windows\\Temp\\svc.exe',
+  1199→        'invoice_locked.docx',
+  1200→        '4625',
+  1201→        'svc_account',
+  1202→      ]
+  1203→      const matches: TestMatch[] = Array.from({ length: count }, (_, i) => ({
+  1204→        timestamp: new Date(Date.now() - i * 60000).toISOString(),
+  1205→        source: sources[Math.floor(Math.random() * sources.length)],
+  1206→        matchedField: fields[Math.floor(Math.random() * fields.length)],
+  1207→        sampleValue: values[Math.floor(Math.random() * values.length)],
+  1208→      }))
+  1209→      setTestState({
+  1210→        status: 'complete',
+  1211→        results: matches,
+  1212→        execTime: Math.floor(Math.random() * 800 + 200),
+  1213→        fpEstimate: Math.floor(Math.random() * 30 + 5),
+  1214→      })
+  1215→    }, 1500)
+  1216→  }, [editorRule.name, editorRule.query])
+  1217→
+  1218→  const handleSaveRule = useCallback(async () => {
+  1219→    if (!editorRule.name || !editorRule.query) {
+  1220→      toast.error('Rule name and query are required')
+  1221→      return
+  1222→    }
+  1223→    const payload = {
+  1224→      name: editorRule.name,
+  1225→      description: editorRule.description,
+  1226→      query: editorRule.query,
+  1227→      queryLanguage: editorRule.ruleType,
+  1228→      severity: editorRule.severity,
+  1229→      category: editorRule.category || null,
+  1230→      mitreTactic: editorRule.mitreTactic || null,
+  1231→      mitreTechnique: editorRule.mitreTechnique || null,
+  1232→      tags: editorRule.tags || null,
+  1233→      schedule: editorRule.schedule,
+  1234→      lookback: editorRule.lookback,
+  1235→      threshold: editorRule.threshold,
+  1236→      indexPattern: editorRule.indexPattern,
+  1237→    }
+  1238→    try {
+  1239→      if (editMode === 'edit' && editorRule.id) {
+  1240→        const res = await fetch(`/api/rules/${editorRule.id}`, {
+  1241→          method: 'PATCH',
+  1242→          headers: { 'Content-Type': 'application/json' },
+  1243→          body: JSON.stringify(payload),
+  1244→        })
+  1245→        if (res.ok) {
+  1246→          toast.success('Rule updated')
+  1247→          setEditorOpen(false)
+  1248→          fetchRules()
+  1249→        } else {
+  1250→          toast.error('Failed to update rule')
+  1251→        }
+  1252→      } else {
+  1253→        const res = await fetch('/api/rules', {
+  1254→          method: 'POST',
+  1255→          headers: { 'Content-Type': 'application/json' },
+  1256→          body: JSON.stringify({ ...payload, enabled: true }),
+  1257→        })
+  1258→        if (res.ok) {
+  1259→          toast.success('Rule created')
+  1260→          setEditorOpen(false)
+  1261→          fetchRules()
+  1262→        } else {
+  1263→          toast.error('Failed to create rule')
+  1264→        }
+  1265→      }
+  1266→    } catch {
+  1267→      toast.error(editMode === 'edit' ? 'Failed to update rule' : 'Failed to create rule')
+  1268→    }
+  1269→  }, [editorRule, editMode, fetchRules])
+  1270→
+  1271→  const fpRate = (rule: RuleRow) => {
+  1272→    if (rule.hitCount === 0) return 0
+  1273→    return Math.round((rule.falsePositiveCount / rule.hitCount) * 100)
+  1274→  }
+  1275→
+  1276→  // Wizard step validation
+  1277→  const stepValid = useMemo(() => {
+  1278→    if (editorStep === 1) return editorRule.name.trim().length > 0
+  1279→    if (editorStep === 2) return !!editorRule.ruleType
+  1280→    if (editorStep === 3) return editorRule.query.trim().length > 0
+  1281→    return true
+  1282→  }, [editorStep, editorRule.name, editorRule.ruleType, editorRule.query])
+  1283→
+  1284→  const wizardSteps = ['Basic Info', 'Rule Type', 'Definition', 'Schedule & Actions']
+  1285→
+  1286→  // Filtered templates for library
+  1287→  const filteredTemplates = useMemo(() => {
+  1288→    return TEMPLATE_LIBRARY.filter((t) => {
+  1289→      if (templateTypeFilter !== 'all' && t.type !== templateTypeFilter) return false
+  1290→      if (templateSearch) {
+  1291→        const q = templateSearch.toLowerCase()
+  1292→        return (
+  1293→          t.name.toLowerCase().includes(q) ||
+  1294→          t.category.toLowerCase().includes(q) ||
+  1295→          t.description.toLowerCase().includes(q)
+  1296→        )
+  1297→      }
+  1298→      return true
+  1299→    })
+  1300→  }, [templateSearch, templateTypeFilter])
+  1301→
+  1302→  const templateOptions = editorRule.ruleType === 'sigma'
+  1303→    ? Object.keys(SIGMA_TEMPLATES)
+  1304→    : editorRule.ruleType === 'yara'
+  1305→      ? Object.keys(YARA_TEMPLATES)
+  1306→      : []
+  1307→
+  1308→  return (
+  1309→    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4 p-4">
+  1310→      {/* Header */}
+  1311→      <div className="flex flex-wrap items-center justify-between gap-2">
+  1312→        <div className="flex flex-wrap items-center gap-2">
+  1313→          {/* Tab toggle */}
+  1314→          <div className="flex items-center rounded-md border border-border bg-card p-0.5">
+  1315→            <button
+  1316→              type="button"
+  1317→              onClick={() => setActiveTab('rules')}
+  1318→              className={cn(
+  1319→                'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+  1320→                activeTab === 'rules'
+  1321→                  ? 'bg-emerald-600/15 text-emerald-400'
+  1322→                  : 'text-muted-foreground hover:text-foreground'
+  1323→              )}
+  1324→            >
+  1325→              <Code2 className="h-3.5 w-3.5" /> Rules
+  1326→              <span className="ml-1 rounded bg-zinc-800 px-1 text-[10px] tabular-nums">{total}</span>
+  1327→            </button>
+  1328→            <button
+  1329→              type="button"
+  1330→              onClick={() => setActiveTab('templates')}
+  1331→              className={cn(
+  1332→                'flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+  1333→                activeTab === 'templates'
+  1334→                  ? 'bg-emerald-600/15 text-emerald-400'
+  1335→                  : 'text-muted-foreground hover:text-foreground'
+  1336→              )}
+  1337→            >
+  1338→              <Library className="h-3.5 w-3.5" /> Templates
+  1339→              <span className="ml-1 rounded bg-zinc-800 px-1 text-[10px] tabular-nums">{TEMPLATE_LIBRARY.length}</span>
+  1340→            </button>
+  1341→          </div>
+  1342→
+  1343→          {activeTab === 'rules' && (
+  1344→            <>
+  1345→              <Input
+  1346→                placeholder="Search rules..."
+  1347→                value={ruleFilters.search}
+  1348→                onChange={(e) => setRuleFilters({ search: e.target.value, page: 1 })}
+  1349→                className="h-8 w-56 text-sm"
+  1350→              />
+  1351→              <Select
+  1352→                value={ruleFilters.severity[0] || 'all'}
+  1353→                onValueChange={(v) => setRuleFilters({ severity: v === 'all' ? [] : [v as Severity], page: 1 })}
+  1354→              >
+  1355→                <SelectTrigger className="h-8 w-28 text-xs"><SelectValue placeholder="Severity" /></SelectTrigger>
+  1356→                <SelectContent>
+  1357→                  <SelectItem value="all">All</SelectItem>
+  1358→                  <SelectItem value="critical">Critical</SelectItem>
+  1359→                  <SelectItem value="high">High</SelectItem>
+  1360→                  <SelectItem value="medium">Medium</SelectItem>
+  1361→                  <SelectItem value="low">Low</SelectItem>
+  1362→                </SelectContent>
+  1363→              </Select>
+  1364→              <Select
+  1365→                value={ruleFilters.enabled === undefined ? 'all' : ruleFilters.enabled ? 'enabled' : 'disabled'}
+  1366→                onValueChange={(v) => setRuleFilters({ enabled: v === 'all' ? undefined : v === 'enabled', page: 1 })}
+  1367→              >
+  1368→                <SelectTrigger className="h-8 w-28 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+  1369→                <SelectContent>
+  1370→                  <SelectItem value="all">All</SelectItem>
+  1371→                  <SelectItem value="enabled">Enabled</SelectItem>
+  1372→                  <SelectItem value="disabled">Disabled</SelectItem>
+  1373→                </SelectContent>
+  1374→              </Select>
+  1375→              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchRules}>
+  1376→                <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+  1377→              </Button>
+  1378→            </>
+  1379→          )}
+  1380→
+  1381→          {activeTab === 'templates' && (
+  1382→            <>
+  1383→              <Input
+  1384→                placeholder="Search templates by name/category..."
+  1385→                value={templateSearch}
+  1386→                onChange={(e) => setTemplateSearch(e.target.value)}
+  1387→                className="h-8 w-64 text-sm"
+  1388→              />
+  1389→              <Select value={templateTypeFilter} onValueChange={(v) => setTemplateTypeFilter(v as 'all' | 'sigma' | 'yara')}>
+  1390→                <SelectTrigger className="h-8 w-28 text-xs"><SelectValue /></SelectTrigger>
+  1391→                <SelectContent>
+  1392→                  <SelectItem value="all">All Types</SelectItem>
+  1393→                  <SelectItem value="sigma">Sigma</SelectItem>
+  1394→                  <SelectItem value="yara">YARA</SelectItem>
+  1395→                </SelectContent>
+  1396→              </Select>
+  1397→            </>
+  1398→          )}
+  1399→        </div>
+  1400→        <div className="flex items-center gap-2">
+  1401→          {activeTab === 'rules' && (
+  1402→            <ExportButton
+  1403→              filename="siem-detection-rules"
+  1404→              fetchData={async () => {
+  1405→                const params = new URLSearchParams()
+  1406→                params.set('page', '1')
+  1407→                params.set('pageSize', '10000')
+  1408→                if (ruleFilters.search) params.set('search', ruleFilters.search)
+  1409→                if (ruleFilters.severity.length)
+  1410→                  params.set('severity', ruleFilters.severity.join(','))
+  1411→                if (ruleFilters.enabled !== undefined)
+  1412→                  params.set('enabled', String(ruleFilters.enabled))
+  1413→                const res = await fetch(`/api/rules?${params.toString()}`)
+  1414→                if (!res.ok) throw new Error('Failed to fetch rules for export')
+  1415→                const json = await res.json()
+  1416→                const rows = (json.data ?? json.rules ?? []) as Record<string, unknown>[]
+  1417→                return rows.map((r) => ({
+  1418→                  id: r.id,
+  1419→                  name: r.name,
+  1420→                  severity: r.severity,
+  1421→                  category: r.category,
+  1422→                  enabled: r.enabled,
+  1423→                  mitreTactic: r.mitreTactic,
+  1424→                  mitreTechnique: r.mitreTechnique,
+  1425→                  description: r.description,
+  1426→                  createdAt: r.createdAt,
+  1427→                  updatedAt: r.updatedAt,
+  1428→                }))
+  1429→              }}
+  1430→            />
+  1431→          )}
+  1432→          <Button size="sm" className="h-8 gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={openCreateEditor}>
+  1433→            <Plus className="h-3.5 w-3.5" /> New Rule
+  1434→          </Button>
+  1435→        </div>
+  1436→      </div>
+  1437→
+  1438→      {/* ===== Rules Table ===== */}
+  1439→      {activeTab === 'rules' && (
+  1440→        <Card className="border-border bg-card">
+  1441→          <CardContent className="p-0">
+  1442→            <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground">
+  1443→              <span className="w-16">Enabled</span>
+  1444→              <span className="flex-1">Name</span>
+  1445→              <span className="w-20">Severity</span>
+  1446→              <span className="hidden w-24 md:block">Category</span>
+  1447→              <span className="hidden w-24 lg:block">MITRE</span>
+  1448→              <span className="hidden w-20 sm:block">Hits</span>
+  1449→              <span className="hidden w-16 lg:block">FP Rate</span>
+  1450→              <span className="hidden w-20 lg:block">Last Run</span>
+  1451→              <span className="w-8" />
+  1452→            </div>
+  1453→
+  1454→            {loading ? (
+  1455→              <div className="space-y-2 p-3">
+  1456→                {[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded" />)}
+  1457→              </div>
+  1458→            ) : rules.length === 0 ? (
+  1459→              <div className="py-12 text-center text-sm text-muted-foreground">No rules found</div>
+  1460→            ) : (
+  1461→              <div>
+  1462→                {rules.map((rule) => (
+  1463→                  <div key={rule.id}>
+  1464→                    <div
+  1465→                      className="flex items-center gap-2 border-b border-border/50 px-3 py-2.5 text-sm transition-colors hover:bg-accent/30 cursor-pointer"
+  1466→                      onClick={() => setExpandedRule(expandedRule === rule.id ? null : rule.id)}
+  1467→                    >
+  1468→                      <span className="w-16" onClick={(e) => e.stopPropagation()}>
+  1469→                        <motion.div
+  1470→                          layout
+  1471→                          whileTap={{ scale: 0.92 }}
+  1472→                          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+  1473→                          className="inline-flex"
+  1474→                        >
+  1475→                          <Switch
+  1476→                            checked={rule.enabled}
+  1477→                            onCheckedChange={() => handleToggleRule(rule.id, rule.enabled)}
+  1478→                            className={cn(
+  1479→                              'transition-all duration-300',
+  1480→                              rule.enabled ? 'data-[state=checked]:bg-emerald-600' : ''
+  1481→                            )}
+  1482→                          />
+  1483→                        </motion.div>
+  1484→                      </span>
+  1485→                      <span className="flex-1 truncate font-medium">{rule.name}</span>
+  1486→                      <SeverityBadge severity={rule.severity as Severity} size="xs" />
+  1487→                      <span className="hidden w-24 truncate text-xs text-muted-foreground md:block">
+  1488→                        {rule.category || '—'}
+  1489→                      </span>
+  1490→                      <span className="hidden w-24 lg:block">
+  1491→                        {rule.mitreTactic || rule.mitreTechnique ? (
+  1492→                          <Tooltip>
+  1493→                            <TooltipTrigger asChild>
+  1494→                              <button
+  1495→                                type="button"
+  1496→                                onClick={(e) => e.stopPropagation()}
+  1497→                                className="inline-flex max-w-full items-center"
+  1498→                              >
+  1499→                                <Badge
+  1500→                                  variant="outline"
+  1501→                                  className="truncate border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0 text-[9px] font-medium text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/20"
+  1502→                                  title={rule.mitreTechnique || rule.mitreTactic || ''}
+  1503→                                >
+  1504→                                  {rule.mitreTechnique
+  1505→                                    ? rule.mitreTechnique
+  1506→                                    : rule.mitreTactic
+  1507→                                      ? rule.mitreTactic.slice(0, 12) + (rule.mitreTactic.length > 12 ? '…' : '')
+  1508→                                      : '—'}
+  1509→                                </Badge>
+  1510→                              </button>
+  1511→                            </TooltipTrigger>
+  1512→                            <TooltipContent
+  1513→                              side="top"
+  1514→                              className="max-w-xs whitespace-pre-wrap border border-border bg-popover text-popover-foreground text-[10px] leading-relaxed"
+  1515→                            >
+  1516→                              {getMitreTooltipText(rule.mitreTactic, rule.mitreTechnique)}
+  1517→                            </TooltipContent>
+  1518→                          </Tooltip>
+  1519→                        ) : (
+  1520→                          <span className="text-xs text-muted-foreground">—</span>
+  1521→                        )}
+  1522→                      </span>
+  1523→                      <span className="hidden w-20 items-center gap-1.5 text-xs text-muted-foreground sm:flex">
+  1524→                        <HitsSparkline ruleId={rule.id} hitCount={rule.hitCount} />
+  1525→                        <span className="tabular-nums">{rule.hitCount}</span>
+  1526→                      </span>
+  1527→                      <span className={cn('hidden w-16 text-xs lg:block', fpRate(rule) > 50 ? 'text-red-400' : fpRate(rule) > 20 ? 'text-yellow-400' : 'text-emerald-400')}>
+  1528→                        {fpRate(rule)}%
+  1529→                      </span>
+  1530→                      <span className="hidden w-20 text-xs text-muted-foreground lg:block">
+  1531→                        {rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleDateString() : 'Never'}
+  1532→                      </span>
+  1533→                      <span className="w-8">
+  1534→                        {expandedRule === rule.id ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+  1535→                      </span>
+  1536→                    </div>
+  1537→
+  1538→                    {/* Expanded Detail */}
+  1539→                    <AnimatePresence>
+  1540→                      {expandedRule === rule.id && (
+  1541→                        <motion.div
+  1542→                          initial={{ opacity: 0, height: 0 }}
+  1543→                          animate={{ opacity: 1, height: 'auto' }}
+  1544→                          exit={{ opacity: 0, height: 0 }}
+  1545→                          className="border-b border-border bg-muted/20 p-4"
+  1546→                        >
+  1547→                          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+  1548→                            <div className="space-y-2 text-xs">
+  1549→                              <div><span className="text-muted-foreground">Description:</span> {rule.description}</div>
+  1550→                              <div><span className="text-muted-foreground">Query Language:</span> <Badge variant="outline" className="ml-1 border-zinc-700 px-1.5 py-0 text-[10px] uppercase">{rule.queryLanguage}</Badge></div>
+  1551→                              <div><span className="text-muted-foreground">Schedule:</span> {rule.schedule || 'Manual'}</div>
+  1552→                              <div><span className="text-muted-foreground">Lookback:</span> {rule.lookback || '—'}</div>
+  1553→                              <div><span className="text-muted-foreground">Threshold:</span> {rule.threshold || 1}</div>
+  1554→                              <div><span className="text-muted-foreground">Index Pattern:</span> {rule.indexPattern || '—'}</div>
+  1555→                              <div><span className="text-muted-foreground">MITRE:</span> {rule.mitreTactic || '—'} / {rule.mitreTechnique || '—'}</div>
+  1556→                              <div><span className="text-muted-foreground">Tags:</span> {rule.tags || '—'}</div>
+  1557→                            </div>
+  1558→                            <div>
+  1559→                              <div className="mb-1 flex items-center justify-between">
+  1560→                                <span className="text-xs font-medium text-muted-foreground">Rule Source</span>
+  1561→                                <div className="flex items-center gap-1">
+  1562→                                  <Tooltip>
+  1563→                                    <TooltipTrigger asChild>
+  1564→                                      <Button size="sm" variant="ghost" className="h-6 gap-1 px-2 text-[11px] hover:text-emerald-400" onClick={() => openEditEditor(rule)}>
+  1565→                                        <Pencil className="h-3 w-3" /> Edit
+  1566→                                      </Button>
+  1567→                                    </TooltipTrigger>
+  1568→                                    <TooltipContent side="top">Open in rule editor</TooltipContent>
+  1569→                                  </Tooltip>
+  1570→                                  <Tooltip>
+  1571→                                    <TooltipTrigger asChild>
+  1572→                                      <Button size="sm" variant="ghost" className="h-6 gap-1 px-2 text-[11px] hover:text-emerald-400" onClick={() => handleDuplicate(rule)}>
+  1573→                                        <Copy className="h-3 w-3" /> Duplicate
+  1574→                                      </Button>
+  1575→                                    </TooltipTrigger>
+  1576→                                    <TooltipContent side="top">Create a disabled copy</TooltipContent>
+  1577→                                  </Tooltip>
+  1578→                                  <Tooltip>
+  1579→                                    <TooltipTrigger asChild>
+  1580→                                      <Button size="sm" variant="ghost" className="h-6 gap-1 px-2 text-[11px] hover:text-emerald-400" onClick={() => handleExportRule(rule)}>
+  1581→                                        <Download className="h-3 w-3" /> Export
+  1582→                                      </Button>
+  1583→                                    </TooltipTrigger>
+  1584→                                    <TooltipContent side="top">Download rule file</TooltipContent>
+  1585→                                  </Tooltip>
+  1586→                                </div>
+  1587→                              </div>
+  1588→                              <div
+  1589→                                className="siem-code-editor siem-code-scroll max-h-44 overflow-auto"
+  1590→                                style={{ fontSize: '11px', lineHeight: '18px' }}
+  1591→                              >
+  1592→                                <pre className="px-3 py-2" style={{ pointerEvents: 'auto', overflow: 'visible' }}>
+  1593→                                  <code>{highlightCode(rule.query, (['sigma', 'yara', 'kql', 'lucene'].includes(rule.queryLanguage) ? rule.queryLanguage : 'kql') as RuleType)}</code>
+  1594→                                </pre>
+  1595→                              </div>
+  1596→                              <div className="mt-2 flex gap-4 text-xs">
+  1597→                                <span>Total Hits: <strong>{rule.hitCount}</strong></span>
+  1598→                                <span>False Positives: <strong>{rule.falsePositiveCount}</strong></span>
+  1599→                                <span>FP Rate: <strong className={fpRate(rule) > 50 ? 'text-red-400' : 'text-emerald-400'}>{fpRate(rule)}%</strong></span>
+  1600→                              </div>
+  1601→                            </div>
+  1602→                          </div>
+  1603→                        </motion.div>
+  1604→                      )}
+  1605→                    </AnimatePresence>
+  1606→                  </div>
+  1607→                ))}
+  1608→              </div>
+  1609→            )}
+  1610→          </CardContent>
+  1611→        </Card>
+  1612→      )}
+  1613→
+  1614→      {/* ===== Templates Library ===== */}
+  1615→      {activeTab === 'templates' && (
+  1616→        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+  1617→          {filteredTemplates.length === 0 ? (
+  1618→            <div className="col-span-full py-12 text-center text-sm text-muted-foreground">
+  1619→              No templates match your filters
+  1620→            </div>
+  1621→          ) : (
+  1622→            filteredTemplates.map((tpl) => {
+  1623→              const TypeInfo = RULE_TYPE_INFO[tpl.type]
+  1624→              const Icon = TypeInfo.icon
+  1625→              return (
+  1626→                <motion.div
+  1627→                  key={tpl.id}
+  1628→                  layout
+  1629→                  initial={{ opacity: 0, y: 8 }}
+  1630→                  animate={{ opacity: 1, y: 0 }}
+  1631→                  whileHover={{ y: -2 }}
+  1632→                  className="siem-template-card flex flex-col rounded-lg border border-border bg-card p-4"
+  1633→                >
+  1634→                  <div className="mb-2 flex items-start justify-between gap-2">
+  1635→                    <div className="flex items-center gap-2">
+  1636→                      <div className={cn('flex h-8 w-8 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900', TypeInfo.color)}>
+  1637→                        <Icon className="h-4 w-4" />
+  1638→                      </div>
+  1639→                      <Badge
+  1640→                        variant="outline"
+  1641→                        className={cn(
+  1642→                          'border-zinc-700 px-1.5 py-0 text-[10px] uppercase',
+  1643→                          tpl.type === 'sigma' ? 'text-emerald-400' : 'text-cyan-400'
+  1644→                        )}
+  1645→                      >
+  1646→                        {tpl.type}
+  1647→                      </Badge>
+  1648→                    </div>
+  1649→                    <Badge
+  1650→                      variant="outline"
+  1651→                      className="border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0 text-[9px] font-medium text-emerald-400"
+  1652→                    >
+  1653→                      {tpl.mitre}
+  1654→                    </Badge>
+  1655→                  </div>
+  1656→                  <h3 className="text-sm font-semibold text-foreground leading-snug">{tpl.name}</h3>
+  1657→                  <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+  1658→                    {tpl.description}
+  1659→                  </p>
+  1660→                  <div className="mt-2 flex items-center gap-2">
+  1661→                    <span className="inline-flex items-center gap-1 text-[10px] text-zinc-500">
+  1662→                      <Tag className="h-2.5 w-2.5" /> {tpl.category}
+  1663→                    </span>
+  1664→                  </div>
+  1665→                  <div className="mt-auto flex items-center justify-between pt-3">
+  1666→                    <SeverityBadge severity={tpl.severity} size="xs" />
+  1667→                    <Button
+  1668→                      size="sm"
+  1669→                      variant="outline"
+  1670→                      className="h-7 gap-1 border-emerald-600/40 text-[11px] text-emerald-400 hover:border-emerald-500/70 hover:bg-emerald-500/10"
+  1671→                      onClick={() => loadLibraryTemplate(tpl)}
+  1672→                    >
+  1673→                      <Sparkles className="h-3 w-3" /> Use Template
+  1674→                    </Button>
+  1675→                  </div>
+  1676→                </motion.div>
+  1677→              )
+  1678→            })
+  1679→          )}
+  1680→        </div>
+  1681→      )}
+  1682→
+  1683→      {/* ===== Rule Editor Wizard Dialog ===== */}
+  1684→      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+  1685→        <DialogContent className="max-h-[88vh] w-[min(920px,95vw)] overflow-hidden bg-card border-border p-0">
+  1686→          <DialogHeader className="border-b border-border px-5 py-3">
+  1687→            <DialogTitle className="flex items-center gap-2 text-base">
+  1688→              {editMode === 'edit' ? <Pencil className="h-4 w-4 text-emerald-400" /> : <Plus className="h-4 w-4 text-emerald-400" />}
+  1689→              {editMode === 'edit' ? 'Edit Detection Rule' : 'New Detection Rule'}
+  1690→            </DialogTitle>
+  1691→            <DialogDescription className="text-xs">
+  1692→              {editMode === 'edit'
+  1693→                ? 'Modify the rule definition, schedule, and alert actions.'
+  1694→                : 'Create a Sigma, YARA, KQL, or Lucene detection rule with a 4-step wizard.'}
+  1695→            </DialogDescription>
+  1696→          </DialogHeader>
+  1697→
+  1698→          {/* Wizard progress */}
+  1699→          <div className="flex items-center gap-1 border-b border-border bg-zinc-950/40 px-5 py-2.5">
+  1700→            {wizardSteps.map((label, idx) => {
+  1701→              const stepNum = idx + 1
+  1702→              const isCurrent = editorStep === stepNum
+  1703→              const isDone = editorStep > stepNum
+  1704→              return (
+  1705→                <div key={label} className="flex flex-1 items-center">
+  1706→                  <button
+  1707→                    type="button"
+  1708→                    onClick={() => {
+  1709→                      // Allow jumping back, or forward only if prior steps valid
+  1710→                      if (stepNum <= editorStep) setEditorStep(stepNum)
+  1711→                    }}
+  1712→                    className={cn(
+  1713→                      'siem-wizard-step flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs',
+  1714→                      isCurrent && 'siem-wizard-step-active text-emerald-400',
+  1715→                      isDone && 'siem-wizard-step-done',
+  1716→                      !isCurrent && !isDone && 'text-muted-foreground'
+  1717→                    )}
+  1718→                    disabled={stepNum > editorStep}
+  1719→                  >
+  1720→                    <span className={cn(
+  1721→                      'flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold',
+  1722→                      isCurrent ? 'bg-emerald-500/20 text-emerald-300' : isDone ? 'bg-emerald-500/15 text-emerald-400' : 'bg-zinc-800 text-zinc-500'
+  1723→                    )}>
+  1724→                      {isDone ? <Check className="h-2.5 w-2.5" /> : stepNum}
+  1725→                    </span>
+  1726→                    <span className="hidden sm:inline">{label}</span>
+  1727→                  </button>
+  1728→                  {idx < wizardSteps.length - 1 && (
+  1729→                    <div className={cn('mx-1 h-px flex-1', isDone ? 'bg-emerald-500/40' : 'bg-zinc-800')} />
+  1730→                  )}
+  1731→                </div>
+  1732→              )
+  1733→            })}
+  1734→          </div>
+  1735→
+  1736→          {/* Step body */}
+  1737→          <div className="max-h-[52vh] overflow-y-auto px-5 py-4 siem-code-scroll">
+  1738→            <AnimatePresence mode="wait">
+  1739→              {/* STEP 1: Basic Info */}
+  1740→              {editorStep === 1 && (
+  1741→                <motion.div
+  1742→                  key="step1"
+  1743→                  initial={{ opacity: 0, x: 8 }}
+  1744→                  animate={{ opacity: 1, x: 0 }}
+  1745→                  exit={{ opacity: 0, x: -8 }}
+  1746→                  className="space-y-3"
+  1747→                >
+  1748→                  <div>
+  1749→                    <label className="text-xs font-medium text-muted-foreground">Rule Name <span className="text-emerald-400">*</span></label>
+  1750→                    <Input
+  1751→                      value={editorRule.name}
+  1752→                      onChange={(e) => setEditorRule({ ...editorRule, name: e.target.value })}
+  1753→                      className="mt-1 h-9 text-sm"
+  1754→                      placeholder="e.g. Suspicious PowerShell Execution"
+  1755→                      autoFocus
+  1756→                    />
+  1757→                  </div>
+  1758→                  <div>
+  1759→                    <label className="text-xs font-medium text-muted-foreground">Description</label>
+  1760→                    <Textarea
+  1761→                      value={editorRule.description}
+  1762→                      onChange={(e) => setEditorRule({ ...editorRule, description: e.target.value })}
+  1763→                      className="mt-1 text-sm"
+  1764→                      rows={2}
+  1765→                      placeholder="What does this rule detect and why?"
+  1766→                    />
+  1767→                  </div>
+  1768→                  <div className="grid grid-cols-2 gap-3">
+  1769→                    <div>
+  1770→                      <label className="text-xs font-medium text-muted-foreground">Category</label>
+  1771→                      <Select value={editorRule.category || 'none'} onValueChange={(v) => setEditorRule({ ...editorRule, category: v === 'none' ? '' : v })}>
+  1772→                        <SelectTrigger className="mt-1 h-9 text-xs"><SelectValue placeholder="Select category" /></SelectTrigger>
+  1773→                        <SelectContent>
+  1774→                          <SelectItem value="none">— None —</SelectItem>
+  1775→                          {RULE_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+  1776→                        </SelectContent>
+  1777→                      </Select>
+  1778→                    </div>
+  1779→                    <div>
+  1780→                      <label className="text-xs font-medium text-muted-foreground">Severity</label>
+  1781→                      <Select value={editorRule.severity} onValueChange={(v) => setEditorRule({ ...editorRule, severity: v as Severity })}>
+  1782→                        <SelectTrigger className="mt-1 h-9 text-xs"><SelectValue /></SelectTrigger>
+  1783→                        <SelectContent>
+  1784→                          <SelectItem value="critical">Critical</SelectItem>
+  1785→                          <SelectItem value="high">High</SelectItem>
+  1786→                          <SelectItem value="medium">Medium</SelectItem>
+  1787→                          <SelectItem value="low">Low</SelectItem>
+  1788→                        </SelectContent>
+  1789→                      </Select>
+  1790→                    </div>
+  1791→                  </div>
+  1792→                  <div>
+  1793→                    <label className="text-xs font-medium text-muted-foreground">Tags (comma-separated)</label>
+  1794→                    <Input
+  1795→                      value={editorRule.tags}
+  1796→                      onChange={(e) => setEditorRule({ ...editorRule, tags: e.target.value })}
+  1797→                      className="mt-1 h-9 text-sm"
+  1798→                      placeholder="e.g. T1059.001, attack.execution, windows"
+  1799→                    />
+  1800→                    <div className="mt-1.5 flex flex-wrap gap-1">
+  1801→                      {editorRule.tags.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 6).map((t, i) => (
+  1802→                        <Badge key={i} variant="outline" className="border-zinc-700 px-1.5 py-0 text-[10px] text-zinc-400">
+  1803→                          <Tag className="mr-1 h-2.5 w-2.5" />{t}
+  1804→                        </Badge>
+  1805→                      ))}
+  1806→                    </div>
+  1807→                  </div>
+  1808→                  <div className="grid grid-cols-2 gap-3">
+  1809→                    <div>
+  1810→                      <label className="text-xs font-medium text-muted-foreground">MITRE Tactic</label>
+  1811→                      <Input
+  1812→                        value={editorRule.mitreTactic}
+  1813→                        onChange={(e) => setEditorRule({ ...editorRule, mitreTactic: e.target.value })}
+  1814→                        className="mt-1 h-9 text-xs"
+  1815→                        placeholder="e.g. Execution"
+  1816→                      />
+  1817→                    </div>
+  1818→                    <div>
+  1819→                      <label className="text-xs font-medium text-muted-foreground">MITRE Technique</label>
+  1820→                      <Input
+  1821→                        value={editorRule.mitreTechnique}
+  1822→                        onChange={(e) => setEditorRule({ ...editorRule, mitreTechnique: e.target.value })}
+  1823→                        className="mt-1 h-9 text-xs"
+  1824→                        placeholder="e.g. T1059.001"
+  1825→                      />
+  1826→                    </div>
+  1827→                  </div>
+  1828→                </motion.div>
+  1829→              )}
+  1830→
+  1831→              {/* STEP 2: Rule Type */}
+  1832→              {editorStep === 2 && (
+  1833→                <motion.div
+  1834→                  key="step2"
+  1835→                  initial={{ opacity: 0, x: 8 }}
+  1836→                  animate={{ opacity: 1, x: 0 }}
+  1837→                  exit={{ opacity: 0, x: -8 }}
+  1838→                  className="space-y-3"
+  1839→                >
+  1840→                  <p className="text-xs text-muted-foreground">Choose the detection rule format. Each format is optimized for different data sources.</p>
+  1841→                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+  1842→                    {(Object.keys(RULE_TYPE_INFO) as RuleType[]).map((rt) => {
+  1843→                      const info = RULE_TYPE_INFO[rt]
+  1844→                      const Icon = info.icon
+  1845→                      const selected = editorRule.ruleType === rt
+  1846→                      return (
+  1847→                        <button
+  1848→                          key={rt}
+  1849→                          type="button"
+  1850→                          onClick={() => handleRuleTypeChange(rt)}
+  1851→                          className={cn(
+  1852→                            'siem-rule-type-card flex items-start gap-3 rounded-lg border border-border bg-card p-3 text-left',
+  1853→                            selected && 'siem-rule-type-card-selected'
+  1854→                          )}
+  1855→                        >
+  1856→                          <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900', info.color)}>
+  1857→                            <Icon className="h-4 w-4" />
+  1858→                          </div>
+  1859→                          <div className="flex-1">
+  1860→                            <div className="flex items-center gap-2">
+  1861→                              <span className="text-sm font-semibold text-foreground">{info.label}</span>
+  1862→                              {selected && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+  1863→                            </div>
+  1864→                            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{info.desc}</p>
+  1865→                          </div>
+  1866→                        </button>
+  1867→                      )
+  1868→                    })}
+  1869→                  </div>
+  1870→                  <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-3">
+  1871→                    <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
+  1872→                      <Sparkles className="h-3 w-3 text-emerald-400" /> Preview
+  1873→                    </div>
+  1874→                    <pre className="overflow-x-auto text-[10px] leading-relaxed text-zinc-400 siem-code-scroll">
+  1875→                      <code>{highlightCode(editorRule.query.split('\n').slice(0, 6).join('\n'), editorRule.ruleType)}</code>
+  1876→                    </pre>
+  1877→                  </div>
+  1878→                </motion.div>
+  1879→              )}
+  1880→
+  1881→              {/* STEP 3: Rule Definition */}
+  1882→              {editorStep === 3 && (
+  1883→                <motion.div
+  1884→                  key="step3"
+  1885→                  initial={{ opacity: 0, x: 8 }}
+  1886→                  animate={{ opacity: 1, x: 0 }}
+  1887→                  exit={{ opacity: 0, x: -8 }}
+  1888→                  className="space-y-3"
+  1889→                >
+  1890→                  <div className="flex flex-wrap items-center justify-between gap-2">
+  1891→                    <div className="flex items-center gap-2">
+  1892→                      <label className="text-xs font-medium text-muted-foreground">Rule Definition <span className="text-emerald-400">*</span></label>
+  1893→                      <Badge variant="outline" className="border-zinc-700 px-1.5 py-0 text-[10px] uppercase text-zinc-400">
+  1894→                        {RULE_TYPE_INFO[editorRule.ruleType].label}
+  1895→                      </Badge>
+  1896→                    </div>
+  1897→                    <div className="flex items-center gap-2">
+  1898→                      {templateOptions.length > 0 && (
+  1899→                        <Select value="" onValueChange={(v) => v && loadTemplate(v)}>
+  1900→                          <SelectTrigger className="h-7 w-40 text-[11px]">
+  1901→                            <span className="flex items-center gap-1"><FileCode2 className="h-3 w-3" /> Load Template</span>
+  1902→                          </SelectTrigger>
+  1903→                          <SelectContent>
+  1904→                            {templateOptions.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+  1905→                          </SelectContent>
+  1906→                        </Select>
+  1907→                      )}
+  1908→                      {editorRule.ruleType === 'sigma' && (
+  1909→                        <div className="relative">
+  1910→                          <Button
+  1911→                            type="button"
+  1912→                            variant="outline"
+  1913→                            size="sm"
+  1914→                            className="h-7 gap-1 text-[11px]"
+  1915→                            onClick={() => setFieldHintOpen((o) => !o)}
+  1916→                          >
+  1917→                            <Search className="h-3 w-3" /> Fields
+  1918→                          </Button>
+  1919→                          {fieldHintOpen && (
+  1920→                            <div className="absolute right-0 top-8 z-50 w-44 rounded-md border border-zinc-800 bg-popover p-1 shadow-lg">
+  1921→                              <div className="px-1.5 py-1 text-[10px] font-medium text-muted-foreground">Common Log Fields</div>
+  1922→                              <div className="max-h-48 overflow-y-auto siem-code-scroll">
+  1923→                                {COMMON_LOG_FIELDS.map((f) => (
+  1924→                                  <button
+  1925→                                    key={f}
+  1926→                                    type="button"
+  1927→                                    className="block w-full rounded px-1.5 py-1 text-left font-mono text-[10px] text-zinc-300 hover:bg-emerald-500/10 hover:text-emerald-300"
+  1928→                                    onClick={() => {
+  1929→                                      setEditorRule((r) => ({ ...r, query: r.query + (r.query.endsWith('\n') ? '' : '\n') + '      ' + f + ': ' }))
+  1930→                                      setFieldHintOpen(false)
+  1931→                                    }}
+  1932→                                  >
+  1933→                                    {f}
+  1934→                                  </button>
+  1935→                                ))}
+  1936→                              </div>
+  1937→                            </div>
+  1938→                          )}
+  1939→                        </div>
+  1940→                      )}
+  1941→                    </div>
+  1942→                  </div>
+  1943→
+  1944→                  <CodeEditor
+  1945→                    value={editorRule.query}
+  1946→                    onChange={(v) => setEditorRule({ ...editorRule, query: v })}
+  1947→                    lang={editorRule.ruleType}
+  1948→                    minHeight={280}
+  1949→                  />
+  1950→
+  1951→                  {/* Syntax legend */}
+  1952→                  <div className="flex flex-wrap items-center gap-3 text-[10px] text-zinc-500">
+  1953→                    <span className="flex items-center gap-1"><span className="siem-syntax-keyword">keyword</span></span>
+  1954→                    <span className="flex items-center gap-1"><span className="siem-syntax-string">string</span></span>
+  1955→                    <span className="flex items-center gap-1"><span className="siem-syntax-comment">comment</span></span>
+  1956→                    <span className="flex items-center gap-1"><span className="siem-syntax-number">number</span></span>
+  1957→                    <span className="flex items-center gap-1"><span className="siem-syntax-operator">operator</span></span>
+  1958→                    {editorRule.ruleType === 'yara' && (
+  1959→                      <span className="flex items-center gap-1"><span className="siem-syntax-variable">$variable</span></span>
+  1960→                    )}
+  1961→                  </div>
+  1962→
+  1963→                  {/* Test panel */}
+  1964→                  <RuleTestPanel testState={testState} onRun={runRuleTest} ruleName={editorRule.name} />
+  1965→                </motion.div>
+  1966→              )}
+  1967→
+  1968→              {/* STEP 4: Schedule & Actions */}
+  1969→              {editorStep === 4 && (
+  1970→                <motion.div
+  1971→                  key="step4"
+  1972→                  initial={{ opacity: 0, x: 8 }}
+  1973→                  animate={{ opacity: 1, x: 0 }}
+  1974→                  exit={{ opacity: 0, x: -8 }}
+  1975→                  className="space-y-3"
+  1976→                >
+  1977→                  <div className="grid grid-cols-2 gap-3">
+  1978→                    <div>
+  1979→                      <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Clock className="h-3 w-3" /> Schedule</label>
+  1980→                      <Select value={editorRule.schedule} onValueChange={(v) => setEditorRule({ ...editorRule, schedule: v })}>
+  1981→                        <SelectTrigger className="mt-1 h-9 text-xs"><SelectValue /></SelectTrigger>
+  1982→                        <SelectContent>
+  1983→                          {SCHEDULE_OPTIONS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+  1984→                        </SelectContent>
+  1985→                      </Select>
+  1986→                    </div>
+  1987→                    <div>
+  1988→                      <label className="text-xs font-medium text-muted-foreground">Lookback Period</label>
+  1989→                      <Select value={editorRule.lookback} onValueChange={(v) => setEditorRule({ ...editorRule, lookback: v })}>
+  1990→                        <SelectTrigger className="mt-1 h-9 text-xs"><SelectValue /></SelectTrigger>
+  1991→                        <SelectContent>
+  1992→                          {LOOKBACK_OPTIONS.map((l) => <SelectItem key={l} value={l}>Last {l}</SelectItem>)}
+  1993→                        </SelectContent>
+  1994→                      </Select>
+  1995→                    </div>
+  1996→                  </div>
+  1997→                  <div className="grid grid-cols-2 gap-3">
+  1998→                    <div>
+  1999→                      <label className="text-xs font-medium text-muted-foreground">Threshold (events to trigger)</label>
+  2000→                      <Input
+
+[showing lines 1-2000 of 2126; use offset=2001 with limit to continue reading]

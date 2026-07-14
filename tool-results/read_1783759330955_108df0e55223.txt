@@ -1,0 +1,697 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback } from 'react'
+     4→import {
+     5→  Sheet,
+     6→  SheetContent,
+     7→  SheetHeader,
+     8→  SheetTitle,
+     9→  SheetDescription,
+    10→} from '@/components/ui/sheet'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import { Textarea } from '@/components/ui/textarea'
+    14→import { Input } from '@/components/ui/input'
+    15→import { ScrollArea } from '@/components/ui/scroll-area'
+    16→import { Separator } from '@/components/ui/separator'
+    17→import {
+    18→  AlertTriangle,
+    19→  ArrowRight,
+    20→  BookOpen,
+    21→  Check,
+    22→  ChevronRight,
+    23→  Clock,
+    24→  Crosshair,
+    25→  Eye,
+    26→  FileText,
+    27→  FlaskConical,
+    28→  Lock,
+    29→  MessageSquare,
+    30→  Play,
+    31→  RotateCcw,
+    32→  Send,
+    33→  Shield,
+    34→  ShieldAlert,
+    35→  ShieldCheck,
+    36→  Siren,
+    37→  User,
+    38→  Users,
+    39→  X,
+    40→} from 'lucide-react'
+    41→import { format, formatDistanceToNow } from 'date-fns'
+    42→import {
+    43→  SeverityBadge,
+    44→  StatusBadge,
+    45→  PriorityBadge,
+    46→} from '@/components/siem/status-badge'
+    47→import { cn } from '@/lib/utils'
+    48→import { toast } from 'sonner'
+    49→import { useSIEMStore } from '@/lib/store'
+    50→import type {
+    51→  Incident,
+    52→  IncidentTimeline,
+    53→  IncidentAlertLink,
+    54→  IncidentAssignment,
+    55→  Comment,
+    56→} from '@/lib/types'
+    57→
+    58→interface IncidentDetailDrawerProps {
+    59→  incidentId: string | null
+    60→  open: boolean
+    61→  onOpenChange: (open: boolean) => void
+    62→  onRefresh?: () => void
+    63→}
+    64→
+    65→/**
+    66→ * Dedicated Incident Detail Drawer.
+    67→ *
+    68→ * A focused, full-height side panel that shows everything about a single
+    69→ * incident: description, timeline, linked alerts, assignees, comments,
+    70→ * and quick actions for status changes (Open → Investigate → Contain → Recover → Close).
+    71→ */
+    72→export function IncidentDetailDrawer({
+    73→  incidentId,
+    74→  open,
+    75→  onOpenChange,
+    76→  onRefresh,
+    77→}: IncidentDetailDrawerProps) {
+    78→  const [incident, setIncident] = useState<Incident | null>(null)
+    79→  const [loading, setLoading] = useState(false)
+    80→  const [comments, setComments] = useState<Comment[]>([])
+    81→  const [commentText, setCommentText] = useState('')
+    82→  const [submittingComment, setSubmittingComment] = useState(false)
+    83→  const [actionLoading, setActionLoading] = useState<string | null>(null)
+    84→
+    85→  const { setAlertDetailId, setActiveView } = useSIEMStore()
+    86→
+    87→  // ─── Fetch incident detail ────────────────────────────────────────────
+    88→  const fetchIncident = useCallback(async () => {
+    89→    if (!incidentId) return
+    90→    setLoading(true)
+    91→    try {
+    92→      const res = await fetch(`/api/incidents/${incidentId}`)
+    93→      if (!res.ok) throw new Error('Failed to fetch incident')
+    94→      const data = await res.json()
+    95→      setIncident(data)
+    96→      if (data.comments) setComments(data.comments)
+    97→    } catch (err) {
+    98→      console.error('Failed to fetch incident detail:', err)
+    99→      toast.error('Failed to load incident details')
+   100→    } finally {
+   101→      setLoading(false)
+   102→    }
+   103→  }, [incidentId])
+   104→
+   105→  useEffect(() => {
+   106→    if (open && incidentId) {
+   107→      fetchIncident()
+   108→    }
+   109→  }, [open, incidentId, fetchIncident])
+   110→
+   111→  // ─── Status change actions ────────────────────────────────────────────
+   112→  const handleStatusChange = useCallback(
+   113→    async (status: string) => {
+   114→      if (!incidentId) return
+   115→      setActionLoading(status)
+   116→      try {
+   117→        const res = await fetch(`/api/incidents/${incidentId}`, {
+   118→          method: 'PATCH',
+   119→          headers: { 'Content-Type': 'application/json' },
+   120→          body: JSON.stringify({ status }),
+   121→        })
+   122→        if (!res.ok) throw new Error(`Failed to change status to ${status}`)
+   123→        toast.success(`Incident status changed to ${status}`)
+   124→        await fetchIncident()
+   125→        onRefresh?.()
+   126→      } catch (err) {
+   127→        console.error(`Status change to ${status} failed:`, err)
+   128→        toast.error(`Failed to change incident status to ${status}`)
+   129→      } finally {
+   130→        setActionLoading(null)
+   131→      }
+   132→    },
+   133→    [incidentId, fetchIncident, onRefresh]
+   134→  )
+   135→
+   136→  // ─── Comment submit ──────────────────────────────────────────────────
+   137→  const handleSubmitComment = useCallback(async () => {
+   138→    if (!incidentId || !commentText.trim()) return
+   139→    setSubmittingComment(true)
+   140→    try {
+   141→      const res = await fetch(`/api/incidents/${incidentId}`, {
+   142→        method: 'PATCH',
+   143→        headers: { 'Content-Type': 'application/json' },
+   144→        body: JSON.stringify({ comment: commentText.trim() }),
+   145→      })
+   146→      if (!res.ok) throw new Error('Failed to add comment')
+   147→      const data = await res.json()
+   148→      // Refresh to get the new comment with user info
+   149→      await fetchIncident()
+   150→      setCommentText('')
+   151→      toast.success('Comment added')
+   152→    } catch (err) {
+   153→      console.error('Failed to add comment:', err)
+   154→      toast.error('Failed to add comment')
+   155→    } finally {
+   156→      setSubmittingComment(false)
+   157→    }
+   158→  }, [incidentId, commentText, fetchIncident])
+   159→
+   160→  // ─── Open linked alert ───────────────────────────────────────────────
+   161→  const handleOpenAlert = useCallback(
+   162→    (alertId: string) => {
+   163→      // Navigate to alerts view and open the alert detail drawer
+   164→      setActiveView('alerts')
+   165→      // Small delay to let the alerts view mount before setting the detail id
+   166→      setTimeout(() => {
+   167→        setAlertDetailId(alertId)
+   168→      }, 100)
+   169→    },
+   170→    [setActiveView, setAlertDetailId]
+   171→  )
+   172→
+   173→  // ─── Reset state on close ────────────────────────────────────────────
+   174→  useEffect(() => {
+   175→    if (!open) {
+   176→      setCommentText('')
+   177→      setActionLoading(null)
+   178→    }
+   179→  }, [open])
+   180→
+   181→  // ─── Workflow steps ──────────────────────────────────────────────────
+   182→  const WORKFLOW_STEPS = [
+   183→    { key: 'open', label: 'Open', icon: <Siren className="h-3 w-3" /> },
+   184→    { key: 'investigating', label: 'Investigate', icon: <Eye className="h-3 w-3" /> },
+   185→    { key: 'contained', label: 'Contain', icon: <Lock className="h-3 w-3" /> },
+   186→    { key: 'recovered', label: 'Recover', icon: <RotateCcw className="h-3 w-3" /> },
+   187→    { key: 'closed', label: 'Close', icon: <Check className="h-3 w-3" /> },
+   188→  ]
+   189→
+   190→  const currentStepIndex = incident
+   191→    ? WORKFLOW_STEPS.findIndex((s) => s.key === incident.status)
+   192→    : -1
+   193→
+   194→  // ─── Render ──────────────────────────────────────────────────────────
+   195→  return (
+   196→    <Sheet open={open} onOpenChange={onOpenChange}>
+   197→      <SheetContent
+   198→        side="right"
+   199→        className="w-full sm:max-w-2xl bg-zinc-950 border-zinc-800 p-0 flex flex-col"
+   200→      >
+   201→        {/* Always render an accessible title */}
+   202→        <SheetTitle className="sr-only">
+   203→          {incident?.title || 'Incident details'}
+   204→        </SheetTitle>
+   205→        <SheetDescription className="sr-only">
+   206→          Detailed view of a security incident including description, timeline,
+   207→          linked alerts, assignments, comments, and response actions.
+   208→        </SheetDescription>
+   209→
+   210→        {loading ? (
+   211→          <div className="flex items-center justify-center h-64">
+   212→            <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
+   213→          </div>
+   214→        ) : incident ? (
+   215→          <>
+   216→            {/* Header */}
+   217→            <SheetHeader className="p-5 border-b border-zinc-800 space-y-3 shrink-0">
+   218→              <div className="flex items-start justify-between gap-3">
+   219→                <div className="flex items-start gap-2 min-w-0 flex-1">
+   220→                  <PriorityIcon priority={incident.priority} />
+   221→                  <div className="min-w-0 flex-1">
+   222→                    <h2 className="text-lg font-semibold text-zinc-100 leading-tight">
+   223→                      {incident.title}
+   224→                    </h2>
+   225→                    <p className="text-xs text-zinc-500 mt-0.5 font-mono">
+   226→                      ID: {incident.id}
+   227→                    </p>
+   228→                  </div>
+   229→                </div>
+   230→              </div>
+   231→
+   232→              {/* Badges */}
+   233→              <div className="flex flex-wrap items-center gap-2">
+   234→                <PriorityBadge priority={incident.priority} />
+   235→                <SeverityBadge severity={incident.severity} size="sm" />
+   236→                <StatusBadge status={incident.status} type="incident" />
+   237→                {incident.category && (
+   238→                  <Badge variant="outline" className="text-[10px] h-5">
+   239→                    {incident.category}
+   240→                  </Badge>
+   241→                )}
+   242→                {incident.attackVector && (
+   243→                  <Badge
+   244→                    variant="outline"
+   245→                    className="text-[10px] h-5 border-orange-500/30 text-orange-400"
+   246→                  >
+   247→                    <Crosshair className="h-2.5 w-2.5 mr-1" />
+   248→                    {incident.attackVector}
+   249→                  </Badge>
+   250→                )}
+   251→              </div>
+   252→
+   253→              {/* Quick action bar - workflow status buttons */}
+   254→              <div className="flex flex-wrap gap-1.5 pt-1">
+   255→                {WORKFLOW_STEPS.map((step, i) => {
+   256→                  const isActive = step.key === incident.status
+   257→                  const isPast =
+   258→                    currentStepIndex >= 0 && i < currentStepIndex
+   259→                  const isDisabled =
+   260→                    actionLoading !== null ||
+   261→                    (step.key === 'closed' &&
+   262→                      incident.status !== 'recovered')
+   263→
+   264→                  return (
+   265→                    <ActionButton
+   266→                      key={step.key}
+   267→                      icon={step.icon}
+   268→                      label={step.label}
+   269→                      loading={actionLoading === step.key}
+   270→                      disabled={isDisabled && !isActive}
+   271→                      onClick={() => handleStatusChange(step.key)}
+   272→                      variant={isActive ? 'success' : isPast ? 'past' : 'default'}
+   273→                    />
+   274→                  )
+   275→                })}
+   276→              </div>
+   277→            </SheetHeader>
+   278→
+   279→            {/* Scrollable content */}
+   280→            <ScrollArea className="flex-1">
+   281→              <div className="p-5 space-y-5">
+   282→                {/* Description */}
+   283→                {incident.description && (
+   284→                  <Section
+   285→                    icon={<FileText className="h-4 w-4" />}
+   286→                    title="Description"
+   287→                  >
+   288→                    <p className="text-sm text-zinc-300 leading-relaxed">
+   289→                      {incident.description}
+   290→                    </p>
+   291→                  </Section>
+   292→                )}
+   293→
+   294→                {/* Impact & Resolution */}
+   295→                {(incident.impact || incident.resolution) && (
+   296→                  <Section
+   297→                    icon={<AlertTriangle className="h-4 w-4" />}
+   298→                    title="Impact & Resolution"
+   299→                  >
+   300→                    <div className="grid grid-cols-1 gap-3">
+   301→                      {incident.impact && (
+   302→                        <DetailItem label="Impact" value={incident.impact} />
+   303→                      )}
+   304→                      {incident.resolution && (
+   305→                        <DetailItem
+   306→                          label="Resolution"
+   307→                          value={incident.resolution}
+   308→                        />
+   309→                      )}
+   310→                    </div>
+   311→                  </Section>
+   312→                )}
+   313→
+   314→                {/* Timeline */}
+   315→                <Section
+   316→                  icon={<Clock className="h-4 w-4" />}
+   317→                  title={`Timeline (${(incident.timeline || []).length})`}
+   318→                >
+   319→                  {(incident.timeline || []).length === 0 ? (
+   320→                    <p className="text-xs text-zinc-500">No timeline events.</p>
+   321→                  ) : (
+   322→                    <div className="space-y-2 max-h-64 overflow-y-auto">
+   323→                      {(incident.timeline || [])
+   324→                        .sort(
+   325→                          (a: IncidentTimeline, b: IncidentTimeline) =>
+   326→                            new Date(b.eventDate).getTime() -
+   327→                            new Date(a.eventDate).getTime()
+   328→                        )
+   329→                        .map((event: IncidentTimeline) => (
+   330→                          <div
+   331→                            key={event.id}
+   332→                            className="flex items-start gap-2.5 py-1.5"
+   333→                          >
+   334→                            <div className="mt-1.5 h-2 w-2 rounded-full bg-emerald-500/60 shrink-0" />
+   335→                            <div className="min-w-0 flex-1">
+   336→                              <p className="text-xs text-zinc-300">
+   337→                                {event.event}
+   338→                              </p>
+   339→                              <p className="text-[10px] text-zinc-500 mt-0.5">
+   340→                                {formatDistanceToNow(
+   341→                                  new Date(event.eventDate),
+   342→                                  { addSuffix: true }
+   343→                                )}
+   344→                              </p>
+   345→                            </div>
+   346→                          </div>
+   347→                        ))}
+   348→                    </div>
+   349→                  )}
+   350→                </Section>
+   351→
+   352→                {/* Linked Alerts */}
+   353→                <Section
+   354→                  icon={<ShieldAlert className="h-4 w-4" />}
+   355→                  title={`Linked Alerts (${(incident.alerts || []).length})`}
+   356→                >
+   357→                  {(incident.alerts || []).length === 0 ? (
+   358→                    <p className="text-xs text-zinc-500">
+   359→                      No alerts linked to this incident.
+   360→                    </p>
+   361→                  ) : (
+   362→                    <div className="space-y-1.5 max-h-64 overflow-y-auto">
+   363→                      {(incident.alerts || []).map(
+   364→                        (link: IncidentAlertLink) => (
+   365→                          <button
+   366→                            key={link.id}
+   367→                            onClick={() => {
+   368→                              if (link.alertId) handleOpenAlert(link.alertId)
+   369→                            }}
+   370→                            className="w-full flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-2 hover:bg-zinc-800/60 transition-colors text-left group"
+   371→                          >
+   372→                            <div className="flex items-center gap-2 min-w-0">
+   373→                              {link.alert ? (
+   374→                                <>
+   375→                                  <SeverityBadge
+   376→                                    severity={link.alert.severity}
+   377→                                    size="sm"
+   378→                                  />
+   379→                                  <span className="text-xs text-zinc-300 truncate">
+   380→                                    {link.alert.title}
+   381→                                  </span>
+   382→                                </>
+   383→                              ) : (
+   384→                                <span className="text-xs text-zinc-400 font-mono">
+   385→                                  {link.alertId}
+   386→                                </span>
+   387→                              )}
+   388→                            </div>
+   389→                            <ArrowRight className="h-3 w-3 text-zinc-600 group-hover:text-zinc-400 shrink-0 transition-colors" />
+   390→                          </button>
+   391→                        )
+   392→                      )}
+   393→                    </div>
+   394→                  )}
+   395→                </Section>
+   396→
+   397→                {/* Assignees */}
+   398→                <Section
+   399→                  icon={<Users className="h-4 w-4" />}
+   400→                  title={`Assignees (${(incident.assignments || []).length})`}
+   401→                >
+   402→                  {(incident.assignments || []).length === 0 ? (
+   403→                    <p className="text-xs text-zinc-500">No assignees yet.</p>
+   404→                  ) : (
+   405→                    <div className="space-y-1.5">
+   406→                      {(incident.assignments || []).map(
+   407→                        (assignment: IncidentAssignment) => (
+   408→                          <div
+   409→                            key={assignment.id}
+   410→                            className="flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-900/40 px-3 py-2"
+   411→                          >
+   412→                            <div className="flex items-center gap-2">
+   413→                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-700 text-[10px] font-medium text-zinc-200">
+   414→                                {assignment.user?.name
+   415→                                  ?.charAt(0)
+   416→                                  .toUpperCase() || 'U'}
+   417→                              </div>
+   418→                              <div className="flex items-center gap-1.5">
+   419→                                <span className="text-xs text-zinc-300">
+   420→                                  {assignment.user?.name || 'Unknown'}
+   421→                                </span>
+   422→                                <Badge
+   423→                                  variant="outline"
+   424→                                  className="text-[9px] h-4 px-1.5"
+   425→                                >
+   426→                                  {assignment.role}
+   427→                                </Badge>
+   428→                              </div>
+   429→                            </div>
+   430→                            <span className="text-[10px] text-zinc-500">
+   431→                              {formatDistanceToNow(
+   432→                                new Date(assignment.assignedAt),
+   433→                                { addSuffix: true }
+   434→                              )}
+   435→                            </span>
+   436→                          </div>
+   437→                        )
+   438→                      )}
+   439→                    </div>
+   440→                  )}
+   441→                </Section>
+   442→
+   443→                {/* Metadata */}
+   444→                <Section
+   445→                  icon={<BookOpen className="h-4 w-4" />}
+   446→                  title="Details"
+   447→                >
+   448→                  <div className="grid grid-cols-2 gap-3">
+   449→                    <DetailItem
+   450→                      label="Created"
+   451→                      value={format(
+   452→                        new Date(incident.createdAt),
+   453→                        'MMM d, yyyy HH:mm'
+   454→                      )}
+   455→                    />
+   456→                    <DetailItem
+   457→                      label="Updated"
+   458→                      value={format(
+   459→                        new Date(incident.updatedAt),
+   460→                        'MMM d, yyyy HH:mm'
+   461→                      )}
+   462→                    />
+   463→                    {incident.dueAt && (
+   464→                      <DetailItem
+   465→                        label="Due"
+   466→                        value={format(
+   467→                          new Date(incident.dueAt),
+   468→                          'MMM d, yyyy HH:mm'
+   469→                        )}
+   470→                      />
+   471→                    )}
+   472→                    {incident.closedAt && (
+   473→                      <DetailItem
+   474→                        label="Closed"
+   475→                        value={format(
+   476→                          new Date(incident.closedAt),
+   477→                          'MMM d, yyyy HH:mm'
+   478→                        )}
+   479→                      />
+   480→                    )}
+   481→                  </div>
+   482→                </Section>
+   483→
+   484→                {/* Comments */}
+   485→                <Section
+   486→                  icon={<MessageSquare className="h-4 w-4" />}
+   487→                  title={`Comments (${comments.length})`}
+   488→                >
+   489→                  {comments.length > 0 ? (
+   490→                    <div className="space-y-2 mb-3 max-h-64 overflow-y-auto">
+   491→                      {comments.map((c, i) => (
+   492→                        <div
+   493→                          key={i}
+   494→                          className="rounded-md border border-zinc-800 bg-zinc-900/40 p-2.5"
+   495→                        >
+   496→                          <div className="flex items-center justify-between mb-1">
+   497→                            <div className="flex items-center gap-1.5">
+   498→                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-700 text-[9px] font-medium text-zinc-300">
+   499→                                {c.user?.name?.charAt(0).toUpperCase() || 'A'}
+   500→                              </div>
+   501→                              <span className="text-xs font-medium text-zinc-300">
+   502→                                {c.user?.name || 'Analyst'}
+   503→                              </span>
+   504→                            </div>
+   505→                            <span className="text-[10px] text-zinc-500">
+   506→                              {c.createdAt
+   507→                                ? formatDistanceToNow(new Date(c.createdAt), {
+   508→                                    addSuffix: true,
+   509→                                  })
+   510→                                : ''}
+   511→                            </span>
+   512→                          </div>
+   513→                          <p className="text-xs text-zinc-400 pl-6.5">
+   514→                            {c.content}
+   515→                          </p>
+   516→                        </div>
+   517→                      ))}
+   518→                    </div>
+   519→                  ) : (
+   520→                    <p className="text-xs text-zinc-500 mb-3">No comments yet.</p>
+   521→                  )}
+   522→                  <div className="space-y-2">
+   523→                    <Textarea
+   524→                      placeholder="Add a comment..."
+   525→                      value={commentText}
+   526→                      onChange={(e) => setCommentText(e.target.value)}
+   527→                      className="min-h-20 text-xs bg-zinc-900/50 border-zinc-800 resize-none"
+   528→                      onKeyDown={(e) => {
+   529→                        if (
+   530→                          e.key === 'Enter' &&
+   531→                          !e.shiftKey &&
+   532→                          commentText.trim()
+   533→                        ) {
+   534→                          e.preventDefault()
+   535→                          handleSubmitComment()
+   536→                        }
+   537→                      }}
+   538→                    />
+   539→                    <Button
+   540→                      size="sm"
+   541→                      className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-xs"
+   542→                      onClick={handleSubmitComment}
+   543→                      disabled={!commentText.trim() || submittingComment}
+   544→                    >
+   545→                      {submittingComment ? (
+   546→                        <div className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" />
+   547→                      ) : (
+   548→                        <Send className="h-3 w-3" />
+   549→                      )}
+   550→                      Add Comment
+   551→                    </Button>
+   552→                  </div>
+   553→                </Section>
+   554→              </div>
+   555→            </ScrollArea>
+   556→          </>
+   557→        ) : (
+   558→          <div className="flex items-center justify-center h-64 text-sm text-zinc-500">
+   559→            No incident selected.
+   560→          </div>
+   561→        )}
+   562→      </SheetContent>
+   563→    </Sheet>
+   564→  )
+   565→}
+   566→
+   567→// ─── Helper Sub-components ────────────────────────────────────────────────
+   568→
+   569→function Section({
+   570→  icon,
+   571→  title,
+   572→  children,
+   573→}: {
+   574→  icon: React.ReactNode
+   575→  title: string
+   576→  children: React.ReactNode
+   577→}) {
+   578→  return (
+   579→    <div>
+   580→      <div className="flex items-center gap-1.5 mb-2">
+   581→        <span className="text-emerald-400">{icon}</span>
+   582→        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+   583→          {title}
+   584→        </h3>
+   585→      </div>
+   586→      {children}
+   587→    </div>
+   588→  )
+   589→}
+   590→
+   591→function DetailItem({
+   592→  label,
+   593→  value,
+   594→  mono,
+   595→}: {
+   596→  label: string
+   597→  value: string
+   598→  mono?: boolean
+   599→}) {
+   600→  return (
+   601→    <div>
+   602→      <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">
+   603→        {label}
+   604→      </p>
+   605→      <p
+   606→        className={cn(
+   607→          'text-sm text-zinc-200',
+   608→          mono && 'font-mono text-xs'
+   609→        )}
+   610→      >
+   611→        {value}
+   612→      </p>
+   613→    </div>
+   614→  )
+   615→}
+   616→
+   617→function ActionButton({
+   618→  icon,
+   619→  label,
+   620→  onClick,
+   621→  loading,
+   622→  disabled,
+   623→  variant = 'default',
+   624→}: {
+   625→  icon: React.ReactNode
+   626→  label: string
+   627→  onClick: () => void
+   628→  loading?: boolean
+   629→  disabled?: boolean
+   630→  variant?: 'default' | 'warning' | 'success' | 'ghost' | 'past'
+   631→}) {
+   632→  const variantClass = {
+   633→    default:
+   634→      'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700',
+   635→    warning:
+   636→      'bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 border-amber-500/30',
+   637→    success:
+   638→      'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600',
+   639→    ghost:
+   640→      'bg-transparent hover:bg-zinc-800/50 text-zinc-400 border-zinc-700',
+   641→    past: 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/30',
+   642→  }[variant]
+   643→
+   644→  return (
+   645→    <Button
+   646→      size="sm"
+   647→      variant="outline"
+   648→      onClick={onClick}
+   649→      disabled={disabled || loading}
+   650→      className={cn(
+   651→        'h-7 gap-1.5 text-[11px] font-medium border transition-all',
+   652→        variantClass,
+   653→        disabled && 'opacity-40 cursor-not-allowed'
+   654→      )}
+   655→    >
+   656→      {loading ? (
+   657→        <div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+   658→      ) : (
+   659→        icon
+   660→      )}
+   661→      {label}
+   662→    </Button>
+   663→  )
+   664→}
+   665→
+   666→function PriorityIcon({ priority }: { priority: string }) {
+   667→  const config: Record<string, { icon: React.ReactNode; color: string }> = {
+   668→    p1: {
+   669→      icon: <AlertTriangle className="h-5 w-5" />,
+   670→      color: 'text-red-400 bg-red-500/10 border-red-500/30',
+   671→    },
+   672→    p2: {
+   673→      icon: <ShieldAlert className="h-5 w-5" />,
+   674→      color: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
+   675→    },
+   676→    p3: {
+   677→      icon: <Shield className="h-5 w-5" />,
+   678→      color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
+   679→    },
+   680→    p4: {
+   681→      icon: <ShieldCheck className="h-5 w-5" />,
+   682→      color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+   683→    },
+   684→  }
+   685→  const c = config[priority] || config.p4
+   686→  return (
+   687→    <div
+   688→      className={cn(
+   689→        'flex h-9 w-9 items-center justify-center rounded-md border shrink-0',
+   690→        c.color
+   691→      )}
+   692→    >
+   693→      {c.icon}
+   694→    </div>
+   695→  )
+   696→}
+   697→

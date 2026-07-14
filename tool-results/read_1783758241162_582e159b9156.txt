@@ -1,0 +1,1934 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useCallback } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import {
+     6→  Target,
+     7→  X,
+     8→  Filter,
+     9→  ShieldCheck,
+    10→  ShieldAlert,
+    11→  ShieldX,
+    12→  Shield,
+    13→  Activity,
+    14→  AlertTriangle,
+    15→  ChevronRight,
+    16→  Crosshair,
+    17→  Radar,
+    18→  Bell,
+    19→  Lightbulb,
+    20→  Layers,
+    21→  Clock,
+    22→} from 'lucide-react'
+    23→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    24→import { Button } from '@/components/ui/button'
+    25→import { Badge } from '@/components/ui/badge'
+    26→import {
+    27→  Select,
+    28→  SelectContent,
+    29→  SelectItem,
+    30→  SelectTrigger,
+    31→  SelectValue,
+    32→} from '@/components/ui/select'
+    33→import {
+    34→  Tooltip,
+    35→  TooltipTrigger,
+    36→  TooltipContent,
+    37→} from '@/components/ui/tooltip'
+    38→import {
+    39→  Dialog,
+    40→  DialogContent,
+    41→  DialogHeader,
+    42→  DialogTitle,
+    43→  DialogDescription,
+    44→  DialogFooter,
+    45→} from '@/components/ui/dialog'
+    46→import { ScrollArea } from '@/components/ui/scroll-area'
+    47→import { Separator } from '@/components/ui/separator'
+    48→import { useSIEMStore, type MitreDetectionStatus } from '@/lib/store'
+    49→import { cn } from '@/lib/utils'
+    50→import { toast } from 'sonner'
+    51→
+    52→// ===== Types =====
+    53→
+    54→interface MitreTactic {
+    55→  id: string // e.g. TA0043
+    56→  name: string
+    57→  shortName: string
+    58→}
+    59→
+    60→interface MitreSubTechnique {
+    61→  id: string
+    62→  name: string
+    63→}
+    64→
+    65→interface MitreDetectionRule {
+    66→  id: string
+    67→  name: string
+    68→  severity: 'critical' | 'high' | 'medium' | 'low'
+    69→  enabled: boolean
+    70→}
+    71→
+    72→interface MitreRecentAlert {
+    73→  id: string
+    74→  title: string
+    75→  severity: 'critical' | 'high' | 'medium' | 'low'
+    76→  timestamp: string
+    77→}
+    78→
+    79→interface MitreTechnique {
+    80→  id: string // e.g. T1059
+    81→  name: string
+    82→  description: string
+    83→  status: MitreDetectionStatus
+    84→  platforms: string[]
+    85→  tacticId: string
+    86→  subTechniques: MitreSubTechnique[]
+    87→  detectionRules: MitreDetectionRule[]
+    88→  recentAlerts: MitreRecentAlert[]
+    89→  mitigations: string[]
+    90→}
+    91→
+    92→// ===== Detection Status Visual Config =====
+    93→
+    94→const STATUS_CONFIG: Record<
+    95→  MitreDetectionStatus,
+    96→  {
+    97→    label: string
+    98→    short: string
+    99→    bg: string
+   100→    border: string
+   101→    text: string
+   102→    hoverBg: string
+   103→    dot: string
+   104→    icon: React.ComponentType<{ className?: string }>
+   105→  }
+   106→> = {
+   107→  detected: {
+   108→    label: 'Detected',
+   109→    short: 'Detected',
+   110→    bg: 'bg-emerald-500/25',
+   111→    border: 'border-emerald-500/40',
+   112→    text: 'text-emerald-200',
+   113→    hoverBg: 'hover:bg-emerald-500/40',
+   114→    dot: 'bg-emerald-400',
+   115→    icon: ShieldCheck,
+   116→  },
+   117→  partial: {
+   118→    label: 'Partial Coverage',
+   119→    short: 'Partial',
+   120→    bg: 'bg-amber-500/25',
+   121→    border: 'border-amber-500/40',
+   122→    text: 'text-amber-200',
+   123→    hoverBg: 'hover:bg-amber-500/40',
+   124→    dot: 'bg-amber-400',
+   125→    icon: ShieldAlert,
+   126→  },
+   127→  gap: {
+   128→    label: 'Detection Gap',
+   129→    short: 'Gap',
+   130→    bg: 'bg-red-500/25',
+   131→    border: 'border-red-500/40',
+   132→    text: 'text-red-200',
+   133→    hoverBg: 'hover:bg-red-500/40',
+   134→    dot: 'bg-red-400',
+   135→    icon: ShieldX,
+   136→  },
+   137→  'n/a': {
+   138→    label: 'Not Applicable',
+   139→    short: 'N/A',
+   140→    bg: 'bg-zinc-600/25',
+   141→    border: 'border-zinc-600/40',
+   142→    text: 'text-zinc-300',
+   143→    hoverBg: 'hover:bg-zinc-600/40',
+   144→    dot: 'bg-zinc-500',
+   145→    icon: Shield,
+   146→  },
+   147→}
+   148→
+   149→// ===== Platform Options =====
+   150→
+   151→const PLATFORMS = [
+   152→  'Windows',
+   153→  'Linux',
+   154→  'macOS',
+   155→  'Network',
+   156→  'Container',
+   157→  'Office 365',
+   158→  'Azure AD',
+   159→] as const
+   160→
+   161→// ===== Mock Tactic Data (14 Enterprise ATT&CK Tactics) =====
+   162→
+   163→const MITRE_TACTICS: MitreTactic[] = [
+   164→  { id: 'TA0043', name: 'Reconnaissance', shortName: 'Recon' },
+   165→  { id: 'TA0042', name: 'Resource Development', shortName: 'Resource Dev' },
+   166→  { id: 'TA0001', name: 'Initial Access', shortName: 'Initial Access' },
+   167→  { id: 'TA0002', name: 'Execution', shortName: 'Execution' },
+   168→  { id: 'TA0003', name: 'Persistence', shortName: 'Persistence' },
+   169→  { id: 'TA0004', name: 'Privilege Escalation', shortName: 'Priv Esc' },
+   170→  { id: 'TA0005', name: 'Defense Evasion', shortName: 'Def Evasion' },
+   171→  { id: 'TA0006', name: 'Credential Access', shortName: 'Cred Access' },
+   172→  { id: 'TA0007', name: 'Discovery', shortName: 'Discovery' },
+   173→  { id: 'TA0008', name: 'Lateral Movement', shortName: 'Lat Movement' },
+   174→  { id: 'TA0009', name: 'Collection', shortName: 'Collection' },
+   175→  { id: 'TA0011', name: 'Command and Control', shortName: 'C2' },
+   176→  { id: 'TA0010', name: 'Exfiltration', shortName: 'Exfil' },
+   177→  { id: 'TA0040', name: 'Impact', shortName: 'Impact' },
+   178→]
+   179→
+   180→// ===== Mock Technique Data =====
+   181→// Real MITRE ATT&CK technique IDs and descriptions (publicly published knowledge)
+   182→
+   183→const MITRE_TECHNIQUES: MitreTechnique[] = [
+   184→  // ----- Reconnaissance (TA0043) -----
+   185→  {
+   186→    id: 'T1595',
+   187→    name: 'Active Scanning',
+   188→    description: 'Adversaries scan victim IP addresses to gather information for follow-on behaviors.',
+   189→    status: 'detected',
+   190→    platforms: ['Network'],
+   191→    tacticId: 'TA0043',
+   192→    subTechniques: [{ id: 'T1595.001', name: 'Scanning IP Blocks' }, { id: 'T1595.002', name: 'Vulnerability Scanning' }],
+   193→    detectionRules: [{ id: 'rule-t1595-1', name: 'Port Scan Burst Detection', severity: 'medium', enabled: true }],
+   194→    recentAlerts: [{ id: 'a1', title: 'Nmap scan from 203.0.113.45', severity: 'medium', timestamp: '2024-01-15T14:23:00Z' }],
+   195→    mitigations: ['Network segmentation', 'IDS/IPS at perimeter'],
+   196→  },
+   197→  {
+   198→    id: 'T1592',
+   199→    name: 'Gather Victim Host Information',
+   200→    description: 'Adversaries gather information about the victim host that can be used during targeting.',
+   201→    status: 'partial',
+   202→    platforms: ['Network', 'Windows', 'Linux'],
+   203→    tacticId: 'TA0043',
+   204→    subTechniques: [{ id: 'T1592.001', name: 'Hardware' }, { id: 'T1592.002', name: 'Software' }, { id: 'T1592.004', name: 'Client Configurations' }],
+   205→    detectionRules: [{ id: 'rule-t1592-1', name: 'DNS Reconnaissance Burst', severity: 'low', enabled: true }],
+   206→    recentAlerts: [],
+   207→    mitigations: ['Monitor DNS query patterns', 'Egress filtering'],
+   208→  },
+   209→  {
+   210→    id: 'T1589',
+   211→    name: 'Gather Victim Identity Information',
+   212→    description: 'Adversaries gather identity information about the victim that can be used during targeting.',
+   213→    status: 'gap',
+   214→    platforms: ['Windows', 'Office 365', 'Azure AD'],
+   215→    tacticId: 'TA0043',
+   216→    subTechniques: [{ id: 'T1589.001', name: 'Credentials' }, { id: 'T1589.002', name: 'Email Addresses' }, { id: 'T1589.003', name: 'Employee Names' }],
+   217→    detectionRules: [],
+   218→    recentAlerts: [],
+   219→    mitigations: ['Audit public-facing information', 'Employee security awareness training'],
+   220→  },
+   221→  {
+   222→    id: 'T1590',
+   223→    name: 'Gather Victim Network Information',
+   224→    description: 'Adversaries gather network information about the victim that can be used during targeting.',
+   225→    status: 'partial',
+   226→    platforms: ['Network'],
+   227→    tacticId: 'TA0043',
+   228→    subTechniques: [{ id: 'T1590.001', name: 'Domain Properties' }, { id: 'T1590.002', name: 'DNS' }, { id: 'T1590.005', name: 'IP Addresses' }],
+   229→    detectionRules: [{ id: 'rule-t1590-1', name: 'WHOIS Bulk Query', severity: 'low', enabled: false }],
+   230→    recentAlerts: [],
+   231→    mitigations: ['DNS logging and analysis'],
+   232→  },
+   233→  {
+   234→    id: 'T1593',
+   235→    name: 'Search Open Websites/Domains',
+   236→    description: 'Adversaries search freely available websites and/or domains for information about victims.',
+   237→    status: 'n/a',
+   238→    platforms: ['Network'],
+   239→    tacticId: 'TA0043',
+   240→    subTechniques: [{ id: 'T1593.001', name: 'Social Media' }, { id: 'T1593.002', name: 'Search Engines' }],
+   241→    detectionRules: [],
+   242→    recentAlerts: [],
+   243→    mitigations: ['OSINT monitoring services'],
+   244→  },
+   245→  {
+   246→    id: 'T1591',
+   247→    name: 'Gather Victim Org Information',
+   248→    description: 'Adversaries gather information about the victim organization that can be used during targeting.',
+   249→    status: 'gap',
+   250→    platforms: ['Network'],
+   251→    tacticId: 'TA0043',
+   252→    subTechniques: [{ id: 'T1591.001', name: 'Determine Physical Locations' }, { id: 'T1591.002', name: 'Business Relationships' }],
+   253→    detectionRules: [],
+   254→    recentAlerts: [],
+   255→    mitigations: ['Limit publicly disclosed information'],
+   256→  },
+   257→
+   258→  // ----- Resource Development (TA0042) -----
+   259→  {
+   260→    id: 'T1583',
+   261→    name: 'Acquire Infrastructure',
+   262→    description: 'Adversaries buy, lease, rent, or obtain infrastructure used for targeting.',
+   263→    status: 'gap',
+   264→    platforms: ['Network'],
+   265→    tacticId: 'TA0042',
+   266→    subTechniques: [{ id: 'T1583.001', name: 'Domains' }, { id: 'T1583.002', name: 'DNS Server' }, { id: 'T1583.003', name: 'Virtual Private Server' }],
+   267→    detectionRules: [],
+   268→    recentAlerts: [],
+   269→    mitigations: ['Threat intel feeds for malicious infrastructure'],
+   270→  },
+   271→  {
+   272→    id: 'T1587',
+   273→    name: 'Develop Capabilities',
+   274→    description: 'Adversaries develop malware and exploits for use during targeting.',
+   275→    status: 'n/a',
+   276→    platforms: ['Windows', 'Linux', 'macOS'],
+   277→    tacticId: 'TA0042',
+   278→    subTechniques: [{ id: 'T1587.001', name: 'Malware' }, { id: 'T1587.002', name: 'Code Signing Certificates' }, { id: 'T1587.003', name: 'Digital Certificates' }],
+   279→    detectionRules: [],
+   280→    recentAlerts: [],
+   281→    mitigations: ['Threat intel sharing', 'Code signing enforcement'],
+   282→  },
+   283→  {
+   284→    id: 'T1588',
+   285→    name: 'Obtain Capabilities',
+   286→    description: 'Adversaries buy, steal, or download malware, exploits, and tools for use during targeting.',
+   287→    status: 'partial',
+   288→    platforms: ['Network'],
+   289→    tacticId: 'TA0042',
+   290→    subTechniques: [{ id: 'T1588.001', name: 'Malware' }, { id: 'T1588.002', name: 'Tool' }, { id: 'T1588.006', name: 'Vulnerabilities' }],
+   291→    detectionRules: [{ id: 'rule-t1588-1', name: 'Suspicious Tool Download', severity: 'medium', enabled: true }],
+   292→    recentAlerts: [{ id: 'a2', title: 'Sysinternals download from non-corporate host', severity: 'low', timestamp: '2024-01-14T09:10:00Z' }],
+   293→    mitigations: ['Egress URL filtering', 'Threat intel feeds'],
+   294→  },
+   295→  {
+   296→    id: 'T1608',
+   297→    name: 'Stage Capabilities',
+   298→    description: 'Adversaries stage capabilities to support execution during targeting.',
+   299→    status: 'gap',
+   300→    platforms: ['Network'],
+   301→    tacticId: 'TA0042',
+   302→    subTechniques: [{ id: 'T1608.001', name: 'Upload Malware' }, { id: 'T1608.002', name: 'Upload Tool' }, { id: 'T1608.004', name: 'Drive-by Target' }],
+   303→    detectionRules: [],
+   304→    recentAlerts: [],
+   305→    mitigations: ['Domain reputation monitoring'],
+   306→  },
+   307→  {
+   308→    id: 'T1505',
+   309→    name: 'Server Software Component',
+   310→    description: 'Adversaries may abuse legitimate server software components for malicious purposes.',
+   311→    status: 'detected',
+   312→    platforms: ['Windows', 'Linux'],
+   313→    tacticId: 'TA0042',
+   314→    subTechniques: [{ id: 'T1505.003', name: 'Web Shell' }],
+   315→    detectionRules: [{ id: 'rule-t1505-1', name: 'Web Shell Detection', severity: 'high', enabled: true }, { id: 'rule-t1505-2', name: 'Suspicious IIS Module', severity: 'high', enabled: true }],
+   316→    recentAlerts: [{ id: 'a3', title: 'China Chopper webshell uploaded to /tmp/', severity: 'high', timestamp: '2024-01-13T22:41:00Z' }],
+   317→    mitigations: ['File integrity monitoring on web roots', 'Web application firewall'],
+   318→  },
+   319→
+   320→  // ----- Initial Access (TA0001) -----
+   321→  {
+   322→    id: 'T1078',
+   323→    name: 'Valid Accounts',
+   324→    description: 'Adversaries use credentials of existing accounts to gain initial access.',
+   325→    status: 'detected',
+   326→    platforms: ['Windows', 'Linux', 'Office 365', 'Azure AD'],
+   327→    tacticId: 'TA0001',
+   328→    subTechniques: [{ id: 'T1078.001', name: 'Default Accounts' }, { id: 'T1078.002', name: 'Domain Accounts' }, { id: 'T1078.004', name: 'Cloud Accounts' }],
+   329→    detectionRules: [{ id: 'rule-t1078-1', name: 'Login from Anomalous Geo', severity: 'high', enabled: true }, { id: 'rule-t1078-2', name: 'Impossible Travel', severity: 'high', enabled: true }],
+   330→    recentAlerts: [{ id: 'a4', title: 'Admin login from Russia', severity: 'critical', timestamp: '2024-01-15T03:12:00Z' }, { id: 'a5', title: 'User login after deactivation', severity: 'high', timestamp: '2024-01-12T17:55:00Z' }],
+   331→    mitigations: ['MFA enforcement', 'Privileged access management', 'Account monitoring'],
+   332→  },
+   333→  {
+   334→    id: 'T1190',
+   335→    name: 'Exploit Public-Facing Application',
+   336→    description: 'Adversaries attempt to exploit a weakness in an internet-facing host or system.',
+   337→    status: 'detected',
+   338→    platforms: ['Network', 'Windows', 'Linux', 'Container'],
+   339→    tacticId: 'TA0001',
+   340→    subTechniques: [],
+   341→    detectionRules: [{ id: 'rule-t1190-1', name: 'Web Exploit Attempt (Log4Shell)', severity: 'critical', enabled: true }, { id: 'rule-t1190-2', name: 'SQL Injection Pattern', severity: 'high', enabled: true }],
+   342→    recentAlerts: [{ id: 'a6', title: 'Log4Shell exploitation attempt on /api/login', severity: 'critical', timestamp: '2024-01-15T11:02:00Z' }],
+   343→    mitigations: ['WAF deployment', 'Patching/updates', 'Vulnerability scanning'],
+   344→  },
+   345→  {
+   346→    id: 'T1566',
+   347→    name: 'Phishing',
+   348→    description: 'Adversaries send phishing messages to gain access to victim systems.',
+   349→    status: 'partial',
+   350→    platforms: ['Windows', 'macOS', 'Office 365', 'Azure AD'],
+   351→    tacticId: 'TA0001',
+   352→    subTechniques: [{ id: 'T1566.001', name: 'Spearphishing Attachment' }, { id: 'T1566.002', name: 'Spearphishing Link' }, { id: 'T1566.003', name: 'Spearphishing via Service' }],
+   353→    detectionRules: [{ id: 'rule-t1566-1', name: 'Phishing URL Click', severity: 'high', enabled: true }, { id: 'rule-t1566-2', name: 'Suspicious Macro Document', severity: 'medium', enabled: true }],
+   354→    recentAlerts: [{ id: 'a7', title: 'User reported phishing - finance@ev1l.com', severity: 'medium', timestamp: '2024-01-14T15:30:00Z' }],
+   355→    mitigations: ['Email filtering (anti-spam/anti-phish)', 'User training', 'URL detonation sandbox'],
+   356→  },
+   357→  {
+   358→    id: 'T1133',
+   359→    name: 'External Remote Services',
+   360→    description: 'Adversaries leverage external remote services to gain initial access.',
+   361→    status: 'partial',
+   362→    platforms: ['Windows', 'Network'],
+   363→    tacticId: 'TA0001',
+   364→    subTechniques: [],
+   365→    detectionRules: [{ id: 'rule-t1133-1', name: 'VPN Brute Force', severity: 'high', enabled: true }],
+   366→    recentAlerts: [{ id: 'a8', title: 'VPN login brute-force from Tor exit', severity: 'high', timestamp: '2024-01-13T05:18:00Z' }],
+   367→    mitigations: ['MFA for VPN', 'Geo-blocking', 'Rate limiting'],
+   368→  },
+   369→  {
+   370→    id: 'T1195',
+   371→    name: 'Supply Chain Compromise',
+   372→    description: 'Adversaries manipulate products or delivery mechanisms prior to receipt by the final consumer.',
+   373→    status: 'gap',
+   374→    platforms: ['Windows', 'Linux', 'Container'],
+   375→    tacticId: 'TA0001',
+   376→    subTechniques: [{ id: 'T1195.001', name: 'Compromise Software Dependencies and Development Tools' }, { id: 'T1195.002', name: 'Compromise Software Supply Chain' }],
+   377→    detectionRules: [],
+   378→    recentAlerts: [],
+   379→    mitigations: ['SBOM verification', 'Code signing validation', 'Vendor risk assessment'],
+   380→  },
+   381→  {
+   382→    id: 'T1199',
+   383→    name: 'Trusted Relationship',
+   384→    description: 'Adversaries leverage trusted relationships to gain initial access.',
+   385→    status: 'n/a',
+   386→    platforms: ['Windows', 'Azure AD'],
+   387→    tacticId: 'TA0001',
+   388→    subTechniques: [],
+   389→    detectionRules: [],
+   390→    recentAlerts: [],
+   391→    mitigations: ['Monitor third-party access', 'Just-in-time access provisioning'],
+   392→  },
+   393→
+   394→  // ----- Execution (TA0002) -----
+   395→  {
+   396→    id: 'T1059',
+   397→    name: 'Command and Scripting Interpreter',
+   398→    description: 'Adversaries abuse command and script interpreters to execute commands or scripts.',
+   399→    status: 'detected',
+   400→    platforms: ['Windows', 'Linux', 'macOS', 'Container'],
+   401→    tacticId: 'TA0002',
+   402→    subTechniques: [{ id: 'T1059.001', name: 'PowerShell' }, { id: 'T1059.003', name: 'Windows Command Shell' }, { id: 'T1059.004', name: 'Unix Shell' }, { id: 'T1059.006', name: 'Python' }],
+   403→    detectionRules: [{ id: 'rule-t1059-1', name: 'Suspicious PowerShell Encoded Command', severity: 'high', enabled: true }, { id: 'rule-t1059-2', name: 'Bash Reverse Shell Pattern', severity: 'high', enabled: true }, { id: 'rule-t1059-3', name: 'Python Download Exec', severity: 'medium', enabled: true }],
+   404→    recentAlerts: [{ id: 'a9', title: 'powershell.exe -enc SQBFAFgAKABO', severity: 'high', timestamp: '2024-01-15T10:01:00Z' }, { id: 'a10', title: 'Bash reverse shell to 198.51.100.7', severity: 'high', timestamp: '2024-01-14T20:45:00Z' }],
+   405→    mitigations: ['PowerShell Constrained Language Mode', 'AppLocker/WDAC', 'Audit script block logging'],
+   406→  },
+   407→  {
+   408→    id: 'T1106',
+   409→    name: 'Native API',
+   410→    description: 'Adversaries interact directly with the OS via native API calls.',
+   411→    status: 'partial',
+   412→    platforms: ['Windows', 'Linux', 'macOS'],
+   413→    tacticId: 'TA0002',
+   414→    subTechniques: [],
+   415→    detectionRules: [{ id: 'rule-t1106-1', name: 'Suspicious CreateRemoteThread', severity: 'medium', enabled: true }],
+   416→    recentAlerts: [],
+   417→    mitigations: ['EDR/behavioral monitoring', 'API hooking detection'],
+   418→  },
+   419→  {
+   420→    id: 'T1053',
+   421→    name: 'Scheduled Task/Job',
+   422→    description: 'Adversaries abuse task scheduling to execute malicious code.',
+   423→    status: 'detected',
+   424→    platforms: ['Windows', 'Linux', 'macOS'],
+   425→    tacticId: 'TA0002',
+   426→    subTechniques: [{ id: 'T1053.005', name: 'Scheduled Task' }, { id: 'T1053.003', name: 'Cron' }],
+   427→    detectionRules: [{ id: 'rule-t1053-1', name: 'Suspicious Scheduled Task Creation', severity: 'medium', enabled: true }, { id: 'rule-t1053-2', name: 'Cron Job Modified by Non-Root', severity: 'medium', enabled: true }],
+   428→    recentAlerts: [{ id: 'a11', title: 'schtasks /create /tn Update /tr malicious.exe', severity: 'medium', timestamp: '2024-01-13T11:20:00Z' }],
+   429→    mitigations: ['Audit task scheduler events', 'Restrict cron modification'],
+   430→  },
+   431→  {
+   432→    id: 'T1047',
+   433→    name: 'Windows Management Instrumentation',
+   434→    description: 'Adversaries abuse WMI to execute commands and configure settings.',
+   435→    status: 'detected',
+   436→    platforms: ['Windows'],
+   437→    tacticId: 'TA0002',
+   438→    subTechniques: [],
+   439→    detectionRules: [{ id: 'rule-t1047-1', name: 'WMI Process Creation', severity: 'medium', enabled: true }],
+   440→    recentAlerts: [{ id: 'a12', title: 'WMIExec lateral movement detected', severity: 'high', timestamp: '2024-01-12T08:15:00Z' }],
+   441→    mitigations: ['Monitor WMI event subscriptions', 'Restrict remote WMI access'],
+   442→  },
+   443→  {
+   444→    id: 'T1204',
+   445→    name: 'User Execution',
+   446→    description: 'Adversaries rely on user execution of malicious files.',
+   447→    status: 'detected',
+   448→    platforms: ['Windows', 'macOS', 'Linux'],
+   449→    tacticId: 'TA0002',
+   450→    subTechniques: [{ id: 'T1204.001', name: 'Malicious Link' }, { id: 'T1204.002', name: 'Malicious File' }],
+   451→    detectionRules: [{ id: 'rule-t1204-1', name: 'Suspicious File Executed from Downloads', severity: 'medium', enabled: true }],
+   452→    recentAlerts: [{ id: 'a13', title: 'User executed invoice.exe from Downloads', severity: 'high', timestamp: '2024-01-15T09:33:00Z' }],
+   453→    mitigations: ['Endpoint protection', 'User awareness training'],
+   454→  },
+   455→  {
+   456→    id: 'T1129',
+   457→    name: 'Shared Modules',
+   458→    description: 'Adversaries load malicious DLLs or shared modules to execute code.',
+   459→    status: 'partial',
+   460→    platforms: ['Windows', 'Linux', 'macOS'],
+   461→    tacticId: 'TA0002',
+   462→    subTechniques: [],
+   463→    detectionRules: [{ id: 'rule-t1129-1', name: 'DLL Loaded from Suspicious Path', severity: 'medium', enabled: true }],
+   464→    recentAlerts: [],
+   465→    mitigations: ['AppLocker/WDAC', 'DLL load path auditing'],
+   466→  },
+   467→
+   468→  // ----- Persistence (TA0003) -----
+   469→  {
+   470→    id: 'T1098',
+   471→    name: 'Account Manipulation',
+   472→    description: 'Adversaries manipulate accounts to maintain or elevate access.',
+   473→    status: 'detected',
+   474→    platforms: ['Windows', 'Azure AD', 'Office 365'],
+   475→    tacticId: 'TA0003',
+   476→    subTechniques: [{ id: 'T1098.001', name: 'Additional Cloud Credentials' }, { id: 'T1098.005', name: 'Device Registration' }],
+   477→    detectionRules: [{ id: 'rule-t1098-1', name: 'Admin Added to Global Admin Role', severity: 'critical', enabled: true }, { id: 'rule-t1098-2', name: 'Service Principal Created', severity: 'high', enabled: true }],
+   478→    recentAlerts: [{ id: 'a14', title: 'New service principal "audit-tool" with Mail.Read', severity: 'high', timestamp: '2024-01-14T16:00:00Z' }],
+   479→    mitigations: ['PIM/PAM for privileged roles', 'Audit directory changes'],
+   480→  },
+   481→  {
+   482→    id: 'T1543',
+   483→    name: 'Create or Modify System Process',
+   484→    description: 'Adversaries create or modify system-level processes to execute malicious code.',
+   485→    status: 'partial',
+   486→    platforms: ['Windows', 'Linux', 'macOS'],
+   487→    tacticId: 'TA0003',
+   488→    subTechniques: [{ id: 'T1543.002', name: 'Systemd Service' }, { id: 'T1543.003', name: 'Windows Service' }],
+   489→    detectionRules: [{ id: 'rule-t1543-1', name: 'Suspicious Service Created', severity: 'medium', enabled: true }],
+   490→    recentAlerts: [],
+   491→    mitigations: ['Audit service creation', 'Application allow-listing'],
+   492→  },
+   493→  {
+   494→    id: 'T1547',
+   495→    name: 'Boot or Logon Autostart Execution',
+   496→    description: 'Adversaries configure system settings to execute malicious code at boot or logon.',
+   497→    status: 'detected',
+   498→    platforms: ['Windows', 'Linux', 'macOS'],
+   499→    tacticId: 'TA0003',
+   500→    subTechniques: [{ id: 'T1547.001', name: 'Registry Run Keys / Startup Folder' }, { id: 'T1547.009', name: 'Shortcut Modification' }],
+   501→    detectionRules: [{ id: 'rule-t1547-1', name: 'Run Key Modification', severity: 'medium', enabled: true }, { id: 'rule-t1547-2', name: 'Startup Folder New Binary', severity: 'high', enabled: true }],
+   502→    recentAlerts: [{ id: 'a15', title: 'HKCU\\...\\Run set to %APPDATA%\\update.exe', severity: 'medium', timestamp: '2024-01-13T07:22:00Z' }],
+   503→    mitigations: ['Registry monitoring', 'EDR autostart enumeration'],
+   504→  },
+   505→  {
+   506→    id: 'T1136',
+   507→    name: 'Create Account',
+   508→    description: 'Adversaries create new accounts to maintain access.',
+   509→    status: 'detected',
+   510→    platforms: ['Windows', 'Linux', 'Azure AD'],
+   511→    tacticId: 'TA0003',
+   512→    subTechniques: [{ id: 'T1136.001', name: 'Local Account' }, { id: 'T1136.002', name: 'Domain Account' }, { id: 'T1136.003', name: 'Cloud Account' }],
+   513→    detectionRules: [{ id: 'rule-t1136-1', name: 'Local Account Created Outside Business Hours', severity: 'medium', enabled: true }],
+   514→    recentAlerts: [{ id: 'a16', title: 'New local user svc_helper created at 02:14', severity: 'medium', timestamp: '2024-01-12T02:14:00Z' }],
+   515→    mitigations: ['Audit account creation', 'Off-hours change alerts'],
+   516→  },
+   517→  {
+   518→    id: 'T1574',
+   519→    name: 'Hijack Execution Flow',
+   520→    description: 'Adversaries execute malicious code by hijacking how a legitimate process loads.',
+   521→    status: 'partial',
+   522→    platforms: ['Windows', 'Linux', 'macOS'],
+   523→    tacticId: 'TA0003',
+   524→    subTechniques: [{ id: 'T1574.001', name: 'DLL Search Order Hijacking' }, { id: 'T1574.011', name: 'Registry Run Keys / Startup Folder' }],
+   525→    detectionRules: [{ id: 'rule-t1574-1', name: 'DLL Side-Loading Detected', severity: 'high', enabled: true }],
+   526→    recentAlerts: [],
+   527→    mitigations: ['AppLocker', 'Path auditing'],
+   528→  },
+   529→
+   530→  // ----- Privilege Escalation (TA0004) -----
+   531→  {
+   532→    id: 'T1068',
+   533→    name: 'Exploitation for Privilege Escalation',
+   534→    description: 'Adversaries exploit software vulnerabilities to elevate privileges.',
+   535→    status: 'detected',
+   536→    platforms: ['Windows', 'Linux', 'Container'],
+   537→    tacticId: 'TA0004',
+   538→    subTechniques: [],
+   539→    detectionRules: [{ id: 'rule-t1068-1', name: 'Kernel Exploit Pattern (CVE-2021-3493)', severity: 'critical', enabled: true }, { id: 'rule-t1068-2', name: 'Container Escape Suspected', severity: 'critical', enabled: true }],
+   540→    recentAlerts: [{ id: 'a17', title: 'overlayfs privilege escalation attempt on host-03', severity: 'critical', timestamp: '2024-01-15T12:45:00Z' }],
+   541→    mitigations: ['Patch management', 'Kernel hardening', 'Container isolation'],
+   542→  },
+   543→  {
+   544→    id: 'T1548',
+   545→    name: 'Abuse Elevation Control Mechanism',
+   546→    description: 'Adversaries abuse elevation mechanisms to gain higher privileges.',
+   547→    status: 'partial',
+   548→    platforms: ['Windows', 'Linux', 'macOS'],
+   549→    tacticId: 'TA0004',
+   550→    subTechniques: [{ id: 'T1548.002', name: 'Bypass User Account Control' }, { id: 'T1548.003', name: 'Sudo and Sudo Caching' }],
+   551→    detectionRules: [{ id: 'rule-t1548-1', name: 'UAC Bypass via Fodhelper', severity: 'high', enabled: true }],
+   552→    recentAlerts: [],
+   553→    mitigations: ['UAC level set to Always Notify', 'sudoers audit'],
+   554→  },
+   555→  {
+   556→    id: 'T1134',
+   557→    name: 'Access Token Manipulation',
+   558→    description: 'Adversaries manipulate access tokens to operate as another user.',
+   559→    status: 'detected',
+   560→    platforms: ['Windows'],
+   561→    tacticId: 'TA0004',
+   562→    subTechniques: [{ id: 'T1134.001', name: 'Token Impersonation/Theft' }, { id: 'T1134.002', name: 'Create Process with Token' }],
+   563→    detectionRules: [{ id: 'rule-t1134-1', name: 'Token Impersonation Detected', severity: 'high', enabled: true }],
+   564→    recentAlerts: [{ id: 'a18', title: 'Incognito token theft observed', severity: 'high', timestamp: '2024-01-12T19:01:00Z' }],
+   565→    mitigations: ['EDR token manipulation detection', 'LSASS protection'],
+   566→  },
+   567→  {
+   568→    id: 'T1484',
+   569→    name: 'Domain Policy Modification',
+   570→    description: 'Adversaries modify domain policies to gain or escalate privileges.',
+   571→    status: 'gap',
+   572→    platforms: ['Windows'],
+   573→    tacticId: 'TA0004',
+   574→    subTechniques: [{ id: 'T1484.001', name: 'Group Policy Modification' }],
+   575→    detectionRules: [],
+   576→    recentAlerts: [],
+   577→    mitigations: ['GPO change auditing', 'Tier-0 admin monitoring'],
+   578→  },
+   579→
+   580→  // ----- Defense Evasion (TA0005) -----
+   581→  {
+   582→    id: 'T1027',
+   583→    name: 'Obfuscated Files or Information',
+   584→    description: 'Adversaries encode or obfuscate files or information to evade detection.',
+   585→    status: 'detected',
+   586→    platforms: ['Windows', 'Linux', 'macOS'],
+   587→    tacticId: 'TA0005',
+   588→    subTechniques: [{ id: 'T1027.001', name: 'Binary Padding' }, { id: 'T1027.002', name: 'Software Packing' }, { id: 'T1027.013', name: 'Encrypted/Encoded File' }],
+   589→    detectionRules: [{ id: 'rule-t1027-1', name: 'Packed Binary Detected (UPX)', severity: 'medium', enabled: true }, { id: 'rule-t1027-2', name: 'Encrypted Payload Extracted', severity: 'high', enabled: true }],
+   590→    recentAlerts: [{ id: 'a19', title: 'UPX-packed ELF binary dropped in /tmp', severity: 'medium', timestamp: '2024-01-14T22:09:00Z' }],
+   591→    mitigations: ['Anti-malware with unpacking', 'File entropy analysis'],
+   592→  },
+   593→  {
+   594→    id: 'T1036',
+   595→    name: 'Masquerading',
+   596→    description: 'Adversaries manipulate features of artifacts to make them appear legitimate.',
+   597→    status: 'detected',
+   598→    platforms: ['Windows', 'Linux', 'macOS'],
+   599→    tacticId: 'TA0005',
+   600→    subTechniques: [{ id: 'T1036.005', name: 'Match Legitimate Name or Location' }, { id: 'T1036.008', name: 'Masquerade File Type' }],
+   601→    detectionRules: [{ id: 'rule-t1036-1', name: 'Binary Masquerading as svchost.exe', severity: 'high', enabled: true }],
+   602→    recentAlerts: [{ id: 'a20', title: 'svchost.exe launched from C:\\Temp\\', severity: 'high', timestamp: '2024-01-13T14:55:00Z' }],
+   603→    mitigations: ['Path allow-listing', 'Digital signature validation'],
+   604→  },
+   605→  {
+   606→    id: 'T1562',
+   607→    name: 'Impair Defenses',
+   608→    description: 'Adversaries modify tools and features to impair detection capabilities.',
+   609→    status: 'detected',
+   610→    platforms: ['Windows', 'Linux', 'macOS'],
+   611→    tacticId: 'TA0005',
+   612→    subTechniques: [{ id: 'T1562.001', name: 'Disable or Modify Tools' }, { id: 'T1562.002', name: 'Disable Windows Event Logging' }, { id: 'T1562.006', name: 'Indicator Blocking' }],
+   613→    detectionRules: [{ id: 'rule-t1562-1', name: 'Defender Tamper Attempt', severity: 'critical', enabled: true }, { id: 'rule-t1562-2', name: 'Audit Policy Cleared', severity: 'high', enabled: true }],
+   614→    recentAlerts: [{ id: 'a21', title: 'Set-MpPreference -DisableRealtimeMonitoring', severity: 'critical', timestamp: '2024-01-15T06:30:00Z' }],
+   615→    mitigations: ['Tamper protection', 'Centralized log forwarding', 'Agent health monitoring'],
+   616→  },
+   617→  {
+   618→    id: 'T1140',
+   619→    name: 'Deobfuscate/Decode Files or Information',
+   620→    description: 'Adversaries decode or deobfuscate files or information to use them at execution time.',
+   621→    status: 'partial',
+   622→    platforms: ['Windows', 'Linux', 'macOS'],
+   623→    tacticId: 'TA0005',
+   624→    subTechniques: [],
+   625→    detectionRules: [{ id: 'rule-t1140-1', name: 'Base64 Decode to Disk', severity: 'medium', enabled: true }],
+   626→    recentAlerts: [],
+   627→    mitigations: ['Script block logging', 'Behavioral analysis'],
+   628→  },
+   629→  {
+   630→    id: 'T1572',
+   631→    name: 'Protocol Tunneling',
+   632→    description: 'Adversaries tunnel network communications through legitimate protocols.',
+   633→    status: 'partial',
+   634→    platforms: ['Network', 'Windows', 'Linux'],
+   635→    tacticId: 'TA0005',
+   636→    subTechniques: [],
+   637→    detectionRules: [{ id: 'rule-t1572-1', name: 'DNS Tunneling Pattern', severity: 'high', enabled: true }, { id: 'rule-t1572-2', name: 'SSH Tunnel Detected', severity: 'medium', enabled: true }],
+   638→    recentAlerts: [{ id: 'a22', title: 'Long DNS labels from host-12 (dnscat2)', severity: 'high', timestamp: '2024-01-14T11:48:00Z' }],
+   639→    mitigations: ['DNS inspection', 'Egress filtering', 'TLS inspection'],
+   640→  },
+   641→  {
+   642→    id: 'T1202',
+   643→    name: 'Indirect Command Execution',
+   644→    description: 'Adversaries use indirect methods to execute commands to evade defenses.',
+   645→    status: 'detected',
+   646→    platforms: ['Windows', 'Linux', 'macOS'],
+   647→    tacticId: 'TA0005',
+   648→    subTechniques: [],
+   649→    detectionRules: [{ id: 'rule-t1202-1', name: 'LOLBin Usage (certutil)', severity: 'medium', enabled: true }, { id: 'rule-t1202-2', name: 'Wmic Process Call Create', severity: 'medium', enabled: true }],
+   650→    recentAlerts: [{ id: 'a23', title: 'certutil -decode invoked by user', severity: 'medium', timestamp: '2024-01-13T08:11:00Z' }],
+   651→    mitigations: ['Application allow-listing', 'LOLBins monitoring'],
+   652→  },
+   653→  {
+   654→    id: 'T1620',
+   655→    name: 'Reflective Code Loading',
+   656→    description: 'Adversaries reflectively load code into a process to bypass process-based defenses.',
+   657→    status: 'gap',
+   658→    platforms: ['Windows', 'Linux'],
+   659→    tacticId: 'TA0005',
+   660→    subTechniques: [],
+   661→    detectionRules: [],
+   662→    recentAlerts: [],
+   663→    mitigations: ['EDR with reflective load detection', 'AMSI'],
+   664→  },
+   665→
+   666→  // ----- Credential Access (TA0006) -----
+   667→  {
+   668→    id: 'T1110',
+   669→    name: 'Brute Force',
+   670→    description: 'Adversaries use brute-force techniques to attempt access to accounts.',
+   671→    status: 'detected',
+   672→    platforms: ['Windows', 'Linux', 'Azure AD', 'Office 365'],
+   673→    tacticId: 'TA0006',
+   674→    subTechniques: [{ id: 'T1110.001', name: 'Password Guessing' }, { id: 'T1110.003', name: 'Password Spraying' }, { id: 'T1110.004', name: 'Credential Stuffing' }],
+   675→    detectionRules: [{ id: 'rule-t1110-1', name: 'Password Spray (Multiple Users, One IP)', severity: 'high', enabled: true }, { id: 'rule-t1110-2', name: 'RDP Brute Force', severity: 'high', enabled: true }],
+   676→    recentAlerts: [{ id: 'a24', title: '50+ failed RDP logins from 198.51.100.22 in 5 min', severity: 'high', timestamp: '2024-01-15T04:25:00Z' }],
+   677→    mitigations: ['Account lockout policies', 'MFA', 'Anomaly detection'],
+   678→  },
+   679→  {
+   680→    id: 'T1003',
+   681→    name: 'OS Credential Dumping',
+   682→    description: 'Adversaries dump credentials from the OS and applications.',
+   683→    status: 'detected',
+   684→    platforms: ['Windows', 'Linux', 'macOS'],
+   685→    tacticId: 'TA0006',
+   686→    subTechniques: [{ id: 'T1003.001', name: 'LSASS Memory' }, { id: 'T1003.002', name: 'Security Account Manager (SAM)' }, { id: 'T1003.006', name: 'DCSync' }],
+   687→    detectionRules: [{ id: 'rule-t1003-1', name: 'LSASS Access by Suspicious Process', severity: 'critical', enabled: true }, { id: 'rule-t1003-2', name: 'DCSync Replication Request', severity: 'critical', enabled: true }],
+   688→    recentAlerts: [{ id: 'a25', title: 'mimikatz detected on DC01', severity: 'critical', timestamp: '2024-01-15T07:40:00Z' }],
+   689→    mitigations: ['Credential Guard', 'LSASS protection (RunAsPPL)', 'Alert on DCSync'],
+   690→  },
+   691→  {
+   692→    id: 'T1555',
+   693→    name: 'Credentials from Password Stores',
+   694→    description: 'Adversaries extract credentials from password stores and browsers.',
+   695→    status: 'partial',
+   696→    platforms: ['Windows', 'Linux', 'macOS'],
+   697→    tacticId: 'TA0006',
+   698→    subTechniques: [{ id: 'T1555.003', name: 'Credentials from Web Browsers' }, { id: 'T1555.005', name: 'Password Managers' }],
+   699→    detectionRules: [{ id: 'rule-t1555-1', name: 'Browser Credential File Access', severity: 'medium', enabled: true }],
+   700→    recentAlerts: [],
+   701→    mitigations: ['EDR monitoring of credential stores', 'Encrypted password stores'],
+   702→  },
+   703→  {
+   704→    id: 'T1528',
+   705→    name: 'Steal Application Access Token',
+   706→    description: 'Adversaries steal OAuth tokens used by applications for authentication.',
+   707→    status: 'gap',
+   708→    platforms: ['Azure AD', 'Office 365'],
+   709→    tacticId: 'TA0006',
+   710→    subTechniques: [],
+   711→    detectionRules: [],
+   712→    recentAlerts: [],
+   713→    mitigations: ['Token lifetime policies', 'Conditional Access', 'App audit logs'],
+   714→  },
+   715→  {
+   716→    id: 'T1552',
+   717→    name: 'Unsecured Credentials',
+   718→    description: 'Adversaries search for unsecured credentials in files and configurations.',
+   719→    status: 'detected',
+   720→    platforms: ['Windows', 'Linux', 'macOS', 'Container'],
+   721→    tacticId: 'TA0006',
+   722→    subTechniques: [{ id: 'T1552.001', name: 'Credentials In Files' }, { id: 'T1552.004', name: 'Private Keys' }],
+   723→    detectionRules: [{ id: 'rule-t1552-1', name: 'SSH Private Key Read by Non-Owner', severity: 'high', enabled: true }, { id: 'rule-t1552-2', name: 'Secrets in Container Env Vars', severity: 'high', enabled: true }],
+   724→    recentAlerts: [{ id: 'a26', title: '~/.ssh/id_rsa read by unfamiliar process', severity: 'high', timestamp: '2024-01-12T16:25:00Z' }],
+   725→    mitigations: ['Secrets management (Vault)', 'File permission auditing'],
+   726→  },
+   727→  {
+   728→    id: 'T1056',
+   729→    name: 'Input Capture',
+   730→    description: 'Adversaries capture user input via keylogging or other methods.',
+   731→    status: 'partial',
+   732→    platforms: ['Windows', 'Linux', 'macOS'],
+   733→    tacticId: 'TA0006',
+   734→    subTechniques: [{ id: 'T1056.001', name: 'Keylogging' }, { id: 'T1056.004', name: 'Credential API Hooking' }],
+   735→    detectionRules: [{ id: 'rule-t1056-1', name: 'Keyboard Hook DLL Loaded', severity: 'high', enabled: true }],
+   736→    recentAlerts: [],
+   737→    mitigations: ['EDR with keylogger detection', 'Endpoint isolation'],
+   738→  },
+   739→
+   740→  // ----- Discovery (TA0007) -----
+   741→  {
+   742→    id: 'T1046',
+   743→    name: 'Network Service Discovery',
+   744→    description: 'Adversaries discover services on the network to identify targets.',
+   745→    status: 'detected',
+   746→    platforms: ['Network', 'Windows', 'Linux'],
+   747→    tacticId: 'TA0007',
+   748→    subTechniques: [],
+   749→    detectionRules: [{ id: 'rule-t1046-1', name: 'Internal Port Sweep', severity: 'medium', enabled: true }],
+   750→    recentAlerts: [{ id: 'a27', title: 'Host scanned entire 10.0.0.0/8 range', severity: 'medium', timestamp: '2024-01-14T13:10:00Z' }],
+   751→    mitigations: ['Network IDS', 'Behavioral baselining'],
+   752→  },
+   753→  {
+   754→    id: 'T1049',
+   755→    name: 'System Network Connections',
+   756→    description: 'Adversaries enumerate active network connections to identify relationships.',
+   757→    status: 'detected',
+   758→    platforms: ['Windows', 'Linux', 'macOS'],
+   759→    tacticId: 'TA0007',
+   760→    subTechniques: [],
+   761→    detectionRules: [{ id: 'rule-t1049-1', name: 'netstat / ss by Unusual User', severity: 'low', enabled: true }],
+   762→    recentAlerts: [],
+   763→    mitigations: ['Command-line auditing'],
+   764→  },
+   765→  {
+   766→    id: 'T1087',
+   767→    name: 'Account Discovery',
+   768→    description: 'Adversaries enumerate accounts to determine valid targets.',
+   769→    status: 'detected',
+   770→    platforms: ['Windows', 'Linux', 'Azure AD'],
+   771→    tacticId: 'TA0007',
+   772→    subTechniques: [{ id: 'T1087.001', name: 'Local Account' }, { id: 'T1087.002', name: 'Domain Account' }],
+   773→    detectionRules: [{ id: 'rule-t1087-1', name: 'Bulk AD Enumeration with BloodHound Pattern', severity: 'medium', enabled: true }],
+   774→    recentAlerts: [],
+   775→    mitigations: ['Honeypot accounts', 'AD query rate limiting'],
+   776→  },
+   777→  {
+   778→    id: 'T1082',
+   779→    name: 'System Information Discovery',
+   780→    description: 'Adversaries gather information about the OS and hardware.',
+   781→    status: 'detected',
+   782→    platforms: ['Windows', 'Linux', 'macOS'],
+   783→    tacticId: 'TA0007',
+   784→    subTechniques: [],
+   785→    detectionRules: [{ id: 'rule-t1082-1', name: 'systeminfo / uname Anomaly', severity: 'low', enabled: true }],
+   786→    recentAlerts: [],
+   787→    mitigations: ['Command-line logging'],
+   788→  },
+   789→  {
+   790→    id: 'T1018',
+   791→    name: 'Remote System Discovery',
+   792→    description: 'Adversaries enumerate remote systems to identify targets.',
+   793→    status: 'partial',
+   794→    platforms: ['Windows', 'Network'],
+   795→    tacticId: 'TA0007',
+   796→    subTechniques: [],
+   797→    detectionRules: [{ id: 'rule-t1018-1', name: 'Ping Sweep Detected', severity: 'medium', enabled: true }],
+   798→    recentAlerts: [],
+   799→    mitigations: ['Network monitoring'],
+   800→  },
+   801→  {
+   802→    id: 'T1135',
+   803→    name: 'Network Share Discovery',
+   804→    description: 'Adversaries enumerate network shares for sensitive data.',
+   805→    status: 'partial',
+   806→    platforms: ['Windows', 'Linux'],
+   807→    tacticId: 'TA0007',
+   808→    subTechniques: [],
+   809→    detectionRules: [{ id: 'rule-t1135-1', name: 'net view / smbclient Enumeration', severity: 'low', enabled: true }],
+   810→    recentAlerts: [],
+   811→    mitigations: ['Share access auditing'],
+   812→  },
+   813→
+   814→  // ----- Lateral Movement (TA0008) -----
+   815→  {
+   816→    id: 'T1021',
+   817→    name: 'Remote Services',
+   818→    description: 'Adversaries use remote services to move laterally across systems.',
+   819→    status: 'detected',
+   820→    platforms: ['Windows', 'Linux', 'Network'],
+   821→    tacticId: 'TA0008',
+   822→    subTechniques: [{ id: 'T1021.001', name: 'RDP' }, { id: 'T1021.004', name: 'SSH' }, { id: 'T1021.006', name: 'WinRM' }],
+   823→    detectionRules: [{ id: 'rule-t1021-1', name: 'RDP from Unusual Source', severity: 'high', enabled: true }, { id: 'rule-t1021-2', name: 'WinRM Lateral Movement', severity: 'high', enabled: true }],
+   824→    recentAlerts: [{ id: 'a28', title: 'Admin RDP from workstation to DC', severity: 'high', timestamp: '2024-01-14T18:30:00Z' }],
+   825→    mitigations: ['Jump servers', 'Network segmentation', 'Remote access logging'],
+   826→  },
+   827→  {
+   828→    id: 'T1077',
+   829→    name: 'Windows Admin Shares',
+   830→    description: 'Adversaries use Windows admin shares for lateral movement.',
+   831→    status: 'detected',
+   832→    platforms: ['Windows'],
+   833→    tacticId: 'TA0008',
+   834→    subTechniques: [],
+   835→    detectionRules: [{ id: 'rule-t1077-1', name: 'ADMIN$ Access from Workstation', severity: 'high', enabled: true }],
+   836→    recentAlerts: [],
+   837→    mitigations: ['Restrict admin shares', 'LAPS', 'Local admin password randomization'],
+   838→  },
+   839→  {
+   840→    id: 'T1570',
+   841→    name: 'Lateral Tool Transfer',
+   842→    description: 'Adversaries transfer tools between systems on the network.',
+   843→    status: 'partial',
+   844→    platforms: ['Windows', 'Linux'],
+   845→    tacticId: 'TA0008',
+   846→    subTechniques: [],
+   847→    detectionRules: [{ id: 'rule-t1570-1', name: 'Tool Dropped via SMB', severity: 'medium', enabled: true }],
+   848→    recentAlerts: [],
+   849→    mitigations: ['File transfer monitoring', 'EDR file origin tracking'],
+   850→  },
+   851→  {
+   852→    id: 'T1550',
+   853→    name: 'Use Alternate Authentication Material',
+   854→    description: 'Adversaries use stolen authentication material (tickets, hashes) to move laterally.',
+   855→    status: 'detected',
+   856→    platforms: ['Windows'],
+   857→    tacticId: 'TA0008',
+   858→    subTechniques: [{ id: 'T1550.002', name: 'Pass the Hash' }, { id: 'T1550.003', name: 'Pass the Ticket' }],
+   859→    detectionRules: [{ id: 'rule-t1550-1', name: 'Pass-the-Hash via NTLM', severity: 'critical', enabled: true }, { id: 'rule-t1550-2', name: 'Kerberos Ticket Anomaly', severity: 'high', enabled: true }],
+   860→    recentAlerts: [{ id: 'a29', title: 'PtH on SRV-FILE01 (NTLM from non-domain system)', severity: 'critical', timestamp: '2024-01-13T21:15:00Z' }],
+   861→    mitigations: ['Disable NTLM where possible', 'Local admin account management'],
+   862→  },
+   863→  {
+   864→    id: 'T1534',
+   865→    name: 'Internal Spearphishing',
+   866→    description: 'Adversaries send phishing messages from compromised internal accounts.',
+   867→    status: 'gap',
+   868→    platforms: ['Office 365', 'Windows'],
+   869→    tacticId: 'TA0008',
+   870→    subTechniques: [],
+   871→    detectionRules: [],
+   872→    recentAlerts: [],
+   873→    mitigations: ['Mail flow rules', 'Anomalous send pattern detection'],
+   874→  },
+   875→
+   876→  // ----- Collection (TA0009) -----
+   877→  {
+   878→    id: 'T1560',
+   879→    name: 'Archive Collected Data',
+   880→    description: 'Adversaries compress and encrypt collected data before exfiltration.',
+   881→    status: 'detected',
+   882→    platforms: ['Windows', 'Linux', 'macOS'],
+   883→    tacticId: 'TA0009',
+   884→    subTechniques: [{ id: 'T1560.001', name: 'Archive via Utility' }, { id: 'T1560.002', name: 'Archive via Library' }],
+   885→    detectionRules: [{ id: 'rule-t1560-1', name: 'Large Archive Creation in User Dir', severity: 'medium', enabled: true }],
+   886→    recentAlerts: [],
+   887→    mitigations: ['Archive tool monitoring', 'Data loss prevention'],
+   888→  },
+   889→  {
+   890→    id: 'T1005',
+   891→    name: 'Data from Local System',
+   892→    description: 'Adversaries search local systems for sensitive files.',
+   893→    status: 'partial',
+   894→    platforms: ['Windows', 'Linux', 'macOS'],
+   895→    tacticId: 'TA0009',
+   896→    subTechniques: [],
+   897→    detectionRules: [{ id: 'rule-t1005-1', name: 'Bulk File Read in User Profile', severity: 'medium', enabled: true }],
+   898→    recentAlerts: [],
+   899→    mitigations: ['File access auditing', 'EDR file access monitoring'],
+   900→  },
+   901→  {
+   902→    id: 'T1119',
+   903→    name: 'Automated Collection',
+   904→    description: 'Adversaries use scripted methods to collect data at scale.',
+   905→    status: 'partial',
+   906→    platforms: ['Windows', 'Linux', 'macOS'],
+   907→    tacticId: 'TA0009',
+   908→    subTechniques: [],
+   909→    detectionRules: [{ id: 'rule-t1119-1', name: 'Script Iterating Sensitive Directories', severity: 'medium', enabled: true }],
+   910→    recentAlerts: [],
+   911→    mitigations: ['Behavioral monitoring', 'Application allow-listing'],
+   912→  },
+   913→  {
+   914→    id: 'T1113',
+   915→    name: 'Screen Capture',
+   916→    description: 'Adversaries capture screenshots of the user desktop.',
+   917→    status: 'detected',
+   918→    platforms: ['Windows', 'Linux', 'macOS'],
+   919→    tacticId: 'TA0009',
+   920→    subTechniques: [],
+   921→    detectionRules: [{ id: 'rule-t1113-1', name: 'Screen Capture Tool Execution', severity: 'medium', enabled: true }],
+   922→    recentAlerts: [],
+   923→    mitigations: ['Endpoint monitoring', 'Restrict screen capture utilities'],
+   924→  },
+   925→  {
+   926→    id: 'T1074',
+   927→    name: 'Data Staged',
+   928→    description: 'Adversaries stage collected data in a central location before exfiltration.',
+   929→    status: 'detected',
+   930→    platforms: ['Windows', 'Linux', 'macOS'],
+   931→    tacticId: 'TA0009',
+   932→    subTechniques: [{ id: 'T1074.001', name: 'Local Data Staging' }],
+   933→    detectionRules: [{ id: 'rule-t1074-1', name: 'Staging Directory Created (Recycle Bin)', severity: 'high', enabled: true }],
+   934→    recentAlerts: [{ id: 'a30', title: 'Staging folder with 4GB created in C:\\Recycle.Bin', severity: 'high', timestamp: '2024-01-12T14:50:00Z' }],
+   935→    mitigations: ['File integrity monitoring', 'Unusual directory size alerts'],
+   936→  },
+   937→
+   938→  // ----- Command and Control (TA0011) -----
+   939→  {
+   940→    id: 'T1071',
+   941→    name: 'Application Layer Protocol',
+   942→    description: 'Adversaries communicate using application layer protocols to blend with normal traffic.',
+   943→    status: 'detected',
+   944→    platforms: ['Network', 'Windows', 'Linux'],
+   945→    tacticId: 'TA0011',
+   946→    subTechniques: [{ id: 'T1071.001', name: 'Web Protocols' }, { id: 'T1071.004', name: 'DNS' }],
+   947→    detectionRules: [{ id: 'rule-t1071-1', name: 'C2 Beaconing (HTTP)', severity: 'high', enabled: true }, { id: 'rule-t1071-2', name: 'Suspicious DNS TXT Queries', severity: 'medium', enabled: true }],
+   948→    recentAlerts: [{ id: 'a31', title: 'Cobalt Strike beacon over HTTPS detected', severity: 'critical', timestamp: '2024-01-15T08:20:00Z' }],
+   949→    mitigations: ['TLS inspection', 'Domain reputation', 'Traffic analysis'],
+   950→  },
+   951→  {
+   952→    id: 'T1573',
+   953→    name: 'Encrypted Channel',
+   954→    description: 'Adversaries use encrypted protocols to hide C2 traffic.',
+   955→    status: 'partial',
+   956→    platforms: ['Network', 'Windows', 'Linux'],
+   957→    tacticId: 'TA0011',
+   958→    subTechniques: [{ id: 'T1573.002', name: 'Asymmetric Cryptography' }],
+   959→    detectionRules: [{ id: 'rule-t1573-1', name: 'TLS Self-Signed Cert to Rare Domain', severity: 'medium', enabled: true }],
+   960→    recentAlerts: [],
+   961→    mitigations: ['TLS fingerprinting (JA3/JA4)', 'Egress filtering'],
+   962→  },
+   963→  {
+   964→    id: 'T1090',
+   965→    name: 'Proxy',
+   966→    description: 'Adversaries use proxies to chain C2 connections and hide origin.',
+   967→    status: 'partial',
+   968→    platforms: ['Network'],
+   969→    tacticId: 'TA0011',
+   970→    subTechniques: [{ id: 'T1090.001', name: 'Internal Proxy' }, { id: 'T1090.003', name: 'Multi-hop Proxy' }, { id: 'T1090.004', name: 'Tor' }],
+   971→    detectionRules: [{ id: 'rule-t1090-1', name: 'Tor Exit Node Connection', severity: 'medium', enabled: true }],
+   972→    recentAlerts: [{ id: 'a32', title: 'Connection to Tor exit node', severity: 'medium', timestamp: '2024-01-14T19:35:00Z' }],
+   973→    mitigations: ['Block Tor exit nodes', 'Egress filtering'],
+   974→  },
+   975→  {
+   976→    id: 'T1105',
+   977→    name: 'Ingress Tool Transfer',
+   978→    description: 'Adversaries transfer tools to the victim system from external sources.',
+   979→    status: 'detected',
+   980→    platforms: ['Network', 'Windows', 'Linux', 'macOS'],
+   981→    tacticId: 'TA0011',
+   982→    subTechniques: [],
+   983→    detectionRules: [{ id: 'rule-t1105-1', name: 'Binary Dropped from Internet', severity: 'high', enabled: true }, { id: 'rule-t1105-2', name: 'curl/wget to File Hosting Domain', severity: 'medium', enabled: true }],
+   984→    recentAlerts: [{ id: 'a33', title: 'powershell.exe downloaded evil.exe from pastebin', severity: 'high', timestamp: '2024-01-15T10:45:00Z' }],
+   985→    mitigations: ['Egress URL filtering', 'Application allow-listing'],
+   986→  },
+   987→  {
+   988→    id: 'T1095',
+   989→    name: 'Non-Application Layer Protocol',
+   990→    description: 'Adversaries use non-application layer protocols (e.g. ICMP, TCP) for C2.',
+   991→    status: 'partial',
+   992→    platforms: ['Network', 'Windows', 'Linux'],
+   993→    tacticId: 'TA0011',
+   994→    subTechniques: [],
+   995→    detectionRules: [{ id: 'rule-t1095-1', name: 'ICMP Tunneling Pattern', severity: 'medium', enabled: true }],
+   996→    recentAlerts: [],
+   997→    mitigations: ['Network behavior analysis', 'Protocol anomaly detection'],
+   998→  },
+   999→  {
+  1000→    id: 'T1132',
+  1001→    name: 'Data Encoding',
+  1002→    description: 'Adversaries encode C2 traffic to evade detection.',
+  1003→    status: 'gap',
+  1004→    platforms: ['Network'],
+  1005→    tacticId: 'TA0011',
+  1006→    subTechniques: [{ id: 'T1132.001', name: 'Standard Encoding' }],
+  1007→    detectionRules: [],
+  1008→    recentAlerts: [],
+  1009→    mitigations: ['Traffic analysis', 'Protocol inspection'],
+  1010→  },
+  1011→
+  1012→  // ----- Exfiltration (TA0010) -----
+  1013→  {
+  1014→    id: 'T1041',
+  1015→    name: 'Exfiltration Over C2 Channel',
+  1016→    description: 'Adversaries exfiltrate data over an existing C2 channel.',
+  1017→    status: 'detected',
+  1018→    platforms: ['Network', 'Windows', 'Linux'],
+  1019→    tacticId: 'TA0010',
+  1020→    subTechniques: [],
+  1021→    detectionRules: [{ id: 'rule-t1041-1', name: 'Large Egress to Known C2 IP', severity: 'critical', enabled: true }],
+  1022→    recentAlerts: [],
+  1023→    mitigations: ['Egress bandwidth monitoring', 'DLP'],
+  1024→  },
+  1025→  {
+  1026→    id: 'T1567',
+  1027→    name: 'Exfiltration Over Web Service',
+  1028→    description: 'Adversaries exfiltrate data via legitimate web services.',
+  1029→    status: 'partial',
+  1030→    platforms: ['Network', 'Windows', 'Linux', 'macOS'],
+  1031→    tacticId: 'TA0010',
+  1032→    subTechniques: [{ id: 'T1567.001', name: 'Exfiltration to Code Repository' }, { id: 'T1567.002', name: 'Exfiltration to Cloud Storage' }],
+  1033→    detectionRules: [{ id: 'rule-t1567-1', name: 'Large Upload to Mega/Dropbox', severity: 'high', enabled: true }],
+  1034→    recentAlerts: [{ id: 'a34', title: '2GB upload to file.io from finance workstation', severity: 'high', timestamp: '2024-01-14T17:00:00Z' }],
+  1035→    mitigations: ['Web proxy with DLP', 'Cloud storage egress controls'],
+  1036→  },
+  1037→  {
+  1038→    id: 'T1048',
+  1039→    name: 'Exfiltration Over Alternative Protocol',
+  1040→    description: 'Adversaries exfiltrate data via protocols like DNS, ICMP, or SSH.',
+  1041→    status: 'detected',
+  1042→    platforms: ['Network', 'Linux'],
+  1043→    tacticId: 'TA0010',
+  1044→    subTechniques: [{ id: 'T1048.002', name: 'Exfiltration Over Asymmetric Encrypted Non-C2 Protocol' }],
+  1045→    detectionRules: [{ id: 'rule-t1048-1', name: 'DNS Exfiltration Pattern', severity: 'critical', enabled: true }],
+  1046→    recentAlerts: [{ id: 'a35', title: 'DNS exfil: 5MB over 40,000 TXT queries', severity: 'critical', timestamp: '2024-01-13T03:22:00Z' }],
+  1047→    mitigations: ['DNS inspection', 'Egress filtering'],
+  1048→  },
+  1049→  {
+  1050→    id: 'T1052',
+  1051→    name: 'Exfiltration Over Physical Medium',
+  1052→    description: 'Adversaries exfiltrate data via physical media (USB, etc.).',
+  1053→    status: 'n/a',
+  1054→    platforms: ['Windows', 'Linux', 'macOS'],
+  1055→    tacticId: 'TA0010',
+  1056→    subTechniques: [{ id: 'T1052.001', name: 'Exfiltration over USB' }],
+  1057→    detectionRules: [],
+  1058→    recentAlerts: [],
+  1059→    mitigations: ['USB device control', 'DLP for removable media'],
+  1060→  },
+  1061→  {
+  1062→    id: 'T1537',
+  1063→    name: 'Transfer Data to Cloud Account',
+  1064→    description: 'Adversaries transfer data from a victim environment to a cloud account they control.',
+  1065→    status: 'partial',
+  1066→    platforms: ['Azure AD', 'Office 365', 'Container'],
+  1067→    tacticId: 'TA0010',
+  1068→    subTechniques: [],
+  1069→    detectionRules: [{ id: 'rule-t1537-1', name: 'Bulk S3 Blob Download Anomaly', severity: 'high', enabled: true }],
+  1070→    recentAlerts: [],
+  1071→    mitigations: ['Cloud activity monitoring', 'Anomaly detection'],
+  1072→  },
+  1073→
+  1074→  // ----- Impact (TA0040) -----
+  1075→  {
+  1076→    id: 'T1486',
+  1077→    name: 'Data Encrypted for Impact',
+  1078→    description: 'Adversaries encrypt data to disrupt availability (ransomware).',
+  1079→    status: 'detected',
+  1080→    platforms: ['Windows', 'Linux', 'macOS', 'Container'],
+  1081→    tacticId: 'TA0040',
+  1082→    subTechniques: [],
+  1083→    detectionRules: [{ id: 'rule-t1486-1', name: 'Mass File Encryption (Ransomware)', severity: 'critical', enabled: true }, { id: 'rule-t1486-2', name: 'Extension Renaming Burst', severity: 'critical', enabled: true }],
+  1084→    recentAlerts: [{ id: 'a36', title: 'LockBit ransomware activity on FS01', severity: 'critical', timestamp: '2024-01-15T05:55:00Z' }],
+  1085→    mitigations: ['Backups (3-2-1 rule)', 'EDR with behavioral ransomware detection', 'Volume Shadow Copy protection'],
+  1086→  },
+  1087→  {
+  1088→    id: 'T1485',
+  1089→    name: 'Data Destruction',
+  1090→    description: 'Adversaries destroy data to disrupt operations.',
+  1091→    status: 'detected',
+  1092→    platforms: ['Windows', 'Linux', 'macOS'],
+  1093→    tacticId: 'TA0040',
+  1094→    subTechniques: [],
+  1095→    detectionRules: [{ id: 'rule-t1485-1', name: 'Bulk File Deletion', severity: 'critical', enabled: true }],
+  1096→    recentAlerts: [],
+  1097→    mitigations: ['Backups', 'File integrity monitoring'],
+  1098→  },
+  1099→  {
+  1100→    id: 'T1490',
+  1101→    name: 'Inhibit System Recovery',
+  1102→    description: 'Adversaries delete backups and recovery mechanisms.',
+  1103→    status: 'detected',
+  1104→    platforms: ['Windows'],
+  1105→    tacticId: 'TA0040',
+  1106→    subTechniques: [],
+  1107→    detectionRules: [{ id: 'rule-t1490-1', name: 'vssadmin delete shadows', severity: 'critical', enabled: true }, { id: 'rule-t1490-2', name: 'wbadmin delete catalog', severity: 'critical', enabled: true }],
+  1108→    recentAlerts: [{ id: 'a37', title: 'VSS shadows deleted on DC01', severity: 'critical', timestamp: '2024-01-15T05:54:00Z' }],
+  1109→    mitigations: ['Immutable backups', 'Alert on vssadmin/wbadmin abuse'],
+  1110→  },
+  1111→  {
+  1112→    id: 'T1561',
+  1113→    name: 'Disk Wipe',
+  1114→    description: 'Adversaries wipe or reformat disks to destroy data.',
+  1115→    status: 'partial',
+  1116→    platforms: ['Windows', 'Linux'],
+  1117→    tacticId: 'TA0040',
+  1118→    subTechniques: [{ id: 'T1561.001', name: 'Disk Content Wipe' }, { id: 'T1561.002', name: 'Disk Structure Wipe' }],
+  1119→    detectionRules: [{ id: 'rule-t1561-1', name: 'Disk Wipe Utility Detected', severity: 'critical', enabled: true }],
+  1120→    recentAlerts: [],
+  1121→    mitigations: ['Restrict disk wipe utilities', 'EDR monitoring'],
+  1122→  },
+  1123→  {
+  1124→    id: 'T1496',
+  1125→    name: 'Resource Hijacking',
+  1126→    description: 'Adversaries use systems for cryptomining or other resource-intensive operations.',
+  1127→    status: 'detected',
+  1128→    platforms: ['Windows', 'Linux', 'Container'],
+  1129→    tacticId: 'TA0040',
+  1130→    subTechniques: [],
+  1131→    detectionRules: [{ id: 'rule-t1496-1', name: 'XMRig Process Detected', severity: 'high', enabled: true }, { id: 'rule-t1496-2', name: 'Container Mining Pattern', severity: 'high', enabled: true }],
+  1132→    recentAlerts: [{ id: 'a38', title: 'Cryptominer detected on kube-worker-4', severity: 'high', timestamp: '2024-01-13T19:40:00Z' }],
+  1133→    mitigations: ['Resource monitoring', 'Container image scanning'],
+  1134→  },
+  1135→  {
+  1136→    id: 'T1499',
+  1137→    name: 'Endpoint Denial of Service',
+  1138→    description: 'Adversaries perform DoS against endpoints to disrupt availability.',
+  1139→    status: 'partial',
+  1140→    platforms: ['Windows', 'Linux', 'Network'],
+  1141→    tacticId: 'TA0040',
+  1142→    subTechniques: [{ id: 'T1499.001', name: 'OS Exhaustion Flood' }, { id: 'T1499.004', name: 'Application or System Exploitation' }],
+  1143→    detectionRules: [{ id: 'rule-t1499-1', name: 'Application DoS Pattern', severity: 'high', enabled: true }],
+  1144→    recentAlerts: [],
+  1145→    mitigations: ['Rate limiting', 'DDoS protection', 'WAF'],
+  1146→  },
+  1147→  {
+  1148→    id: 'T1489',
+  1149→    name: 'Service Stop',
+  1150→    description: 'Adversaries stop or disable services to disrupt availability.',
+  1151→    status: 'detected',
+  1152→    platforms: ['Windows', 'Linux'],
+  1153→    tacticId: 'TA0040',
+  1154→    subTechniques: [],
+  1155→    detectionRules: [{ id: 'rule-t1489-1', name: 'Critical Service Stopped', severity: 'high', enabled: true }],
+  1156→    recentAlerts: [],
+  1157→    mitigations: ['Service monitoring', 'Auto-restart policies'],
+  1158→  },
+  1159→  {
+  1160→    id: 'T1529',
+  1161→    name: 'System Shutdown/Reboot',
+  1162→    description: 'Adversaries shutdown or reboot systems to disrupt operations.',
+  1163→    status: 'partial',
+  1164→    platforms: ['Windows', 'Linux', 'macOS'],
+  1165→    tacticId: 'TA0040',
+  1166→    subTechniques: [],
+  1167→    detectionRules: [{ id: 'rule-t1529-1', name: 'Forced Shutdown by Non-Admin', severity: 'medium', enabled: true }],
+  1168→    recentAlerts: [],
+  1169→    mitigations: ['Privilege management', 'Audit shutdown events'],
+  1170→  },
+  1171→]
+  1172→
+  1173→// ===== Severity Helpers =====
+  1174→
+  1175→const SEVERITY_COLOR: Record<string, string> = {
+  1176→  critical: 'text-red-400 bg-red-500/10 border-red-500/30',
+  1177→  high: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
+  1178→  medium: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
+  1179→  low: 'text-sky-400 bg-sky-500/10 border-sky-500/30',
+  1180→}
+  1181→
+  1182→function relativeTime(iso: string): string {
+  1183→  const diff = Date.now() - new Date(iso).getTime()
+  1184→  const mins = Math.floor(diff / 60000)
+  1185→  if (mins < 60) return `${mins}m ago`
+  1186→  const hours = Math.floor(mins / 60)
+  1187→  if (hours < 24) return `${hours}h ago`
+  1188→  const days = Math.floor(hours / 24)
+  1189→  if (days < 30) return `${days}d ago`
+  1190→  return new Date(iso).toLocaleDateString()
+  1191→}
+  1192→
+  1193→// ===== Component =====
+  1194→
+  1195→export function MitreView() {
+  1196→  const mitre = useSIEMStore((s) => s.mitre)
+  1197→  const setMitre = useSIEMStore((s) => s.setMitre)
+  1198→  const setActiveView = useSIEMStore((s) => s.setActiveView)
+  1199→
+  1200→  const [searchQuery, setSearchQuery] = useState('')
+  1201→
+  1202→  // Apply filters
+  1203→  const filteredTechniques = useMemo(() => {
+  1204→    return MITRE_TECHNIQUES.filter((t) => {
+  1205→      if (mitre.filterSeverity !== 'all' && t.status !== mitre.filterSeverity) return false
+  1206→      if (mitre.filterPlatform !== 'all' && !t.platforms.includes(mitre.filterPlatform)) return false
+  1207→      if (searchQuery.trim()) {
+  1208→        const q = searchQuery.toLowerCase()
+  1209→        const haystack = `${t.id} ${t.name} ${t.description}`.toLowerCase()
+  1210→        if (!haystack.includes(q)) return false
+  1211→      }
+  1212→      return true
+  1213→    })
+  1214→  }, [mitre.filterSeverity, mitre.filterPlatform, searchQuery])
+  1215→
+  1216→  // Group techniques by tactic
+  1217→  const techniquesByTactic = useMemo(() => {
+  1218→    const map: Record<string, MitreTechnique[]> = {}
+  1219→    for (const tactic of MITRE_TACTICS) {
+  1220→      map[tactic.id] = filteredTechniques.filter((t) => t.tacticId === tactic.id)
+  1221→    }
+  1222→    return map
+  1223→  }, [filteredTechniques])
+  1224→
+  1225→  // Statistics
+  1226→  const stats = useMemo(() => {
+  1227→    const total = MITRE_TECHNIQUES.length
+  1228→    const detected = MITRE_TECHNIQUES.filter((t) => t.status === 'detected').length
+  1229→    const partial = MITRE_TECHNIQUES.filter((t) => t.status === 'partial').length
+  1230→    const gap = MITRE_TECHNIQUES.filter((t) => t.status === 'gap').length
+  1231→    const na = MITRE_TECHNIQUES.filter((t) => t.status === 'n/a').length
+  1232→    return {
+  1233→      total,
+  1234→      detected,
+  1235→      partial,
+  1236→      gap,
+  1237→      na,
+  1238→      detectionPct: total > 0 ? Math.round((detected / total) * 100) : 0,
+  1239→      partialPct: total > 0 ? Math.round((partial / total) * 100) : 0,
+  1240→    }
+  1241→  }, [])
+  1242→
+  1243→  // Selected technique
+  1244→  const selectedTechnique = useMemo(() => {
+  1245→    if (!mitre.selectedTechnique) return null
+  1246→    return MITRE_TECHNIQUES.find((t) => t.id === mitre.selectedTechnique) ?? null
+  1247→  }, [mitre.selectedTechnique])
+  1248→
+  1249→  const handleTechniqueClick = useCallback((t: MitreTechnique) => {
+  1250→    setMitre({ selectedTechnique: t.id, selectedTactic: t.tacticId })
+  1251→  }, [setMitre])
+  1252→
+  1253→  const handleDetailClose = useCallback(() => {
+  1254→    setMitre({ selectedTechnique: null })
+  1255→  }, [setMitre])
+  1256→
+  1257→  const handleStatusChange = useCallback((techId: string, newStatus: MitreDetectionStatus) => {
+  1258→    // In a real app, this would persist to the backend. For now, we just show a toast.
+  1259→    toast.success(`Marked ${techId} as ${STATUS_CONFIG[newStatus].label}`, {
+  1260→      description: 'Coverage status updated (mock — not persisted in this demo).',
+  1261→    })
+  1262→  }, [])
+  1263→
+  1264→  // Reset filters
+  1265→  const resetFilters = useCallback(() => {
+  1266→    setMitre({ filterSeverity: 'all', filterPlatform: 'all' })
+  1267→    setSearchQuery('')
+  1268→  }, [setMitre])
+  1269→
+  1270→  const hasActiveFilters = mitre.filterSeverity !== 'all' || mitre.filterPlatform !== 'all' || searchQuery.trim().length > 0
+  1271→
+  1272→  return (
+  1273→    <div className="space-y-4">
+  1274→      {/* Header */}
+  1275→      <motion.div
+  1276→        initial={{ opacity: 0, y: -8 }}
+  1277→        animate={{ opacity: 1, y: 0 }}
+  1278→        transition={{ duration: 0.25 }}
+  1279→        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+  1280→      >
+  1281→        <div className="flex items-center gap-3">
+  1282→          <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+  1283→            <Target className="size-5 text-emerald-400" />
+  1284→          </div>
+  1285→          <div>
+  1286→            <h1 className="text-xl font-semibold text-zinc-100 flex items-center gap-2">
+  1287→              MITRE ATT&amp;CK Navigator
+  1288→              <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 text-[10px] font-mono">
+  1289→                Enterprise v15
+  1290→              </Badge>
+  1291→            </h1>
+  1292→            <p className="text-xs text-zinc-400 mt-0.5">
+  1293→              Detection coverage mapped to ATT&amp;CK tactics and techniques
+  1294→            </p>
+  1295→          </div>
+  1296→        </div>
+  1297→      </motion.div>
+  1298→
+  1299→      {/* Coverage Statistics Panel */}
+  1300→      <motion.div
+  1301→        initial={{ opacity: 0, y: 8 }}
+  1302→        animate={{ opacity: 1, y: 0 }}
+  1303→        transition={{ duration: 0.25, delay: 0.05 }}
+  1304→        className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+  1305→      >
+  1306→        <StatCard
+  1307→          icon={Layers}
+  1308→          label="Techniques Tracked"
+  1309→          value={stats.total}
+  1310→          sublabel={`${MITRE_TACTICS.length} tactics`}
+  1311→          accent="text-sky-400"
+  1312→          bg="bg-sky-500/10"
+  1313→          border="border-sky-500/30"
+  1314→        />
+  1315→        <StatCard
+  1316→          icon={ShieldCheck}
+  1317→          label="Detection Coverage"
+  1318→          value={`${stats.detectionPct}%`}
+  1319→          sublabel={`${stats.detected} of ${stats.total} techniques`}
+  1320→          accent="text-emerald-400"
+  1321→          bg="bg-emerald-500/10"
+  1322→          border="border-emerald-500/30"
+  1323→          progress={stats.detectionPct}
+  1324→          progressColor="bg-emerald-500"
+  1325→        />
+  1326→        <StatCard
+  1327→          icon={ShieldAlert}
+  1328→          label="Partial Coverage"
+  1329→          value={`${stats.partialPct}%`}
+  1330→          sublabel={`${stats.partial} of ${stats.total} techniques`}
+  1331→          accent="text-amber-400"
+  1332→          bg="bg-amber-500/10"
+  1333→          border="border-amber-500/30"
+  1334→          progress={stats.partialPct}
+  1335→          progressColor="bg-amber-500"
+  1336→        />
+  1337→        <StatCard
+  1338→          icon={ShieldX}
+  1339→          label="Detection Gaps"
+  1340→          value={stats.gap}
+  1341→          sublabel={`${stats.na} not applicable`}
+  1342→          accent="text-red-400"
+  1343→          bg="bg-red-500/10"
+  1344→          border="border-red-500/30"
+  1345→          progress={stats.total > 0 ? Math.round((stats.gap / stats.total) * 100) : 0}
+  1346→          progressColor="bg-red-500"
+  1347→        />
+  1348→      </motion.div>
+  1349→
+  1350→      {/* Filter Bar + Legend */}
+  1351→      <motion.div
+  1352→        initial={{ opacity: 0, y: 8 }}
+  1353→        animate={{ opacity: 1, y: 0 }}
+  1354→        transition={{ duration: 0.25, delay: 0.1 }}
+  1355→      >
+  1356→        <Card className="bg-zinc-900/60 border-zinc-800">
+  1357→          <CardContent className="p-4">
+  1358→            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+  1359→              {/* Filters */}
+  1360→              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:flex-wrap">
+  1361→                <div className="flex flex-col gap-1.5">
+  1362→                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1">
+  1363→                    <Filter className="size-3" />
+  1364→                    Platform
+  1365→                  </label>
+  1366→                  <Select
+  1367→                    value={mitre.filterPlatform}
+  1368→                    onValueChange={(v) => setMitre({ filterPlatform: v })}
+  1369→                  >
+  1370→                    <SelectTrigger className="w-[160px] h-9 bg-zinc-800/60 border-zinc-700 text-sm">
+  1371→                      <SelectValue placeholder="All platforms" />
+  1372→                    </SelectTrigger>
+  1373→                    <SelectContent className="bg-zinc-900 border-zinc-700">
+  1374→                      <SelectItem value="all">All platforms</SelectItem>
+  1375→                      {PLATFORMS.map((p) => (
+  1376→                        <SelectItem key={p} value={p}>{p}</SelectItem>
+  1377→                      ))}
+  1378→                    </SelectContent>
+  1379→                  </Select>
+  1380→                </div>
+  1381→
+  1382→                <div className="flex flex-col gap-1.5">
+  1383→                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1">
+  1384→                    <Crosshair className="size-3" />
+  1385→                    Detection Status
+  1386→                  </label>
+  1387→                  <Select
+  1388→                    value={mitre.filterSeverity}
+  1389→                    onValueChange={(v) => setMitre({ filterSeverity: v as MitreDetectionStatus | 'all' })}
+  1390→                  >
+  1391→                    <SelectTrigger className="w-[180px] h-9 bg-zinc-800/60 border-zinc-700 text-sm">
+  1392→                      <SelectValue placeholder="All statuses" />
+  1393→                    </SelectTrigger>
+  1394→                    <SelectContent className="bg-zinc-900 border-zinc-700">
+  1395→                      <SelectItem value="all">All statuses</SelectItem>
+  1396→                      <SelectItem value="detected">Detected (Green)</SelectItem>
+  1397→                      <SelectItem value="partial">Partial (Amber)</SelectItem>
+  1398→                      <SelectItem value="gap">Gap (Red)</SelectItem>
+  1399→                      <SelectItem value="n/a">Not Applicable (Gray)</SelectItem>
+  1400→                    </SelectContent>
+  1401→                  </Select>
+  1402→                </div>
+  1403→
+  1404→                <div className="flex flex-col gap-1.5">
+  1405→                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+  1406→                    Search
+  1407→                  </label>
+  1408→                  <input
+  1409→                    type="text"
+  1410→                    value={searchQuery}
+  1411→                    onChange={(e) => setSearchQuery(e.target.value)}
+  1412→                    placeholder="T1059 or technique name..."
+  1413→                    className="w-full sm:w-[220px] h-9 px-3 rounded-md bg-zinc-800/60 border border-zinc-700 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50"
+  1414→                  />
+  1415→                </div>
+  1416→
+  1417→                {hasActiveFilters && (
+  1418→                  <Button
+  1419→                    variant="ghost"
+  1420→                    size="sm"
+  1421→                    onClick={resetFilters}
+  1422→                    className="h-9 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
+  1423→                  >
+  1424→                    <X className="size-3.5 mr-1" />
+  1425→                    Clear
+  1426→                  </Button>
+  1427→                )}
+  1428→              </div>
+  1429→
+  1430→              {/* Legend */}
+  1431→              <div className="flex flex-wrap items-center gap-3">
+  1432→                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Legend</span>
+  1433→                <div className="flex flex-wrap items-center gap-2">
+  1434→                  {(['detected', 'partial', 'gap', 'n/a'] as MitreDetectionStatus[]).map((s) => {
+  1435→                    const cfg = STATUS_CONFIG[s]
+  1436→                    const Icon = cfg.icon
+  1437→                    return (
+  1438→                      <Tooltip key={s}>
+  1439→                        <TooltipTrigger asChild>
+  1440→                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-800/40 border border-zinc-700/60">
+  1441→                            <span className={cn('size-3 rounded-sm border', cfg.bg, cfg.border)} />
+  1442→                            <span className="text-[11px] text-zinc-300 flex items-center gap-1">
+  1443→                              <Icon className={cn('size-3', cfg.text)} />
+  1444→                              {cfg.short}
+  1445→                            </span>
+  1446→                          </div>
+  1447→                        </TooltipTrigger>
+  1448→                        <TooltipContent side="bottom" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+  1449→                          <span className="font-medium">{cfg.label}</span>
+  1450→                        </TooltipContent>
+  1451→                      </Tooltip>
+  1452→                    )
+  1453→                  })}
+  1454→                </div>
+  1455→              </div>
+  1456→            </div>
+  1457→
+  1458→            {/* Result count */}
+  1459→            <div className="mt-3 pt-3 border-t border-zinc-800">
+  1460→              <p className="text-xs text-zinc-500">
+  1461→                Showing <span className="text-emerald-400 font-medium">{filteredTechniques.length}</span> of{' '}
+  1462→                <span className="text-zinc-300 font-medium">{MITRE_TECHNIQUES.length}</span> techniques
+  1463→                {hasActiveFilters && <span className="text-zinc-500"> (filtered)</span>}
+  1464→              </p>
+  1465→            </div>
+  1466→          </CardContent>
+  1467→        </Card>
+  1468→      </motion.div>
+  1469→
+  1470→      {/* MITRE Matrix Grid */}
+  1471→      <motion.div
+  1472→        initial={{ opacity: 0, y: 8 }}
+  1473→        animate={{ opacity: 1, y: 0 }}
+  1474→        transition={{ duration: 0.25, delay: 0.15 }}
+  1475→      >
+  1476→        <Card className="bg-zinc-900/60 border-zinc-800">
+  1477→          <CardHeader className="pb-3">
+  1478→            <CardTitle className="text-sm font-medium text-zinc-200 flex items-center gap-2">
+  1479→              <Target className="size-4 text-emerald-400" />
+  1480→              ATT&amp;CK Matrix — Enterprise
+  1481→            </CardTitle>
+  1482→          </CardHeader>
+  1483→          <CardContent className="pt-0">
+  1484→            <ScrollArea className="w-full whitespace-nowrap pb-3">
+  1485→              <div className="inline-flex gap-1.5 min-w-full">
+  1486→                {MITRE_TACTICS.map((tactic) => {
+  1487→                  const techniques = techniquesByTactic[tactic.id] ?? []
+  1488→                  const detectedCount = techniques.filter((t) => t.status === 'detected').length
+  1489→                  return (
+  1490→                    <div
+  1491→                      key={tactic.id}
+  1492→                      className="flex flex-col w-[140px] shrink-0"
+  1493→                    >
+  1494→                      {/* Tactic header */}
+  1495→                      <div className="rounded-t-md bg-gradient-to-b from-zinc-800/80 to-zinc-800/40 border border-zinc-700/60 border-b-0 px-2 py-2 sticky top-0 z-10">
+  1496→                        <div className="text-[10px] font-mono text-zinc-500 truncate">{tactic.id}</div>
+  1497→                        <div className="text-xs font-semibold text-zinc-100 leading-tight truncate" title={tactic.name}>
+  1498→                          {tactic.name}
+  1499→                        </div>
+  1500→                        <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-500">
+  1501→                          <span>{techniques.length} techs</span>
+  1502→                          {techniques.length > 0 && (
+  1503→                            <span className="text-emerald-400">{detectedCount}/{techniques.length}</span>
+  1504→                          )}
+  1505→                        </div>
+  1506→                      </div>
+  1507→                      {/* Technique cells */}
+  1508→                      <div className="flex flex-col gap-1 p-1 bg-zinc-950/30 border border-zinc-800 border-t-0 rounded-b-md min-h-[80px]">
+  1509→                        {techniques.length === 0 ? (
+  1510→                          <div className="flex items-center justify-center py-4 text-[10px] text-zinc-600 italic">
+  1511→                            No matches
+  1512→                          </div>
+  1513→                        ) : (
+  1514→                          techniques.map((tech) => (
+  1515→                            <TechniqueCell
+  1516→                              key={tech.id}
+  1517→                              technique={tech}
+  1518→                              onClick={() => handleTechniqueClick(tech)}
+  1519→                            />
+  1520→                          ))
+  1521→                        )}
+  1522→                      </div>
+  1523→                    </div>
+  1524→                  )
+  1525→                })}
+  1526→              </div>
+  1527→            </ScrollArea>
+  1528→          </CardContent>
+  1529→        </Card>
+  1530→      </motion.div>
+  1531→
+  1532→      {/* Coverage Summary Footer */}
+  1533→      <motion.div
+  1534→        initial={{ opacity: 0, y: 8 }}
+  1535→        animate={{ opacity: 1, y: 0 }}
+  1536→        transition={{ duration: 0.25, delay: 0.2 }}
+  1537→      >
+  1538→        <Card className="bg-zinc-900/60 border-zinc-800">
+  1539→          <CardContent className="p-4">
+  1540→            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+  1541→              <div className="flex items-center gap-3">
+  1542→                <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+  1543→                  <Activity className="size-4 text-emerald-400" />
+  1544→                </div>
+  1545→                <div>
+  1546→                  <h3 className="text-sm font-medium text-zinc-100">Coverage Health</h3>
+  1547→                  <p className="text-xs text-zinc-400">
+  1548→                    Overall coverage score based on detected + partial weighted techniques
+  1549→                  </p>
+  1550→                </div>
+  1551→              </div>
+  1552→              <div className="flex items-center gap-4">
+  1553→                <div className="text-right">
+  1554→                  <div className="text-2xl font-bold text-emerald-400 tabular-nums">
+  1555→                    {Math.round(((stats.detected + stats.partial * 0.5) / Math.max(stats.total, 1)) * 100)}%
+  1556→                  </div>
+  1557→                  <div className="text-[10px] uppercase tracking-wider text-zinc-500">Weighted Score</div>
+  1558→                </div>
+  1559→                <Button
+  1560→                  variant="outline"
+  1561→                  size="sm"
+  1562→                  onClick={() => {
+  1563→                    toast.info('Export started', {
+  1564→                      description: 'Generating MITRE ATT&CK coverage report...',
+  1565→                    })
+  1566→                  }}
+  1567→                  className="border-zinc-700 bg-zinc-800/50 hover:bg-zinc-800 text-zinc-200"
+  1568→                >
+  1569→                  Export Coverage Report
+  1570→                </Button>
+  1571→              </div>
+  1572→            </div>
+  1573→          </CardContent>
+  1574→        </Card>
+  1575→      </motion.div>
+  1576→
+  1577→      {/* Technique Detail Dialog */}
+  1578→      <Dialog open={!!selectedTechnique} onOpenChange={(o) => { if (!o) handleDetailClose() }}>
+  1579→        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto bg-zinc-900 border-zinc-700">
+  1580→          {selectedTechnique && (
+  1581→            <>
+  1582→              <DialogHeader>
+  1583→                <div className="flex items-start justify-between gap-3">
+  1584→                  <div className="flex-1 min-w-0">
+  1585→                    <div className="flex items-center gap-2 flex-wrap">
+  1586→                      <DialogTitle className="text-lg text-zinc-100">
+  1587→                        {selectedTechnique.name}
+  1588→                      </DialogTitle>
+  1589→                      <Badge variant="outline" className="font-mono text-[11px] border-emerald-500/30 text-emerald-400">
+  1590→                        {selectedTechnique.id}
+  1591→                      </Badge>
+  1592→                    </div>
+  1593→                    <DialogDescription className="text-zinc-400 mt-1">
+  1594→                      {(() => {
+  1595→                        const tac = MITRE_TACTICS.find((t) => t.id === selectedTechnique.tacticId)
+  1596→                        return tac ? `${tac.id} · ${tac.name}` : selectedTechnique.tacticId
+  1597→                      })()}
+  1598→                    </DialogDescription>
+  1599→                  </div>
+  1600→                  <StatusBadge status={selectedTechnique.status} />
+  1601→                </div>
+  1602→              </DialogHeader>
+  1603→
+  1604→              <div className="space-y-4 mt-2">
+  1605→                {/* Description */}
+  1606→                <div>
+  1607→                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 mb-1.5">
+  1608→                    Description
+  1609→                  </h4>
+  1610→                  <p className="text-sm text-zinc-300 leading-relaxed">
+  1611→                    {selectedTechnique.description}
+  1612→                  </p>
+  1613→                </div>
+  1614→
+  1615→                {/* Platforms */}
+  1616→                <div>
+  1617→                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 mb-1.5">
+  1618→                    Platforms
+  1619→                  </h4>
+  1620→                  <div className="flex flex-wrap gap-1.5">
+  1621→                    {selectedTechnique.platforms.map((p) => (
+  1622→                      <Badge key={p} variant="outline" className="border-zinc-700 text-zinc-300 bg-zinc-800/50 text-[11px]">
+  1623→                        {p}
+  1624→                      </Badge>
+  1625→                    ))}
+  1626→                  </div>
+  1627→                </div>
+  1628→
+  1629→                {/* Sub-techniques */}
+  1630→                {selectedTechnique.subTechniques.length > 0 && (
+  1631→                  <div>
+  1632→                    <h4 className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 mb-1.5 flex items-center gap-1.5">
+  1633→                      <Layers className="size-3" />
+  1634→                      Sub-Techniques ({selectedTechnique.subTechniques.length})
+  1635→                    </h4>
+  1636→                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+  1637→                      {selectedTechnique.subTechniques.map((st) => (
+  1638→                        <div
+  1639→                          key={st.id}
+  1640→                          className="flex items-center gap-2 rounded-md bg-zinc-800/40 border border-zinc-800 px-2.5 py-1.5"
+  1641→                        >
+  1642→                          <Badge variant="outline" className="font-mono text-[10px] border-zinc-700 text-zinc-400 shrink-0">
+  1643→                            {st.id}
+  1644→                          </Badge>
+  1645→                          <span className="text-xs text-zinc-300 truncate">{st.name}</span>
+  1646→                        </div>
+  1647→                      ))}
+  1648→                    </div>
+  1649→                  </div>
+  1650→                )}
+  1651→
+  1652→                {/* Detection Rules */}
+  1653→                <div>
+  1654→                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 mb-1.5 flex items-center gap-1.5">
+  1655→                    <Radar className="size-3" />
+  1656→                    Detection Rules ({selectedTechnique.detectionRules.length})
+  1657→                  </h4>
+  1658→                  {selectedTechnique.detectionRules.length === 0 ? (
+  1659→                    <div className="rounded-md border border-dashed border-zinc-800 px-3 py-2.5 text-xs text-zinc-500 italic">
+  1660→                      No detection rules mapped. This is a coverage gap.
+  1661→                    </div>
+  1662→                  ) : (
+  1663→                    <div className="space-y-1.5">
+  1664→                      {selectedTechnique.detectionRules.map((r) => (
+  1665→                        <div
+  1666→                          key={r.id}
+  1667→                          className="flex items-center gap-2 rounded-md bg-zinc-800/40 border border-zinc-800 px-2.5 py-1.5 hover:bg-zinc-800/70 cursor-pointer transition-colors group"
+  1668→                          onClick={() => {
+  1669→                            setActiveView('rules')
+  1670→                            handleDetailClose()
+  1671→                            toast.info('Navigating to Detection Rules', { description: `Opening rule: ${r.name}` })
+  1672→                          }}
+  1673→                        >
+  1674→                          <Badge className={cn('text-[10px] border', SEVERITY_COLOR[r.severity])}>
+  1675→                            {r.severity}
+  1676→                          </Badge>
+  1677→                          <span className="text-xs text-zinc-200 flex-1 truncate font-mono">{r.id}</span>
+  1678→                          <span className="text-xs text-zinc-300 truncate flex-1 group-hover:text-zinc-100">{r.name}</span>
+  1679→                          {r.enabled ? (
+  1680→                            <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 text-[10px] shrink-0">
+  1681→                              Enabled
+  1682→                            </Badge>
+  1683→                          ) : (
+  1684→                            <Badge variant="outline" className="border-zinc-700 text-zinc-500 text-[10px] shrink-0">
+  1685→                              Disabled
+  1686→                            </Badge>
+  1687→                          )}
+  1688→                          <ChevronRight className="size-3.5 text-zinc-600 group-hover:text-emerald-400 shrink-0" />
+  1689→                        </div>
+  1690→                      ))}
+  1691→                    </div>
+  1692→                  )}
+  1693→                </div>
+  1694→
+  1695→                {/* Recent Alerts */}
+  1696→                <div>
+  1697→                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 mb-1.5 flex items-center gap-1.5">
+  1698→                    <Bell className="size-3" />
+  1699→                    Recent Alerts ({selectedTechnique.recentAlerts.length})
+  1700→                  </h4>
+  1701→                  {selectedTechnique.recentAlerts.length === 0 ? (
+  1702→                    <div className="rounded-md border border-dashed border-zinc-800 px-3 py-2.5 text-xs text-zinc-500 italic">
+  1703→                      No recent alerts for this technique.
+  1704→                    </div>
+  1705→                  ) : (
+  1706→                    <div className="space-y-1.5">
+  1707→                      {selectedTechnique.recentAlerts.map((a) => (
+  1708→                        <div
+  1709→                          key={a.id}
+  1710→                          className="flex items-center gap-2 rounded-md bg-zinc-800/40 border border-zinc-800 px-2.5 py-1.5 hover:bg-zinc-800/70 cursor-pointer transition-colors group"
+  1711→                          onClick={() => {
+  1712→                            setActiveView('alerts')
+  1713→                            handleDetailClose()
+  1714→                            toast.info('Navigating to Alerts', { description: `Opening alert: ${a.title}` })
+  1715→                          }}
+  1716→                        >
+  1717→                          <Badge className={cn('text-[10px] border shrink-0', SEVERITY_COLOR[a.severity])}>
+  1718→                            {a.severity}
+  1719→                          </Badge>
+  1720→                          <span className="text-xs text-zinc-300 flex-1 truncate group-hover:text-zinc-100">{a.title}</span>
+  1721→                          <span className="text-[10px] text-zinc-500 shrink-0 flex items-center gap-1">
+  1722→                            <Clock className="size-3" />
+  1723→                            {relativeTime(a.timestamp)}
+  1724→                          </span>
+  1725→                          <ChevronRight className="size-3.5 text-zinc-600 group-hover:text-emerald-400 shrink-0" />
+  1726→                        </div>
+  1727→                      ))}
+  1728→                    </div>
+  1729→                  )}
+  1730→                </div>
+  1731→
+  1732→                {/* Mitigations */}
+  1733→                <div>
+  1734→                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 mb-1.5 flex items-center gap-1.5">
+  1735→                    <Lightbulb className="size-3" />
+  1736→                    Mitigation Recommendations
+  1737→                  </h4>
+  1738→                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+  1739→                    {selectedTechnique.mitigations.map((m, i) => (
+  1740→                      <div
+  1741→                        key={i}
+  1742→                        className="flex items-start gap-2 rounded-md bg-emerald-500/5 border border-emerald-500/20 px-2.5 py-1.5"
+  1743→                      >
+  1744→                        <AlertTriangle className="size-3.5 text-emerald-400 shrink-0 mt-0.5" />
+  1745→                        <span className="text-xs text-zinc-200">{m}</span>
+  1746→                      </div>
+  1747→                    ))}
+  1748→                  </div>
+  1749→                </div>
+  1750→
+  1751→                <Separator className="bg-zinc-800" />
+  1752→
+  1753→                {/* Quick status change */}
+  1754→                <div>
+  1755→                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 mb-1.5">
+  1756→                    Update Coverage Status
+  1757→                  </h4>
+  1758→                  <div className="flex flex-wrap gap-1.5">
+  1759→                    {(['detected', 'partial', 'gap', 'n/a'] as MitreDetectionStatus[]).map((s) => {
+  1760→                      const cfg = STATUS_CONFIG[s]
+  1761→                      const isActive = selectedTechnique.status === s
+  1762→                      return (
+  1763→                        <Button
+  1764→                          key={s}
+  1765→                          size="sm"
+  1766→                          variant="outline"
+  1767→                          onClick={() => handleStatusChange(selectedTechnique.id, s)}
+  1768→                          className={cn(
+  1769→                            'h-8 gap-1.5 text-xs transition-all',
+  1770→                            isActive
+  1771→                              ? cn(cfg.bg, cfg.border, cfg.text, 'opacity-100')
+  1772→                              : 'border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 opacity-60'
+  1773→                          )}
+  1774→                        >
+  1775→                          <span className={cn('size-2.5 rounded-sm border', cfg.bg, cfg.border)} />
+  1776→                          {cfg.label}
+  1777→                        </Button>
+  1778→                      )
+  1779→                    })}
+  1780→                  </div>
+  1781→                </div>
+  1782→              </div>
+  1783→
+  1784→              <DialogFooter className="mt-4">
+  1785→                <Button
+  1786→                  variant="outline"
+  1787→                  onClick={handleDetailClose}
+  1788→                  className="border-zinc-700 bg-zinc-800/50 hover:bg-zinc-800 text-zinc-200"
+  1789→                >
+  1790→                  Close
+  1791→                </Button>
+  1792→                <Button
+  1793→                  onClick={() => {
+  1794→                    setActiveView('rules')
+  1795→                    handleDetailClose()
+  1796→                    toast.info('Navigating to Detection Rules', {
+  1797→                      description: 'Create a new rule for this technique.',
+  1798→                    })
+  1799→                  }}
+  1800→                  className="bg-emerald-600 hover:bg-emerald-500 text-white"
+  1801→                >
+  1802→                  <Radar className="size-3.5 mr-1.5" />
+  1803→                  Create Detection Rule
+  1804→                </Button>
+  1805→              </DialogFooter>
+  1806→            </>
+  1807→          )}
+  1808→        </DialogContent>
+  1809→      </Dialog>
+  1810→    </div>
+  1811→  )
+  1812→}
+  1813→
+  1814→// ===== Sub-components =====
+  1815→
+  1816→function StatCard({
+  1817→  icon: Icon,
+  1818→  label,
+  1819→  value,
+  1820→  sublabel,
+  1821→  accent,
+  1822→  bg,
+  1823→  border,
+  1824→  progress,
+  1825→  progressColor,
+  1826→}: {
+  1827→  icon: React.ComponentType<{ className?: string }>
+  1828→  label: string
+  1829→  value: string | number
+  1830→  sublabel: string
+  1831→  accent: string
+  1832→  bg: string
+  1833→  border: string
+  1834→  progress?: number
+  1835→  progressColor?: string
+  1836→}) {
+  1837→  return (
+  1838→    <Card className="bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 transition-colors">
+  1839→      <CardContent className="p-4">
+  1840→        <div className="flex items-start justify-between">
+  1841→          <div className="flex-1 min-w-0">
+  1842→            <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 truncate">{label}</p>
+  1843→            <p className="text-2xl font-bold text-zinc-100 mt-1 tabular-nums">{value}</p>
+  1844→            <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{sublabel}</p>
+  1845→          </div>
+  1846→          <div className={cn('flex size-9 items-center justify-center rounded-md border shrink-0', bg, border)}>
+  1847→            <Icon className={cn('size-4', accent)} />
+  1848→          </div>
+  1849→        </div>
+  1850→        {progress !== undefined && (
+  1851→          <div className="mt-3 h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+  1852→            <motion.div
+  1853→              initial={{ width: 0 }}
+  1854→              animate={{ width: `${progress}%` }}
+  1855→              transition={{ duration: 0.6, ease: 'easeOut' }}
+  1856→              className={cn('h-full rounded-full', progressColor)}
+  1857→            />
+  1858→          </div>
+  1859→        )}
+  1860→      </CardContent>
+  1861→    </Card>
+  1862→  )
+  1863→}
+  1864→
+  1865→function TechniqueCell({ technique, onClick }: { technique: MitreTechnique; onClick: () => void }) {
+  1866→  const cfg = STATUS_CONFIG[technique.status]
+  1867→  return (
+  1868→    <Tooltip>
+  1869→      <TooltipTrigger asChild>
+  1870→        <motion.button
+  1871→          type="button"
+  1872→          onClick={onClick}
+  1873→          whileHover={{ scale: 1.02 }}
+  1874→          whileTap={{ scale: 0.98 }}
+  1875→          className={cn(
+  1876→            'group relative w-full rounded-sm border px-1.5 py-1 text-left transition-all',
+  1877→            cfg.bg,
+  1878→            cfg.border,
+  1879→            cfg.hoverBg,
+  1880→            'hover:border-emerald-500/50'
+  1881→          )}
+  1882→          aria-label={`${technique.id} — ${technique.name} (${cfg.label})`}
+  1883→        >
+  1884→          <div className="flex items-center gap-1">
+  1885→            <span className={cn('size-1.5 rounded-full shrink-0', cfg.dot)} />
+  1886→            <span className="font-mono text-[9px] text-zinc-400 shrink-0 leading-none mt-px">{technique.id}</span>
+  1887→          </div>
+  1888→          <div className={cn('text-[10px] font-medium leading-tight mt-0.5 line-clamp-2', cfg.text)}>
+  1889→            {technique.name}
+  1890→          </div>
+  1891→          {/* Tiny alert indicator */}
+  1892→          {technique.recentAlerts.length > 0 && (
+  1893→            <span
+  1894→              className="absolute top-0.5 right-0.5 size-1 rounded-full bg-red-500 ring-1 ring-zinc-950"
+  1895→              title={`${technique.recentAlerts.length} recent alert(s)`}
+  1896→            />
+  1897→          )}
+  1898→        </motion.button>
+  1899→      </TooltipTrigger>
+  1900→      <TooltipContent side="top" className="bg-zinc-800 border-zinc-700 text-zinc-200 max-w-xs">
+  1901→        <div className="space-y-1">
+  1902→          <div className="flex items-center gap-2">
+  1903→            <span className="font-mono text-[10px] text-emerald-400">{technique.id}</span>
+  1904→            <span className="font-semibold text-xs">{technique.name}</span>
+  1905→          </div>
+  1906→          <p className="text-[11px] text-zinc-400 leading-snug">
+  1907→            {technique.description}
+  1908→          </p>
+  1909→          <div className="flex items-center gap-1.5 pt-0.5">
+  1910→            <span className={cn('size-2 rounded-sm border', cfg.bg, cfg.border)} />
+  1911→            <span className={cn('text-[10px] font-medium', cfg.text)}>{cfg.label}</span>
+  1912→            {technique.detectionRules.length > 0 && (
+  1913→              <span className="text-[10px] text-zinc-500 ml-auto">
+  1914→                {technique.detectionRules.length} rule(s) · {technique.recentAlerts.length} alert(s)
+  1915→              </span>
+  1916→            )}
+  1917→          </div>
+  1918→        </div>
+  1919→      </TooltipContent>
+  1920→    </Tooltip>
+  1921→  )
+  1922→}
+  1923→
+  1924→function StatusBadge({ status }: { status: MitreDetectionStatus }) {
+  1925→  const cfg = STATUS_CONFIG[status]
+  1926→  const Icon = cfg.icon
+  1927→  return (
+  1928→    <span className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-medium', cfg.bg, cfg.border, cfg.text)}>
+  1929→      <Icon className="size-3" />
+  1930→      {cfg.label}
+  1931→    </span>
+  1932→  )
+  1933→}
+  1934→

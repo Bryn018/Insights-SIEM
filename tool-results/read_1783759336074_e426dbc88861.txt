@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import {
+     6→  Briefcase,
+     7→  Search,
+     8→  Plus,
+     9→  Filter,
+    10→  ChevronUp,
+    11→  ChevronDown,
+    12→  FileText,
+    13→  Image as ImageIcon,
+    14→  FileCode,
+    15→  Camera,
+    16→  Network,
+    17→  Download,
+    18→  Eye,
+    19→  Paperclip,
+    20→  Clock,
+    21→  UserPlus,
+    22→  MessageSquare,
+    23→  CheckCircle2,
+    24→  Send,
+    25→  Link2,
+    26→  FolderOpen,
+    27→  TrendingUp,
+    28→  TrendingDown,
+    29→  Activity,
+    30→  ChevronRight,
+    31→  GitBranch,
+    32→  Shield,
+    33→  UserCheck,
+    34→  FileEdit,
+    35→  Zap,
+    36→  AlertTriangle,
+    37→} from 'lucide-react'
+    38→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    39→import { Button } from '@/components/ui/button'
+    40→import { Input } from '@/components/ui/input'
+    41→import { Textarea } from '@/components/ui/textarea'
+    42→import { Label } from '@/components/ui/label'
+    43→import {
+    44→  Table,
+    45→  TableBody,
+    46→  TableCell,
+    47→  TableHead,
+    48→  TableHeader,
+    49→  TableRow,
+    50→} from '@/components/ui/table'
+    51→import {
+    52→  Dialog,
+    53→  DialogContent,
+    54→  DialogHeader,
+    55→  DialogTitle,
+    56→  DialogDescription,
+    57→  DialogFooter,
+    58→} from '@/components/ui/dialog'
+    59→import {
+    60→  Sheet,
+    61→  SheetContent,
+    62→  SheetHeader,
+    63→  SheetTitle,
+    64→  SheetFooter,
+    65→} from '@/components/ui/sheet'
+    66→import {
+    67→  Tabs,
+    68→  TabsList,
+    69→  TabsTrigger,
+    70→  TabsContent,
+    71→} from '@/components/ui/tabs'
+    72→import {
+    73→  Select,
+    74→  SelectContent,
+    75→  SelectItem,
+    76→  SelectTrigger,
+    77→  SelectValue,
+    78→} from '@/components/ui/select'
+    79→import {
+    80→  DropdownMenu,
+    81→  DropdownMenuTrigger,
+    82→  DropdownMenuContent,
+    83→  DropdownMenuItem,
+    84→  DropdownMenuSeparator,
+    85→  DropdownMenuLabel,
+    86→} from '@/components/ui/dropdown-menu'
+    87→import {
+    88→  Collapsible,
+    89→  CollapsibleContent,
+    90→  CollapsibleTrigger,
+    91→} from '@/components/ui/collapsible'
+    92→import { ScrollArea } from '@/components/ui/scroll-area'
+    93→import { Separator } from '@/components/ui/separator'
+    94→import { toast } from 'sonner'
+    95→import { cn } from '@/lib/utils'
+    96→
+    97→// ===== Types =====
+    98→
+    99→type CasePriority = 'P1' | 'P2' | 'P3' | 'P4'
+   100→type CaseStatus = 'Open' | 'In Progress' | 'Pending Review' | 'Closed'
+   101→type CaseCategory =
+   102→  | 'Malware'
+   103→  | 'Phishing'
+   104→  | 'Insider Threat'
+   105→  | 'Data Breach'
+   106→  | 'Policy Violation'
+   107→  | 'Other'
+   108→
+   109→type EvidenceType = 'File' | 'Image' | 'Log' | 'Screenshot' | 'Network Capture'
+   110→type TimelineEventType =
+   111→  | 'Created'
+   112→  | 'Assigned'
+   113→  | 'Status Changed'
+   114→  | 'Comment Added'
+   115→  | 'Evidence Added'
+   116→  | 'Priority Changed'
+   117→  | 'Linked Item'
+   118→  | 'Closed'
+   119→
+   120→interface Evidence {
+   121→  id: string
+   122→  type: EvidenceType
+   123→  filename: string
+   124→  size: string
+   125→  uploadedBy: string
+   126→  uploadedAt: string
+   127→  description: string
+   128→}
+   129→
+   130→interface CaseComment {
+   131→  id: string
+   132→  author: string
+   133→  role: string
+   134→  initials: string
+   135→  color: string
+   136→  text: string
+   137→  createdAt: string
+   138→}
+   139→
+   140→interface TimelineEvent {
+   141→  id: string
+   142→  type: TimelineEventType
+   143→  user: string
+   144→  description: string
+   145→  timestamp: string
+   146→}
+   147→
+   148→interface LinkedItem {
+   149→  id: string
+   150→  type: 'Alert' | 'Incident' | 'IOC'
+   151→  label: string
+   152→  severity: 'critical' | 'high' | 'medium' | 'low'
+   153→}
+   154→
+   155→interface CaseItem {
+   156→  id: string
+   157→  title: string
+   158→  description: string
+   159→  priority: CasePriority
+   160→  status: CaseStatus
+   161→  category: CaseCategory
+   162→  assignee: { name: string; initials: string; color: string }
+   163→  tags: string[]
+   164→  createdAt: string
+   165→  updatedAt: string
+   166→  resolutionTime?: string
+   167→  evidence: Evidence[]
+   168→  comments: CaseComment[]
+   169→  timeline: TimelineEvent[]
+   170→  linkedItems: LinkedItem[]
+   171→}
+   172→
+   173→// ===== Mock Data =====
+   174→
+   175→const ANALYSTS = [
+   176→  { name: 'Marcus Chen', initials: 'MC', color: 'bg-emerald-500/20 text-emerald-400' },
+   177→  { name: 'Sarah Kim', initials: 'SK', color: 'bg-amber-500/20 text-amber-400' },
+   178→  { name: 'David Okafor', initials: 'DO', color: 'bg-cyan-500/20 text-cyan-400' },
+   179→  { name: 'Elena Petrova', initials: 'EP', color: 'bg-purple-500/20 text-purple-400' },
+   180→  { name: 'James Whitfield', initials: 'JW', color: 'bg-red-500/20 text-red-400' },
+   181→]
+   182→
+   183→const MOCK_CASES: CaseItem[] = [
+   184→  {
+   185→    id: 'CASE-2024-001',
+   186→    title: 'Ransomware Activity on File Server FS-04',
+   187→    description:
+   188→      'Multiple SMB write operations followed by .locky file extensions detected on the corporate file server. Encryption activity observed across 3 shared drives. EDR quarantine triggered, but patient zero identification pending.',
+   189→    priority: 'P1',
+   190→    status: 'In Progress',
+   191→    category: 'Malware',
+   192→    assignee: ANALYSTS[0],
+   193→    tags: ['ransomware', 'smb', 'file-server', 'edr'],
+   194→    createdAt: '2024-11-18T09:14:00Z',
+   195→    updatedAt: '2024-11-18T14:32:00Z',
+   196→    evidence: [
+   197→      { id: 'EV-1', type: 'Log', filename: 'smb_audit_2024-11-18.log', size: '4.2 MB', uploadedBy: 'Marcus Chen', uploadedAt: '2024-11-18T10:02:00Z', description: 'Full SMB audit trail showing file write events on FS-04.' },
+   198→      { id: 'EV-2', type: 'Screenshot', filename: 'edr_alert_console.png', size: '1.8 MB', uploadedBy: 'Sarah Kim', uploadedAt: '2024-11-18T11:15:00Z', description: 'EDR console showing ransomware detection and quarantine events.' },
+   199→      { id: 'EV-3', type: 'Network Capture', filename: 'fs04_capture.pcap', size: '128 MB', uploadedBy: 'David Okafor', uploadedAt: '2024-11-18T12:45:00Z', description: 'Network packet capture from FS-04 during the encryption window.' },
+   200→    ],
+   201→    comments: [
+   202→      { id: 'C-1', author: 'Marcus Chen', role: 'Lead Analyst', initials: 'MC', color: 'bg-emerald-500/20 text-emerald-400', text: 'Initial triage shows encryption started at 09:42 UTC. Patient zero appears to be workstation WS-FIN-12.', createdAt: '2024-11-18T10:05:00Z' },
+   203→      { id: 'C-2', author: 'Sarah Kim', role: 'Analyst', initials: 'SK', color: 'bg-amber-500/20 text-amber-400', text: 'EDR has quarantined the malicious binary. Hash matches LockBit 3.0 variant from recent intel bulletin.', createdAt: '2024-11-18T11:20:00Z' },
+   204→      { id: 'C-3', author: 'David Okafor', role: 'Responder', initials: 'DO', color: 'bg-cyan-500/20 text-cyan-400', text: 'Network capture shows C2 beaconing to 185.220.101.45:8443 every 30 seconds. Recommend immediate firewall block.', createdAt: '2024-11-18T13:10:00Z' },
+   205→      { id: 'C-4', author: 'Elena Petrova', role: 'Incident Commander', initials: 'EP', color: 'bg-purple-500/20 text-purple-400', text: 'Coordinating with IT ops for domain-wide password reset. Need to confirm no lateral movement to domain controllers.', createdAt: '2024-11-18T14:30:00Z' },
+   206→    ],
+   207→    timeline: [
+   208→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from alert ALERT-89234 (Ransomware Detection)', timestamp: '2024-11-18T09:14:00Z' },
+   209→      { id: 'T-2', type: 'Assigned', user: 'Elena Petrova', description: 'Case assigned to Marcus Chen (Lead Analyst)', timestamp: '2024-11-18T09:20:00Z' },
+   210→      { id: 'T-3', type: 'Status Changed', user: 'Marcus Chen', description: 'Status changed from Open to In Progress', timestamp: '2024-11-18T10:00:00Z' },
+   211→      { id: 'T-4', type: 'Evidence Added', user: 'Marcus Chen', description: 'Added SMB audit log (smb_audit_2024-11-18.log)', timestamp: '2024-11-18T10:02:00Z' },
+   212→      { id: 'T-5', type: 'Comment Added', user: 'Sarah Kim', description: 'Added comment about LockBit 3.0 hash match', timestamp: '2024-11-18T11:20:00Z' },
+   213→      { id: 'T-6', type: 'Linked Item', user: 'Marcus Chen', description: 'Linked incident INC-2024-042', timestamp: '2024-11-18T12:00:00Z' },
+   214→      { id: 'T-7', type: 'Evidence Added', user: 'David Okafor', description: 'Added network capture (fs04_capture.pcap)', timestamp: '2024-11-18T12:45:00Z' },
+   215→    ],
+   216→    linkedItems: [
+   217→      { id: 'ALERT-89234', type: 'Alert', label: 'Ransomware Detection - FS-04', severity: 'critical' },
+   218→      { id: 'INC-2024-042', type: 'Incident', label: 'Coordinated Ransomware Campaign', severity: 'critical' },
+   219→      { id: 'IOC-LOCKBIT3-C2', type: 'IOC', label: '185.220.101.45:8443 (LockBit C2)', severity: 'high' },
+   220→    ],
+   221→  },
+   222→  {
+   223→    id: 'CASE-2024-002',
+   224→    title: 'Spear-phishing Campaign Targeting Finance Dept',
+   225→    description:
+   226→      'Coordinated spear-phishing emails targeting 14 finance staff members. Sender domains spoof vendor portals. Two users reported clicking embedded links; OAuth token harvesting suspected.',
+   227→    priority: 'P2',
+   228→    status: 'Open',
+   229→    category: 'Phishing',
+   230→    assignee: ANALYSTS[1],
+   231→    tags: ['phishing', 'oauth', 'finance', 'email-security'],
+   232→    createdAt: '2024-11-17T15:20:00Z',
+   233→    updatedAt: '2024-11-18T09:45:00Z',
+   234→    evidence: [
+   235→      { id: 'EV-1', type: 'File', filename: 'phishing_emails.eml', size: '845 KB', uploadedBy: 'Sarah Kim', uploadedAt: '2024-11-17T15:30:00Z', description: 'Original phishing email samples forwarded by finance team.' },
+   236→      { id: 'EV-2', type: 'Image', filename: 'spoofed_login_page.png', size: '320 KB', uploadedBy: 'Sarah Kim', uploadedAt: '2024-11-17T16:00:00Z', description: 'Screenshot of spoofed vendor login page hosted on lookalike domain.' },
+   237→    ],
+   238→    comments: [
+   239→      { id: 'C-1', author: 'Sarah Kim', role: 'Analyst', initials: 'SK', color: 'bg-amber-500/20 text-amber-400', text: '14 recipients identified, 2 confirmed clicks. Working with email security team to pull OAuth logs.', createdAt: '2024-11-17T15:35:00Z' },
+   240→      { id: 'C-2', author: 'Marcus Chen', role: 'Lead Analyst', initials: 'MC', color: 'bg-emerald-500/20 text-emerald-400', text: 'Spoofed domain registered 3 days ago via privacy-protected registrar. Similar pattern to campaign from October.', createdAt: '2024-11-17T16:20:00Z' },
+   241→      { id: 'C-3', author: 'David Okafor', role: 'Responder', initials: 'DO', color: 'bg-cyan-500/20 text-cyan-400', text: 'Revoking OAuth tokens for affected users as precaution. Will need finance manager approval for password resets.', createdAt: '2024-11-18T09:45:00Z' },
+   242→    ],
+   243→    timeline: [
+   244→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from alert ALERT-89102', timestamp: '2024-11-17T15:20:00Z' },
+   245→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to Sarah Kim', timestamp: '2024-11-17T15:22:00Z' },
+   246→      { id: 'T-3', type: 'Evidence Added', user: 'Sarah Kim', description: 'Added phishing email samples', timestamp: '2024-11-17T15:30:00Z' },
+   247→      { id: 'T-4', type: 'Evidence Added', user: 'Sarah Kim', description: 'Added screenshot of spoofed login page', timestamp: '2024-11-17T16:00:00Z' },
+   248→    ],
+   249→    linkedItems: [
+   250→      { id: 'ALERT-89102', type: 'Alert', label: 'Phishing Campaign - Finance Dept', severity: 'high' },
+   251→      { id: 'IOC-PHISH-DOMAIN', type: 'IOC', label: 'vendor-portal-secure.com (lookalike)', severity: 'high' },
+   252→    ],
+   253→  },
+   254→  {
+   255→    id: 'CASE-2024-003',
+   256→    title: 'Privileged Account Misuse - DB Admin Console',
+   257→    description:
+   258→      'Off-hours access to production DB admin console detected for service account svc_dbadmin. Queries executed exporting user PII records to staging table. Account has not been authorized for off-hours access.',
+   259→    priority: 'P1',
+   260→    status: 'Pending Review',
+   261→    category: 'Insider Threat',
+   262→    assignee: ANALYSTS[4],
+   263→    tags: ['insider', 'pii', 'database', 'privileged-account'],
+   264→    createdAt: '2024-11-15T22:10:00Z',
+   265→    updatedAt: '2024-11-18T11:00:00Z',
+   266→    evidence: [
+   267→      { id: 'EV-1', type: 'Log', filename: 'db_audit_offhours.log', size: '2.1 MB', uploadedBy: 'James Whitfield', uploadedAt: '2024-11-15T22:30:00Z', description: 'Database audit log for off-hours window showing all queries executed by svc_dbadmin.' },
+   268→      { id: 'EV-2', type: 'File', filename: 'query_export_sample.csv', size: '180 KB', uploadedBy: 'James Whitfield', uploadedAt: '2024-11-16T08:15:00Z', description: 'Sample of exported query results showing PII fields accessed.' },
+   269→      { id: 'EV-3', type: 'Screenshot', filename: 'session_replay.png', size: '1.2 MB', uploadedBy: 'Elena Petrova', uploadedAt: '2024-11-16T14:00:00Z', description: 'Session replay screenshot showing admin console activity timeline.' },
+   270→    ],
+   271→    comments: [
+   272→      { id: 'C-1', author: 'James Whitfield', role: 'Security Investigator', initials: 'JW', color: 'bg-red-500/20 text-red-400', text: 'Service account used from VPN session originating from unusual geo (Eastern Europe). Account owner claims no knowledge.', createdAt: '2024-11-15T22:45:00Z' },
+   273→      { id: 'C-2', author: 'Elena Petrova', role: 'Incident Commander', initials: 'EP', color: 'bg-purple-500/20 text-purple-400', text: 'Account disabled pending HR + Legal review. Coordinating with DBA team for full audit of staging table contents.', createdAt: '2024-11-16T09:30:00Z' },
+   274→      { id: 'C-3', author: 'Marcus Chen', role: 'Lead Analyst', initials: 'MC', color: 'bg-emerald-500/20 text-emerald-400', text: 'Reviewed VPN logs - same credentials were used in failed login attempts 2 days prior. Recommend MFA enforcement on all service accounts.', createdAt: '2024-11-17T10:00:00Z' },
+   275→      { id: 'C-4', author: 'James Whitfield', role: 'Security Investigator', initials: 'JW', color: 'bg-red-500/20 text-red-400', text: 'PII exposure scope confirmed: 12,400 customer records. Preparing for regulatory notification workflow.', createdAt: '2024-11-18T11:00:00Z' },
+   276→    ],
+   277→    timeline: [
+   278→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from alert ALERT-88950', timestamp: '2024-11-15T22:10:00Z' },
+   279→      { id: 'T-2', type: 'Priority Changed', user: 'Elena Petrova', description: 'Priority escalated from P2 to P1', timestamp: '2024-11-15T22:15:00Z' },
+   280→      { id: 'T-3', type: 'Assigned', user: 'Elena Petrova', description: 'Case assigned to James Whitfield', timestamp: '2024-11-15T22:20:00Z' },
+   281→      { id: 'T-4', type: 'Status Changed', user: 'James Whitfield', description: 'Status changed from Open to In Progress', timestamp: '2024-11-16T08:00:00Z' },
+   282→      { id: 'T-5', type: 'Status Changed', user: 'James Whitfield', description: 'Status changed from In Progress to Pending Review', timestamp: '2024-11-18T11:00:00Z' },
+   283→    ],
+   284→    linkedItems: [
+   285→      { id: 'ALERT-88950', type: 'Alert', label: 'Privileged Account Off-hours Access', severity: 'critical' },
+   286→      { id: 'INC-2024-038', type: 'Incident', label: 'Potential Insider Data Exfiltration', severity: 'critical' },
+   287→      { id: 'IOC-SVC-DBADMIN', type: 'IOC', label: 'svc_dbadmin account behavior fingerprint', severity: 'high' },
+   288→    ],
+   289→  },
+   290→  {
+   291→    id: 'CASE-2024-004',
+   292→    title: 'Unauthorized S3 Bucket Public Access',
+   293→    description:
+   294→      'Cloud security monitoring flagged S3 bucket corp-customer-data as publicly readable. Bucket contains customer PII. IAM policy change traced to dev automation role with overly broad permissions.',
+   295→    priority: 'P1',
+   296→    status: 'Closed',
+   297→    category: 'Data Breach',
+   298→    assignee: ANALYSTS[2],
+   299→    tags: ['aws', 's3', 'cloud', 'iam', 'pii'],
+   300→    createdAt: '2024-11-10T08:00:00Z',
+   301→    updatedAt: '2024-11-13T16:00:00Z',
+   302→    resolutionTime: '3d 8h',
+   303→    evidence: [
+   304→      { id: 'EV-1', type: 'Log', filename: 'cloudtrail_events.json', size: '6.4 MB', uploadedBy: 'David Okafor', uploadedAt: '2024-11-10T08:30:00Z', description: 'CloudTrail event history showing IAM policy modification events.' },
+   305→      { id: 'EV-2', type: 'File', filename: 'iam_policy_diff.txt', size: '12 KB', uploadedBy: 'David Okafor', uploadedAt: '2024-11-10T09:00:00Z', description: 'Diff of the IAM policy before and after the unauthorized change.' },
+   306→      { id: 'EV-3', type: 'Screenshot', filename: 'aws_console_bucket_perms.png', size: '650 KB', uploadedBy: 'Sarah Kim', uploadedAt: '2024-11-10T14:00:00Z', description: 'AWS console screenshot showing the public access configuration.' },
+   307→    ],
+   308→    comments: [
+   309→      { id: 'C-1', author: 'David Okafor', role: 'Responder', initials: 'DO', color: 'bg-cyan-500/20 text-cyan-400', text: 'Bucket access was public for ~4 hours. CloudTrail shows only internal service accessed it. No evidence of external exfil.', createdAt: '2024-11-10T10:00:00Z' },
+   310→      { id: 'C-2', author: 'Marcus Chen', role: 'Lead Analyst', initials: 'MC', color: 'bg-emerald-500/20 text-emerald-400', text: 'IAM policy change traced to CI/CD pipeline using dev automation role with s3:PutBucketPolicy wildcard. Tightening permissions.', createdAt: '2024-11-10T11:30:00Z' },
+   311→      { id: 'C-3', author: 'Elena Petrova', role: 'Incident Commander', initials: 'EP', color: 'bg-purple-500/20 text-purple-400', text: 'Closing case. Public access blocked, IAM role scoped down, AWS Config rule deployed to detect future policy drift.', createdAt: '2024-11-13T16:00:00Z' },
+   312→    ],
+   313→    timeline: [
+   314→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from CSPM alert', timestamp: '2024-11-10T08:00:00Z' },
+   315→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to David Okafor', timestamp: '2024-11-10T08:05:00Z' },
+   316→      { id: 'T-3', type: 'Status Changed', user: 'David Okafor', description: 'Status changed to In Progress', timestamp: '2024-11-10T08:30:00Z' },
+   317→      { id: 'T-4', type: 'Evidence Added', user: 'David Okafor', description: 'Added CloudTrail event logs', timestamp: '2024-11-10T08:30:00Z' },
+   318→      { id: 'T-5', type: 'Status Changed', user: 'David Okafor', description: 'Status changed to Pending Review', timestamp: '2024-11-12T15:00:00Z' },
+   319→      { id: 'T-6', type: 'Closed', user: 'Elena Petrova', description: 'Case closed. Resolution: IAM scoped, Config rule deployed.', timestamp: '2024-11-13T16:00:00Z' },
+   320→    ],
+   321→    linkedItems: [
+   322→      { id: 'ALERT-88001', type: 'Alert', label: 'S3 Bucket Public Access Detected', severity: 'critical' },
+   323→      { id: 'IOC-AWS-DEV-ROLE', type: 'IOC', label: 'arn:aws:iam::123456789012:role/dev-automation', severity: 'medium' },
+   324→    ],
+   325→  },
+   326→  {
+   327→    id: 'CASE-2024-005',
+   328→    title: 'SSH Brute Force Against Jump Hosts',
+   329→    description:
+   330→      'Sustained SSH brute force attempts from rotating IPs against bastion/jump hosts. 8,400+ failed auths in 2 hours. No successful logins detected. Fail2Ban triggered but source IPs distributed.',
+   331→    priority: 'P3',
+   332→    status: 'In Progress',
+   333→    category: 'Other',
+   334→    assignee: ANALYSTS[3],
+   335→    tags: ['ssh', 'brute-force', 'bastion', 'fail2ban'],
+   336→    createdAt: '2024-11-18T03:00:00Z',
+   337→    updatedAt: '2024-11-18T13:20:00Z',
+   338→    evidence: [
+   339→      { id: 'EV-1', type: 'Log', filename: 'auth.log', size: '15.2 MB', uploadedBy: 'Elena Petrova', uploadedAt: '2024-11-18T03:30:00Z', description: 'SSH auth log from bastion hosts showing failed login attempts.' },
+   340→      { id: 'EV-2', type: 'Network Capture', filename: 'ssh_attempts.pcap', size: '88 MB', uploadedBy: 'David Okafor', uploadedAt: '2024-11-18T09:00:00Z', description: 'Packet capture of brute force traffic for IOC extraction.' },
+   341→    ],
+   342→    comments: [
+   343→      { id: 'C-1', author: 'Elena Petrova', role: 'Incident Commander', initials: 'EP', color: 'bg-purple-500/20 text-purple-400', text: 'Pattern suggests botnet. IPs span 4 ASNs. No successful auth. Considering geo-block for non-business regions.', createdAt: '2024-11-18T04:00:00Z' },
+   344→      { id: 'C-2', author: 'David Okafor', role: 'Responder', initials: 'DO', color: 'bg-cyan-500/20 text-cyan-400', text: 'Extracted 1,247 unique source IPs. Submitting to blocklists. Will rotate bastion SSH keys as precaution.', createdAt: '2024-11-18T09:15:00Z' },
+   345→    ],
+   346→    timeline: [
+   347→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from alert ALERT-89345', timestamp: '2024-11-18T03:00:00Z' },
+   348→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to Elena Petrova', timestamp: '2024-11-18T03:05:00Z' },
+   349→      { id: 'T-3', type: 'Status Changed', user: 'Elena Petrova', description: 'Status changed to In Progress', timestamp: '2024-11-18T03:30:00Z' },
+   350→      { id: 'T-4', type: 'Evidence Added', user: 'Elena Petrova', description: 'Added auth.log', timestamp: '2024-11-18T03:30:00Z' },
+   351→      { id: 'T-5', type: 'Evidence Added', user: 'David Okafor', description: 'Added network capture', timestamp: '2024-11-18T09:00:00Z' },
+   352→    ],
+   353→    linkedItems: [
+   354→      { id: 'ALERT-89345', type: 'Alert', label: 'SSH Brute Force Detection', severity: 'medium' },
+   355→    ],
+   356→  },
+   357→  {
+   358→    id: 'CASE-2024-006',
+   359→    title: 'USB Device Policy Violation - Engineering Floor',
+   360→    description:
+   361→      'DLP detected USB mass storage device insertion on 3 engineering workstations. Corporate policy prohibits removable media. Devices ejected within 90s, but file transfer activity detected.',
+   362→    priority: 'P3',
+   363→    status: 'Open',
+   364→    category: 'Policy Violation',
+   365→    assignee: ANALYSTS[1],
+   366→    tags: ['dlp', 'usb', 'policy', 'endpoint'],
+   367→    createdAt: '2024-11-17T11:30:00Z',
+   368→    updatedAt: '2024-11-17T16:00:00Z',
+   369→    evidence: [
+   370→      { id: 'EV-1', type: 'Log', filename: 'dlp_events.log', size: '420 KB', uploadedBy: 'Sarah Kim', uploadedAt: '2024-11-17T12:00:00Z', description: 'DLP events showing USB insertions and file transfer activity.' },
+   371→      { id: 'EV-2', type: 'Screenshot', filename: 'endpoint_console.png', size: '780 KB', uploadedBy: 'Sarah Kim', uploadedAt: '2024-11-17T13:30:00Z', description: 'Endpoint management console showing USB device history per workstation.' },
+   372→    ],
+   373→    comments: [
+   374→      { id: 'C-1', author: 'Sarah Kim', role: 'Analyst', initials: 'SK', color: 'bg-amber-500/20 text-amber-400', text: '3 workstations affected, all in engineering. Users claim they were transferring personal photos. Need manager confirmation.', createdAt: '2024-11-17T12:30:00Z' },
+   375→      { id: 'C-2', author: 'Marcus Chen', role: 'Lead Analyst', initials: 'MC', color: 'bg-emerald-500/20 text-emerald-400', text: 'DLP shows ~120MB transferred off each workstation. Recommend pulling endpoint forensic images for verification.', createdAt: '2024-11-17T16:00:00Z' },
+   376→    ],
+   377→    timeline: [
+   378→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from DLP alert', timestamp: '2024-11-17T11:30:00Z' },
+   379→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to Sarah Kim', timestamp: '2024-11-17T11:35:00Z' },
+   380→      { id: 'T-3', type: 'Evidence Added', user: 'Sarah Kim', description: 'Added DLP event log', timestamp: '2024-11-17T12:00:00Z' },
+   381→    ],
+   382→    linkedItems: [
+   383→      { id: 'ALERT-89005', type: 'Alert', label: 'USB Mass Storage Detected', severity: 'low' },
+   384→    ],
+   385→  },
+   386→  {
+   387→    id: 'CASE-2024-007',
+   388→    title: 'Crypto Miner Detected on Dev Container',
+   389→    description:
+   390→      'Container runtime security detected xmrig binary in dev namespace pod. CPU usage spiked to 95% on affected node. Pod auto-terminated by resource limits, but image needs scanning.',
+   391→    priority: 'P2',
+   392→    status: 'In Progress',
+   393→    category: 'Malware',
+   394→    assignee: ANALYSTS[2],
+   395→    tags: ['kubernetes', 'crypto-miner', 'container', 'xmrig'],
+   396→    createdAt: '2024-11-16T14:20:00Z',
+   397→    updatedAt: '2024-11-18T10:00:00Z',
+   398→    evidence: [
+   399→      { id: 'EV-1', type: 'Log', filename: 'container_runtime.log', size: '3.8 MB', uploadedBy: 'David Okafor', uploadedAt: '2024-11-16T14:30:00Z', description: 'Container runtime security logs showing process execution and resource usage.' },
+   400→      { id: 'EV-2', type: 'File', filename: 'pod_manifest.yaml', size: '8 KB', uploadedBy: 'David Okafor', uploadedAt: '2024-11-16T15:00:00Z', description: 'Kubernetes pod manifest for the affected container.' },
+   401→      { id: 'EV-3', type: 'Screenshot', filename: 'cpu_usage_graph.png', size: '210 KB', uploadedBy: 'Elena Petrova', uploadedAt: '2024-11-16T16:00:00Z', description: 'CPU usage graph showing mining activity spike.' },
+   402→    ],
+   403→    comments: [
+   404→      { id: 'C-1', author: 'David Okafor', role: 'Responder', initials: 'DO', color: 'bg-cyan-500/20 text-cyan-400', text: 'Pod terminated by resource limits within 4 minutes of miner starting. Container image pulled from public registry - investigating supply chain angle.', createdAt: '2024-11-16T15:30:00Z' },
+   405→      { id: 'C-2', author: 'Marcus Chen', role: 'Lead Analyst', initials: 'MC', color: 'bg-emerald-500/20 text-emerald-400', text: 'Image origin traced to compromised developer account on public registry. CVE-2024-XXXX in base image likely entry point.', createdAt: '2024-11-17T09:00:00Z' },
+   406→      { id: 'C-3', author: 'David Okafor', role: 'Responder', initials: 'DO', color: 'bg-cyan-500/20 text-cyan-400', text: 'Deployed admission controller rule to block known miner hashes. Scanning all dev namespace images.', createdAt: '2024-11-18T10:00:00Z' },
+   407→    ],
+   408→    timeline: [
+   409→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from container security alert', timestamp: '2024-11-16T14:20:00Z' },
+   410→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to David Okafor', timestamp: '2024-11-16T14:25:00Z' },
+   411→      { id: 'T-3', type: 'Status Changed', user: 'David Okafor', description: 'Status changed to In Progress', timestamp: '2024-11-16T14:30:00Z' },
+   412→      { id: 'T-4', type: 'Linked Item', user: 'David Okafor', description: 'Linked IOC registry-account-compromised', timestamp: '2024-11-17T09:00:00Z' },
+   413→    ],
+   414→    linkedItems: [
+   415→      { id: 'ALERT-88512', type: 'Alert', label: 'Crypto Miner Process Detected', severity: 'high' },
+   416→      { id: 'IOC-REGISTRY-ACCT', type: 'IOC', label: 'compromised-dev-account (registry)', severity: 'medium' },
+   417→    ],
+   418→  },
+   419→  {
+   420→    id: 'CASE-2024-008',
+   421→    title: 'DNS Tunneling - Exfiltration Suspected',
+   422→    description:
+   423→      'DNS query anomalies detected from internal host 10.20.30.45. High-volume TXT record queries to suspicious parent domain. Encoded payloads in subdomains suggest data exfiltration channel.',
+   424→    priority: 'P2',
+   425→    status: 'Open',
+   426→    category: 'Data Breach',
+   427→    assignee: ANALYSTS[0],
+   428→    tags: ['dns', 'exfiltration', 'tunneling', 'c2'],
+   429→    createdAt: '2024-11-18T07:00:00Z',
+   430→    updatedAt: '2024-11-18T12:30:00Z',
+   431→    evidence: [
+   432→      { id: 'EV-1', type: 'Network Capture', filename: 'dns_queries.pcap', size: '64 MB', uploadedBy: 'Marcus Chen', uploadedAt: '2024-11-18T07:30:00Z', description: 'Packet capture of DNS traffic from affected host.' },
+   433→      { id: 'EV-2', type: 'Log', filename: 'dns_server.log', size: '12.6 MB', uploadedBy: 'Marcus Chen', uploadedAt: '2024-11-18T08:00:00Z', description: 'DNS server logs showing query patterns.' },
+   434→    ],
+   435→    comments: [
+   436→      { id: 'C-1', author: 'Marcus Chen', role: 'Lead Analyst', initials: 'MC', color: 'bg-emerald-500/20 text-emerald-400', text: 'Affected host is HR laptop. User traveling in Asia region. ~85MB of DNS queries in 30 min - encoded subdomains.', createdAt: '2024-11-18T08:30:00Z' },
+   437→      { id: 'C-2', author: 'Sarah Kim', role: 'Analyst', initials: 'SK', color: 'bg-amber-500/20 text-amber-400', text: 'Base32-decoded subdomains look like base64 chunks. Reconstructing payload. Estimated 40-50MB exfil volume.', createdAt: '2024-11-18T12:30:00Z' },
+   438→    ],
+   439→    timeline: [
+   440→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from DNS anomaly alert', timestamp: '2024-11-18T07:00:00Z' },
+   441→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to Marcus Chen', timestamp: '2024-11-18T07:05:00Z' },
+   442→      { id: 'T-3', type: 'Evidence Added', user: 'Marcus Chen', description: 'Added DNS packet capture', timestamp: '2024-11-18T07:30:00Z' },
+   443→    ],
+   444→    linkedItems: [
+   445→      { id: 'ALERT-89222', type: 'Alert', label: 'DNS Tunneling Detected', severity: 'high' },
+   446→      { id: 'IOC-DNS-EXFIL', type: 'IOC', label: 'suspicious-tunnel.example-cdn.com', severity: 'high' },
+   447→    ],
+   448→  },
+   449→  {
+   450→    id: 'CASE-2024-009',
+   451→    title: 'MFA Bypass Attempt - Executive Account',
+   452→    description:
+   453→      'MFA fatigue attack detected on CFO account. 47 push notifications in 5 minutes, 1 accepted. Session established from anomalous IP. Account immediately suspended by SOC.',
+   454→    priority: 'P1',
+   455→    status: 'Closed',
+   456→    category: 'Insider Threat',
+   457→    assignee: ANALYSTS[4],
+   458→    tags: ['mfa', 'executive', 'account-takeover', 'identity'],
+   459→    createdAt: '2024-11-08T18:45:00Z',
+   460→    updatedAt: '2024-11-10T11:00:00Z',
+   461→    resolutionTime: '1d 16h',
+   462→    evidence: [
+   463→      { id: 'EV-1', type: 'Log', filename: 'mfa_audit.log', size: '1.4 MB', uploadedBy: 'James Whitfield', uploadedAt: '2024-11-08T19:00:00Z', description: 'MFA audit log showing push notification flood and acceptance.' },
+   464→      { id: 'EV-2', type: 'Screenshot', filename: 'session_details.png', size: '480 KB', uploadedBy: 'James Whitfield', uploadedAt: '2024-11-08T19:30:00Z', description: 'Identity provider session details showing anomalous IP and device fingerprint.' },
+   465→    ],
+   466→    comments: [
+   467→      { id: 'C-1', author: 'James Whitfield', role: 'Security Investigator', initials: 'JW', color: 'bg-red-500/20 text-red-400', text: 'CFO confirmed they accidentally approved one push after the flood. Account was active for ~90 seconds before SOC suspension.', createdAt: '2024-11-08T19:15:00Z' },
+   468→      { id: 'C-2', author: 'Elena Petrova', role: 'Incident Commander', initials: 'EP', color: 'bg-purple-500/20 text-purple-400', text: 'Session activity reviewed - attacker viewed finance dashboard but no data export detected. Password reset + token revocation complete.', createdAt: '2024-11-09T10:00:00Z' },
+   469→      { id: 'C-3', author: 'Marcus Chen', role: 'Lead Analyst', initials: 'MC', color: 'bg-emerald-500/20 text-emerald-400', text: 'Source IP traced to known attack proxy. Enrolling CFO in number-matching MFA + hardware key. Closing case.', createdAt: '2024-11-10T11:00:00Z' },
+   470→    ],
+   471→    timeline: [
+   472→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from identity alert', timestamp: '2024-11-08T18:45:00Z' },
+   473→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to James Whitfield', timestamp: '2024-11-08T18:50:00Z' },
+   474→      { id: 'T-3', type: 'Status Changed', user: 'James Whitfield', description: 'Status changed to In Progress', timestamp: '2024-11-08T19:00:00Z' },
+   475→      { id: 'T-4', type: 'Status Changed', user: 'James Whitfield', description: 'Status changed to Pending Review', timestamp: '2024-11-09T14:00:00Z' },
+   476→      { id: 'T-5', type: 'Closed', user: 'Marcus Chen', description: 'Case closed. Resolution: MFA upgraded, account secured.', timestamp: '2024-11-10T11:00:00Z' },
+   477→    ],
+   478→    linkedItems: [
+   479→      { id: 'ALERT-87501', type: 'Alert', label: 'MFA Push Fatigue Attack', severity: 'critical' },
+   480→      { id: 'IOC-PROXY-IP', type: 'IOC', label: '203.0.113.45 (attack proxy)', severity: 'high' },
+   481→    ],
+   482→  },
+   483→  {
+   484→    id: 'CASE-2024-010',
+   485→    title: 'Unauthorized Software Installation Wave',
+   486→    description:
+   487→      '14 workstations installed unapproved software package within 24 hours. Package flagged by EDR as adware bundler. Likely propagated via shared departmental chat template.',
+   488→    priority: 'P4',
+   489→    status: 'Closed',
+   490→    category: 'Policy Violation',
+   491→    assignee: ANALYSTS[1],
+   492→    tags: ['endpoint', 'adware', 'policy', 'edr'],
+   493→    createdAt: '2024-11-12T10:00:00Z',
+   494→    updatedAt: '2024-11-13T15:00:00Z',
+   495→    resolutionTime: '1d 5h',
+   496→    evidence: [
+   497→      { id: 'EV-1', type: 'Log', filename: 'edr_installs.log', size: '890 KB', uploadedBy: 'Sarah Kim', uploadedAt: '2024-11-12T10:30:00Z', description: 'EDR log of unauthorized software installations across workstations.' },
+   498→    ],
+   499→    comments: [
+   500→      { id: 'C-1', author: 'Sarah Kim', role: 'Analyst', initials: 'SK', color: 'bg-amber-500/20 text-amber-400', text: 'Traced propagation to a chat template shared in marketing channel. EDR removed the package from all 14 hosts.', createdAt: '2024-11-12T11:00:00Z' },
+   501→      { id: 'C-2', author: 'Marcus Chen', role: 'Lead Analyst', initials: 'MC', color: 'bg-emerald-500/20 text-emerald-400', text: 'No persistence or data access detected. User training scheduled. Closing case.', createdAt: '2024-11-13T15:00:00Z' },
+   502→    ],
+   503→    timeline: [
+   504→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from policy violation alert', timestamp: '2024-11-12T10:00:00Z' },
+   505→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to Sarah Kim', timestamp: '2024-11-12T10:05:00Z' },
+   506→      { id: 'T-3', type: 'Closed', user: 'Marcus Chen', description: 'Case closed. Resolution: Software removed, user training scheduled.', timestamp: '2024-11-13T15:00:00Z' },
+   507→    ],
+   508→    linkedItems: [
+   509→      { id: 'ALERT-88200', type: 'Alert', label: 'Unauthorized Software Install', severity: 'low' },
+   510→    ],
+   511→  },
+   512→  {
+   513→    id: 'CASE-2024-011',
+   514→    title: 'Suspicious PowerShell Execution - Lateral Movement',
+   515→    description:
+   516→      'Encoded PowerShell commands executed on file server, invoking WinRM against 3 internal hosts. Commands matched known lateral movement TTPs. EDR blocked second-stage payload.',
+   517→    priority: 'P2',
+   518→    status: 'In Progress',
+   519→    category: 'Malware',
+   520→    assignee: ANALYSTS[0],
+   521→    tags: ['powershell', 'lateral-movement', 'winrm', 'edr'],
+   522→    createdAt: '2024-11-17T20:30:00Z',
+   523→    updatedAt: '2024-11-18T11:00:00Z',
+   524→    evidence: [
+   525→      { id: 'EV-1', type: 'Log', filename: 'powershell_logs.evtx', size: '6.8 MB', uploadedBy: 'Marcus Chen', uploadedAt: '2024-11-17T21:00:00Z', description: 'PowerShell script block logs showing encoded commands and execution.' },
+   526→      { id: 'EV-2', type: 'Screenshot', filename: 'edr_block.png', size: '350 KB', uploadedBy: 'Marcus Chen', uploadedAt: '2024-11-17T21:30:00Z', description: 'EDR console showing block of second-stage payload.' },
+   527→    ],
+   528→    comments: [
+   529→      { id: 'C-1', author: 'Marcus Chen', role: 'Lead Analyst', initials: 'MC', color: 'bg-emerald-500/20 text-emerald-400', text: 'Initial access via compromised service account cred from previous case (CASE-2024-003). WinRM targeted DC candidates.', createdAt: '2024-11-17T21:15:00Z' },
+   530→      { id: 'C-2', author: 'Elena Petrova', role: 'Incident Commander', initials: 'EP', color: 'bg-purple-500/20 text-purple-400', text: 'Treating as same campaign. Coordinating with CASE-2024-003 team. May upgrade incident level.', createdAt: '2024-11-18T11:00:00Z' },
+   531→    ],
+   532→    timeline: [
+   533→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from EDR detection', timestamp: '2024-11-17T20:30:00Z' },
+   534→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to Marcus Chen', timestamp: '2024-11-17T20:35:00Z' },
+   535→      { id: 'T-3', type: 'Linked Item', user: 'Marcus Chen', description: 'Linked related case CASE-2024-003', timestamp: '2024-11-17T21:15:00Z' },
+   536→    ],
+   537→    linkedItems: [
+   538→      { id: 'ALERT-89101', type: 'Alert', label: 'Suspicious PowerShell - Lateral Movement', severity: 'high' },
+   539→      { id: 'CASE-2024-003', type: 'Incident', label: 'Privileged Account Misuse (related)', severity: 'critical' },
+   540→    ],
+   541→  },
+   542→  {
+   543→    id: 'CASE-2024-012',
+   544→    title: 'WAF Evasion Attempts - Customer Portal',
+   545→    description:
+   546→      'Web Application Firewall detected 312 anomalous requests in 1 hour targeting /api/v2/users endpoint. Pattern suggests SQL injection via header manipulation. WAF blocked all attempts.',
+   547→    priority: 'P3',
+   548→    status: 'Pending Review',
+   549→    category: 'Other',
+   550→    assignee: ANALYSTS[3],
+   551→    tags: ['waf', 'sql-injection', 'web-app', 'api'],
+   552→    createdAt: '2024-11-15T13:00:00Z',
+   553→    updatedAt: '2024-11-17T09:00:00Z',
+   554→    evidence: [
+   555→      { id: 'EV-1', type: 'Log', filename: 'waf_events.json', size: '5.2 MB', uploadedBy: 'Elena Petrova', uploadedAt: '2024-11-15T13:30:00Z', description: 'WAF event log with full request payloads.' },
+   556→      { id: 'EV-2', type: 'File', filename: 'payload_samples.txt', size: '45 KB', uploadedBy: 'Elena Petrova', uploadedAt: '2024-11-15T14:00:00Z', description: 'Extracted payload samples for threat intel submission.' },
+   557→    ],
+   558→    comments: [
+   559→      { id: 'C-1', author: 'Elena Petrova', role: 'Incident Commander', initials: 'EP', color: 'bg-purple-500/20 text-purple-400', text: 'No successful injection. Source IPs rotated through commercial VPN providers. Submitting IOCs to threat intel.', createdAt: '2024-11-15T14:30:00Z' },
+   560→      { id: 'C-2', author: 'David Okafor', role: 'Responder', initials: 'DO', color: 'bg-cyan-500/20 text-cyan-400', text: 'API endpoint reviewed - input validation already strong. No remediation needed. Pending review for closure.', createdAt: '2024-11-17T09:00:00Z' },
+   561→    ],
+   562→    timeline: [
+   563→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from WAF alert', timestamp: '2024-11-15T13:00:00Z' },
+   564→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to Elena Petrova', timestamp: '2024-11-15T13:05:00Z' },
+   565→      { id: 'T-3', type: 'Status Changed', user: 'Elena Petrova', description: 'Status changed to In Progress', timestamp: '2024-11-15T13:30:00Z' },
+   566→      { id: 'T-4', type: 'Status Changed', user: 'David Okafor', description: 'Status changed to Pending Review', timestamp: '2024-11-17T09:00:00Z' },
+   567→    ],
+   568→    linkedItems: [
+   569→      { id: 'ALERT-88700', type: 'Alert', label: 'WAF - SQL Injection Attempt', severity: 'medium' },
+   570→    ],
+   571→  },
+   572→  {
+   573→    id: 'CASE-2024-013',
+   574→    title: 'Anomalous Data Egress - Marketing Cloud',
+   575→    description:
+   576→      'Marketing cloud platform uploaded 4.2GB to external S3 bucket outside business hours. Upload initiated from service account, bucket is in unrelated AWS account.',
+   577→    priority: 'P2',
+   578→    status: 'Open',
+   579→    category: 'Data Breach',
+   580→    assignee: ANALYSTS[2],
+   581→    tags: ['cloud', 'egress', 'data-exfil', 'marketing'],
+   582→    createdAt: '2024-11-18T02:15:00Z',
+   583→    updatedAt: '2024-11-18T08:30:00Z',
+   584→    evidence: [
+   585→      { id: 'EV-1', type: 'Log', filename: 'egress_flow.log', size: '18.4 MB', uploadedBy: 'David Okafor', uploadedAt: '2024-11-18T02:45:00Z', description: 'Network flow log showing the anomalous egress upload.' },
+   586→      { id: 'EV-2', type: 'File', filename: 's3_bucket_meta.json', size: '32 KB', uploadedBy: 'David Okafor', uploadedAt: '2024-11-18T03:00:00Z', description: 'Metadata of the destination S3 bucket and IAM principal used.' },
+   587→    ],
+   588→    comments: [
+   589→      { id: 'C-1', author: 'David Okafor', role: 'Responder', initials: 'DO', color: 'bg-cyan-500/20 text-cyan-400', text: 'Destination bucket owned by third-party marketing vendor. Need to verify if this is sanctioned data sharing.', createdAt: '2024-11-18T03:15:00Z' },
+   590→      { id: 'C-2', author: 'Sarah Kim', role: 'Analyst', initials: 'SK', color: 'bg-amber-500/20 text-amber-400', text: 'Marketing VP confirms they have a contract but not for this data type. Service account credentials appear to have been reused.', createdAt: '2024-11-18T08:30:00Z' },
+   591→    ],
+   592→    timeline: [
+   593→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from cloud egress alert', timestamp: '2024-11-18T02:15:00Z' },
+   594→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to David Okafor', timestamp: '2024-11-18T02:20:00Z' },
+   595→      { id: 'T-3', type: 'Evidence Added', user: 'David Okafor', description: 'Added egress flow log', timestamp: '2024-11-18T02:45:00Z' },
+   596→    ],
+   597→    linkedItems: [
+   598→      { id: 'ALERT-89300', type: 'Alert', label: 'Anomalous Cloud Egress Detected', severity: 'high' },
+   599→    ],
+   600→  },
+   601→  {
+   602→    id: 'CASE-2024-014',
+   603→    title: 'Stale VPN Sessions - Compliance Audit',
+   604→    description:
+   605→      'Quarterly access review identified 23 VPN sessions older than 30 days without termination. Sessions span 6 users, including 2 departed contractors. Compliance finding for SOC2 access control.',
+   606→    priority: 'P4',
+   607→    status: 'Closed',
+   608→    category: 'Policy Violation',
+   609→    assignee: ANALYSTS[1],
+   610→    tags: ['vpn', 'compliance', 'soc2', 'access-review'],
+   611→    createdAt: '2024-11-04T09:00:00Z',
+   612→    updatedAt: '2024-11-06T14:00:00Z',
+   613→    resolutionTime: '2d 5h',
+   614→    evidence: [
+   615→      { id: 'EV-1', type: 'File', filename: 'vpn_session_audit.csv', size: '88 KB', uploadedBy: 'Sarah Kim', uploadedAt: '2024-11-04T09:30:00Z', description: 'VPN session audit listing all stale sessions with user details.' },
+   616→      { id: 'EV-2', type: 'Screenshot', filename: 'compliance_finding.png', size: '420 KB', uploadedBy: 'Sarah Kim', uploadedAt: '2024-11-04T10:00:00Z', description: 'Compliance portal finding screenshot for audit trail.' },
+   617→    ],
+   618→    comments: [
+   619→      { id: 'C-1', author: 'Sarah Kim', role: 'Analyst', initials: 'SK', color: 'bg-amber-500/20 text-amber-400', text: 'All 23 sessions terminated. Contractor accounts disabled. Network team adding 8-hour idle timeout policy.', createdAt: '2024-11-04T14:00:00Z' },
+   620→      { id: 'C-2', author: 'Elena Petrova', role: 'Incident Commander', initials: 'EP', color: 'bg-purple-500/20 text-purple-400', text: 'Finding closed. SOC2 evidence package uploaded. Closing case.', createdAt: '2024-11-06T14:00:00Z' },
+   621→    ],
+   622→    timeline: [
+   623→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from compliance audit', timestamp: '2024-11-04T09:00:00Z' },
+   624→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to Sarah Kim', timestamp: '2024-11-04T09:05:00Z' },
+   625→      { id: 'T-3', type: 'Closed', user: 'Elena Petrova', description: 'Case closed. Resolution: Sessions terminated, idle policy added.', timestamp: '2024-11-06T14:00:00Z' },
+   626→    ],
+   627→    linkedItems: [
+   628→      { id: 'COMP-FINDING-2024-Q4-08', type: 'Incident', label: 'SOC2 Access Control Finding', severity: 'low' },
+   629→    ],
+   630→  },
+   631→  {
+   632→    id: 'CASE-2024-015',
+   633→    title: 'Rogue Wireless AP - Conference Center',
+   634→    description:
+   635→      'Wireless intrusion detection flagged rogue AP mimicking corporate SSID in conference center. Likely evil twin attack. 4 corporate devices auto-connected before WIDS containment.',
+   636→    priority: 'P2',
+   637→    status: 'Pending Review',
+   638→    category: 'Other',
+   639→    assignee: ANALYSTS[3],
+   640→    tags: ['wireless', 'evil-twin', 'wids', 'conference'],
+   641→    createdAt: '2024-11-14T16:30:00Z',
+   642→    updatedAt: '2024-11-16T11:00:00Z',
+   643→    evidence: [
+   644→      { id: 'EV-1', type: 'Log', filename: 'wids_alerts.log', size: '650 KB', uploadedBy: 'Elena Petrova', uploadedAt: '2024-11-14T17:00:00Z', description: 'WIDS alert log showing rogue AP detection and containment.' },
+   645→      { id: 'EV-2', type: 'Network Capture', filename: 'rogue_ap_beacon.pcap', size: '12 MB', uploadedBy: 'David Okafor', uploadedAt: '2024-11-14T18:00:00Z', description: 'Beacon capture of rogue AP for fingerprinting.' },
+   646→      { id: 'EV-3', type: 'Screenshot', filename: 'wids_console.png', size: '380 KB', uploadedBy: 'Elena Petrova', uploadedAt: '2024-11-15T09:00:00Z', description: 'WIDS console showing rogue AP location and containment actions.' },
+   647→    ],
+   648→    comments: [
+   649→      { id: 'C-1', author: 'Elena Petrova', role: 'Incident Commander', initials: 'EP', color: 'bg-purple-500/20 text-purple-400', text: 'Rogue AP physically located in conference room B. WIDS deauth contained the threat. 4 devices that connected are being forensically imaged.', createdAt: '2024-11-14T18:30:00Z' },
+   650→      { id: 'C-2', author: 'James Whitfield', role: 'Security Investigator', initials: 'JW', color: 'bg-red-500/20 text-red-400', text: 'No credential theft detected on affected devices. Rogue AP was consumer-grade, likely opportunistic attacker. Pending review for closure.', createdAt: '2024-11-16T11:00:00Z' },
+   651→    ],
+   652→    timeline: [
+   653→      { id: 'T-1', type: 'Created', user: 'System', description: 'Case created from WIDS alert', timestamp: '2024-11-14T16:30:00Z' },
+   654→      { id: 'T-2', type: 'Assigned', user: 'Auto-assignment', description: 'Case assigned to Elena Petrova', timestamp: '2024-11-14T16:35:00Z' },
+   655→      { id: 'T-3', type: 'Status Changed', user: 'Elena Petrova', description: 'Status changed to In Progress', timestamp: '2024-11-14T17:00:00Z' },
+   656→      { id: 'T-4', type: 'Status Changed', user: 'James Whitfield', description: 'Status changed to Pending Review', timestamp: '2024-11-16T11:00:00Z' },
+   657→    ],
+   658→    linkedItems: [
+   659→      { id: 'ALERT-88333', type: 'Alert', label: 'Rogue AP Detected - Conference B', severity: 'high' },
+   660→    ],
+   661→  },
+   662→]
+   663→
+   664→// ===== Constants / Color Maps =====
+   665→
+   666→const PRIORITY_CONFIG: Record<CasePriority, { bg: string; text: string; border: string; dot: string }> = {
+   667→  P1: { bg: 'bg-red-500/15', text: 'text-red-400', border: 'border-red-500/30', dot: 'bg-red-500' },
+   668→  P2: { bg: 'bg-amber-500/15', text: 'text-amber-400', border: 'border-amber-500/30', dot: 'bg-amber-500' },
+   669→  P3: { bg: 'bg-blue-500/15', text: 'text-blue-400', border: 'border-blue-500/30', dot: 'bg-blue-500' },
+   670→  P4: { bg: 'bg-zinc-500/15', text: 'text-zinc-400', border: 'border-zinc-500/30', dot: 'bg-zinc-500' },
+   671→}
+   672→
+   673→const STATUS_CONFIG: Record<CaseStatus, { bg: string; text: string; border: string; dot: string }> = {
+   674→  Open: { bg: 'bg-blue-500/15', text: 'text-blue-400', border: 'border-blue-500/30', dot: 'bg-blue-500' },
+   675→  'In Progress': { bg: 'bg-amber-500/15', text: 'text-amber-400', border: 'border-amber-500/30', dot: 'bg-amber-500' },
+   676→  'Pending Review': { bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-purple-500/30', dot: 'bg-purple-500' },
+   677→  Closed: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', border: 'border-emerald-500/30', dot: 'bg-emerald-500' },
+   678→}
+   679→
+   680→const CATEGORY_CONFIG: Record<CaseCategory, string> = {
+   681→  Malware: 'bg-red-500/10 text-red-400 border-red-500/20',
+   682→  Phishing: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+   683→  'Insider Threat': 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+   684→  'Data Breach': 'bg-pink-500/10 text-pink-400 border-pink-500/20',
+   685→  'Policy Violation': 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
+   686→  Other: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
+   687→}
+   688→
+   689→const EVIDENCE_ICONS: Record<EvidenceType, React.ComponentType<{ className?: string }>> = {
+   690→  File: FileText,
+   691→  Image: ImageIcon,
+   692→  Log: FileCode,
+   693→  Screenshot: Camera,
+   694→  'Network Capture': Network,
+   695→}
+   696→
+   697→const TIMELINE_ICONS: Record<TimelineEventType, React.ComponentType<{ className?: string }>> = {
+   698→  Created: FolderOpen,
+   699→  Assigned: UserPlus,
+   700→  'Status Changed': Activity,
+   701→  'Comment Added': MessageSquare,
+   702→  'Evidence Added': Paperclip,
+   703→  'Priority Changed': AlertTriangle,
+   704→  'Linked Item': Link2,
+   705→  Closed: CheckCircle2,
+   706→}
+   707→
+   708→const TIMELINE_COLORS: Record<TimelineEventType, string> = {
+   709→  Created: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+   710→  Assigned: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+   711→  'Status Changed': 'text-amber-400 bg-amber-500/10 border-amber-500/30',
+   712→  'Comment Added': 'text-zinc-300 bg-zinc-500/10 border-zinc-500/30',
+   713→  'Evidence Added': 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
+   714→  'Priority Changed': 'text-red-400 bg-red-500/10 border-red-500/30',
+   715→  'Linked Item': 'text-purple-400 bg-purple-500/10 border-purple-500/30',
+   716→  Closed: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
+   717→}
+   718→
+   719→const LINKED_ITEM_COLORS = {
+   720→  Alert: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+   721→  Incident: 'bg-red-500/15 text-red-400 border-red-500/30',
+   722→  IOC: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',
+   723→}
+   724→
+   725→const SEVERITY_DOT_COLORS = {
+   726→  critical: 'bg-red-500',
+   727→  high: 'bg-amber-500',
+   728→  medium: 'bg-yellow-500',
+   729→  low: 'bg-emerald-500',
+   730→}
+   731→
+   732→const FILTER_TABS = ['All', 'Open', 'In Progress', 'Pending Review', 'Closed'] as const
+   733→const PRIORITIES: CasePriority[] = ['P1', 'P2', 'P3', 'P4']
+   734→const CATEGORIES: CaseCategory[] = ['Malware', 'Phishing', 'Insider Threat', 'Data Breach', 'Policy Violation', 'Other']
+   735→
+   736→// ===== Helper Functions =====
+   737→
+   738→function formatRelativeTime(iso: string): string {
+   739→  const date = new Date(iso)
+   740→  const now = new Date()
+   741→  const diffMs = now.getTime() - date.getTime()
+   742→  const diffMin = Math.floor(diffMs / 60000)
+   743→  const diffHr = Math.floor(diffMin / 60)
+   744→  const diffDay = Math.floor(diffHr / 24)
+   745→
+   746→  if (diffMin < 1) return 'just now'
+   747→  if (diffMin < 60) return `${diffMin}m ago`
+   748→  if (diffHr < 24) return `${diffHr}h ago`
+   749→  if (diffDay < 30) return `${diffDay}d ago`
+   750→  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+   751→}
+   752→
+   753→function formatDateTime(iso: string): string {
+   754→  return new Date(iso).toLocaleString('en-US', {
+   755→    month: 'short',
+   756→    day: 'numeric',
+   757→    year: 'numeric',
+   758→    hour: '2-digit',
+   759→    minute: '2-digit',
+   760→  })
+   761→}
+   762→
+   763→// ===== Sub-components =====
+   764→
+   765→function CasePriorityBadge({ priority, className }: { priority: CasePriority; className?: string }) {
+   766→  const c = PRIORITY_CONFIG[priority]
+   767→  return (
+   768→    <span
+   769→      className={cn(
+   770→        'inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold',
+   771→        c.bg,
+   772→        c.text,
+   773→        c.border,
+   774→        className
+   775→      )}
+   776→    >
+   777→      <span className={cn('size-1.5 rounded-full', c.dot)} />
+   778→      {priority}
+   779→    </span>
+   780→  )
+   781→}
+   782→
+   783→function CaseStatusBadge({ status, className }: { status: CaseStatus; className?: string }) {
+   784→  const c = STATUS_CONFIG[status]
+   785→  return (
+   786→    <span
+   787→      className={cn(
+   788→        'inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium',
+   789→        c.bg,
+   790→        c.text,
+   791→        c.border,
+   792→        className
+   793→      )}
+   794→    >
+   795→      <span className={cn('size-1.5 rounded-full', c.dot)} />
+   796→      {status}
+   797→    </span>
+   798→  )
+   799→}
+   800→
+   801→function AssigneeAvatar({
+   802→  initials,
+   803→  color,
+   804→  size = 'sm',
+   805→}: {
+   806→  initials: string
+   807→  color: string
+   808→  size?: 'sm' | 'md'
+   809→}) {
+   810→  const sizeCls = size === 'sm' ? 'size-6 text-[10px]' : 'size-8 text-xs'
+   811→  return (
+   812→    <span
+   813→      className={cn(
+   814→        'inline-flex items-center justify-center rounded-full font-semibold',
+   815→        sizeCls,
+   816→        color
+   817→      )}
+   818→    >
+   819→      {initials}
+   820→    </span>
+   821→  )
+   822→}
+   823→
+   824→function StatCard({
+   825→  icon: Icon,
+   826→  iconBg,
+   827→  iconColor,
+   828→  value,
+   829→  label,
+   830→  trend,
+   831→  trendUp,
+   832→  delay = 0,
+   833→}: {
+   834→  icon: React.ComponentType<{ className?: string }>
+   835→  iconBg: string
+   836→  iconColor: string
+   837→  value: string | number
+   838→  label: string
+   839→  trend?: string
+   840→  trendUp?: boolean
+   841→  delay?: number
+   842→}) {
+   843→  return (
+   844→    <motion.div
+   845→      initial={{ opacity: 0, y: 12 }}
+   846→      animate={{ opacity: 1, y: 0 }}
+   847→      transition={{ duration: 0.3, delay }}
+   848→    >
+   849→      <Card className="siem-card-glow border-zinc-800 bg-zinc-900/50 transition-colors">
+   850→        <CardContent className="p-4">
+   851→          <div className="flex items-start justify-between gap-3">
+   852→            <div className="min-w-0">
+   853→              <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+   854→                {label}
+   855→              </p>
+   856→              <p className="mt-1 text-2xl font-bold text-zinc-100">{value}</p>
+   857→              {trend && (
+   858→                <div
+   859→                  className={cn(
+   860→                    'mt-1.5 flex items-center gap-1 text-[11px] font-medium',
+   861→                    trendUp ? 'text-emerald-400' : 'text-red-400'
+   862→                  )}
+   863→                >
+   864→                  {trendUp ? (
+   865→                    <TrendingUp className="size-3" />
+   866→                  ) : (
+   867→                    <TrendingDown className="size-3" />
+   868→                  )}
+   869→                  {trend}
+   870→                </div>
+   871→              )}
+   872→            </div>
+   873→            <div className={cn('rounded-lg p-2', iconBg)}>
+   874→              <Icon className={cn('size-5', iconColor)} />
+   875→            </div>
+   876→          </div>
+   877→        </CardContent>
+   878→      </Card>
+   879→    </motion.div>
+   880→  )
+   881→}
+   882→
+   883→// ===== Custom SVG Charts =====
+   884→
+   885→function HorizontalBarChart({
+   886→  data,
+   887→  color,
+   888→}: {
+   889→  data: Array<{ label: string; count: number; color?: string }>
+   890→  color: string
+   891→}) {
+   892→  const max = Math.max(...data.map((d) => d.count), 1)
+   893→  return (
+   894→    <div className="space-y-2">
+   895→      {data.map((d, i) => (
+   896→        <div key={i} className="space-y-1">
+   897→          <div className="flex items-center justify-between text-xs">
+   898→            <span className="text-zinc-400">{d.label}</span>
+   899→            <span className="font-mono text-zinc-300">{d.count}</span>
+   900→          </div>
+   901→          <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+   902→            <motion.div
+   903→              initial={{ width: 0 }}
+   904→              animate={{ width: `${(d.count / max) * 100}%` }}
+   905→              transition={{ duration: 0.6, delay: 0.1 * i }}
+   906→              className="h-full rounded-full"
+   907→              style={{ background: d.color || color }}
+   908→            />
+   909→          </div>
+   910→        </div>
+   911→      ))}
+   912→    </div>
+   913→  )
+   914→}
+   915→
+   916→function DonutChart({ data }: { data: Array<{ label: string; count: number; color: string }> }) {
+   917→  const total = data.reduce((s, d) => s + d.count, 0) || 1
+   918→  const radius = 56
+   919→  const stroke = 14
+   920→  const circumference = 2 * Math.PI * radius
+   921→
+   922→  // Precompute segment offsets using reduce (no reassignment during render)
+   923→  const segments = data.reduce<Array<{ color: string; dash: number; offset: number }>>(
+   924→    (acc, d) => {
+   925→      const dash = (d.count / total) * circumference
+   926→      const offset = acc.length > 0 ? acc[acc.length - 1].offset + acc[acc.length - 1].dash : 0
+   927→      return [...acc, { color: d.color, dash, offset }]
+   928→    },
+   929→    []
+   930→  )
+   931→
+   932→  return (
+   933→    <div className="flex items-center gap-4">
+   934→      <svg width="140" height="140" viewBox="0 0 140 140" className="shrink-0">
+   935→        <circle cx="70" cy="70" r={radius} fill="none" stroke="#27272a" strokeWidth={stroke} />
+   936→        {segments.map((seg, i) => (
+   937→          <motion.circle
+   938→            key={i}
+   939→            cx="70"
+   940→            cy="70"
+   941→            r={radius}
+   942→            fill="none"
+   943→            stroke={seg.color}
+   944→            strokeWidth={stroke}
+   945→            strokeDasharray={`${seg.dash} ${circumference - seg.dash}`}
+   946→            strokeDashoffset={-seg.offset}
+   947→            transform="rotate(-90 70 70)"
+   948→            initial={{ opacity: 0 }}
+   949→            animate={{ opacity: 1 }}
+   950→            transition={{ delay: 0.1 * i }}
+   951→          />
+   952→        ))}
+   953→        <text
+   954→          x="70"
+   955→          y="65"
+   956→          textAnchor="middle"
+   957→          className="fill-zinc-100 font-bold"
+   958→          style={{ fontSize: 22 }}
+   959→        >
+   960→          {total}
+   961→        </text>
+   962→        <text
+   963→          x="70"
+   964→          y="85"
+   965→          textAnchor="middle"
+   966→          className="fill-zinc-500"
+   967→          style={{ fontSize: 10, letterSpacing: 1 }}
+   968→        >
+   969→          CASES
+   970→        </text>
+   971→      </svg>
+   972→      <div className="space-y-1.5">
+   973→        {data.map((d, i) => (
+   974→          <div key={i} className="flex items-center gap-2 text-xs">
+   975→            <span className="size-2.5 rounded-sm" style={{ background: d.color }} />
+   976→            <span className="text-zinc-400">{d.label}</span>
+   977→            <span className="ml-auto font-mono text-zinc-300">{d.count}</span>
+   978→          </div>
+   979→        ))}
+   980→      </div>
+   981→    </div>
+   982→  )
+   983→}
+   984→
+   985→function Sparkline({ data, color = '#10b981' }: { data: number[]; color?: string }) {
+   986→  const width = 280
+   987→  const height = 50
+   988→  const max = Math.max(...data, 1)
+   989→  const min = Math.min(...data, 0)
+   990→  const range = max - min || 1
+   991→  const step = width / (data.length - 1 || 1)
+   992→
+   993→  const points = data
+   994→    .map((v, i) => `${i * step},${height - ((v - min) / range) * (height - 6) - 3}`)
+   995→    .join(' ')
+   996→
+   997→  return (
+   998→    <svg width={width} height={height} className="w-full">
+   999→      <defs>
+  1000→        <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
+  1001→          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+  1002→          <stop offset="100%" stopColor={color} stopOpacity="0" />
+  1003→        </linearGradient>
+  1004→      </defs>
+  1005→      <polyline
+  1006→        points={`0,${height} ${points} ${width},${height}`}
+  1007→        fill="url(#spark-fill)"
+  1008→        stroke="none"
+  1009→      />
+  1010→      <motion.polyline
+  1011→        points={points}
+  1012→        fill="none"
+  1013→        stroke={color}
+  1014→        strokeWidth="2"
+  1015→        strokeLinejoin="round"
+  1016→        strokeLinecap="round"
+  1017→        initial={{ pathLength: 0 }}
+  1018→        animate={{ pathLength: 1 }}
+  1019→        transition={{ duration: 1 }}
+  1020→      />
+  1021→    </svg>
+  1022→  )
+  1023→}
+  1024→
+  1025→// ===== Timeline Tab =====
+  1026→
+  1027→function TimelineTab({ events }: { events: TimelineEvent[] }) {
+  1028→  return (
+  1029→    <ScrollArea className="max-h-[55vh] pr-4">
+  1030→      <div className="relative space-y-1 pl-2">
+  1031→        {events.map((ev, idx) => {
+  1032→          const Icon = TIMELINE_ICONS[ev.type]
+  1033→          const colorCls = TIMELINE_COLORS[ev.type]
+  1034→          const isLast = idx === events.length - 1
+  1035→          return (
+  1036→            <div key={ev.id} className="relative flex gap-3 pb-5">
+  1037→              {!isLast && (
+  1038→                <div className="absolute left-[15px] top-7 h-[calc(100%-1rem)] w-px bg-zinc-800" />
+  1039→              )}
+  1040→              <div
+  1041→                className={cn(
+  1042→                  'z-10 flex size-8 shrink-0 items-center justify-center rounded-full border',
+  1043→                  colorCls
+  1044→                )}
+  1045→              >
+  1046→                <Icon className="size-3.5" />
+  1047→              </div>
+  1048→              <div className="min-w-0 flex-1 pt-0.5">
+  1049→                <div className="flex items-center justify-between gap-2">
+  1050→                  <p className="text-sm font-medium text-zinc-200">{ev.type}</p>
+  1051→                  <span className="shrink-0 text-[11px] text-zinc-500">
+  1052→                    {formatRelativeTime(ev.timestamp)}
+  1053→                  </span>
+  1054→                </div>
+  1055→                <p className="mt-0.5 text-xs text-zinc-400">{ev.description}</p>
+  1056→                <p className="mt-0.5 text-[11px] text-zinc-600">by {ev.user}</p>
+  1057→              </div>
+  1058→            </div>
+  1059→          )
+  1060→        })}
+  1061→      </div>
+  1062→    </ScrollArea>
+  1063→  )
+  1064→}
+  1065→
+  1066→// ===== Evidence Tab =====
+  1067→
+  1068→function EvidenceTab({
+  1069→  evidence,
+  1070→  onAdd,
+  1071→}: {
+  1072→  evidence: Evidence[]
+  1073→  onAdd: () => void
+  1074→}) {
+  1075→  return (
+  1076→    <div className="space-y-3">
+  1077→      <div className="flex items-center justify-between">
+  1078→        <p className="text-sm text-zinc-400">
+  1079→          {evidence.length} evidence item{evidence.length !== 1 ? 's' : ''}
+  1080→        </p>
+  1081→        <Button size="sm" onClick={onAdd} className="siem-btn-glow bg-emerald-600 hover:bg-emerald-500 text-white">
+  1082→          <Paperclip className="mr-1.5 size-3.5" />
+  1083→          Add Evidence
+  1084→        </Button>
+  1085→      </div>
+  1086→      <ScrollArea className="max-h-[50vh] pr-2">
+  1087→        <div className="space-y-2">
+  1088→          {evidence.map((ev) => {
+  1089→            const Icon = EVIDENCE_ICONS[ev.type]
+  1090→            return (
+  1091→              <motion.div
+  1092→                key={ev.id}
+  1093→                initial={{ opacity: 0, x: -10 }}
+  1094→                animate={{ opacity: 1, x: 0 }}
+  1095→                className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 transition-colors hover:border-zinc-700"
+  1096→              >
+  1097→                <div className="flex items-start gap-3">
+  1098→                  <div className="rounded-md bg-zinc-800 p-2">
+  1099→                    <Icon className="size-4 text-emerald-400" />
+  1100→                  </div>
+  1101→                  <div className="min-w-0 flex-1">
+  1102→                    <div className="flex items-start justify-between gap-2">
+  1103→                      <div className="min-w-0">
+  1104→                        <p className="truncate text-sm font-medium text-zinc-200">{ev.filename}</p>
+  1105→                        <p className="mt-0.5 text-xs text-zinc-500">
+  1106→                          {ev.type} · {ev.size} · by {ev.uploadedBy} · {formatRelativeTime(ev.uploadedAt)}
+  1107→                        </p>
+  1108→                      </div>
+  1109→                      <div className="flex shrink-0 gap-1">
+  1110→                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-zinc-400 hover:text-zinc-200">
+  1111→                          <Eye className="mr-1 size-3" />
+  1112→                          View
+  1113→                        </Button>
+  1114→                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-zinc-400 hover:text-emerald-400">
+  1115→                          <Download className="mr-1 size-3" />
+  1116→                          Download
+  1117→                        </Button>
+  1118→                      </div>
+  1119→                    </div>
+  1120→                    <p className="mt-1.5 text-xs text-zinc-400">{ev.description}</p>
+  1121→                  </div>
+  1122→                </div>
+  1123→              </motion.div>
+  1124→            )
+  1125→          })}
+  1126→        </div>
+  1127→      </ScrollArea>
+  1128→    </div>
+  1129→  )
+  1130→}
+  1131→
+  1132→// ===== Comments Tab =====
+  1133→
+  1134→function CommentsTab({ comments }: { comments: CaseComment[] }) {
+  1135→  const [text, setText] = useState('')
+  1136→
+  1137→  const handleSubmit = () => {
+  1138→    if (!text.trim()) return
+  1139→    toast.success('Comment posted', { description: 'Your comment has been added to the case.' })
+  1140→    setText('')
+  1141→  }
+  1142→
+  1143→  return (
+  1144→    <div className="flex h-full flex-col">
+  1145→      <ScrollArea className="max-h-[45vh] flex-1 pr-2">
+  1146→        <div className="space-y-3">
+  1147→          {comments.map((c) => (
+  1148→            <motion.div
+  1149→              key={c.id}
+  1150→              initial={{ opacity: 0, y: 8 }}
+  1151→              animate={{ opacity: 1, y: 0 }}
+  1152→              className="flex gap-3"
+  1153→            >
+  1154→              <AssigneeAvatar initials={c.initials} color={c.color} size="md" />
+  1155→              <div className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+  1156→                <div className="flex items-center gap-2">
+  1157→                  <span className="text-sm font-medium text-zinc-200">{c.author}</span>
+  1158→                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+  1159→                    {c.role}
+  1160→                  </span>
+  1161→                  <span className="ml-auto text-[11px] text-zinc-500">
+  1162→                    {formatRelativeTime(c.createdAt)}
+  1163→                  </span>
+  1164→                </div>
+  1165→                <p className="mt-1.5 text-sm text-zinc-300">{c.text}</p>
+  1166→              </div>
+  1167→            </motion.div>
+  1168→          ))}
+  1169→        </div>
+  1170→      </ScrollArea>
+  1171→      <Separator className="my-3 bg-zinc-800" />
+  1172→      <div className="flex gap-2">
+  1173→        <Input
+  1174→          value={text}
+  1175→          onChange={(e) => setText(e.target.value)}
+  1176→          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSubmit())}
+  1177→          placeholder="Reply to this case..."
+  1178→          className="flex-1 border-zinc-800 bg-zinc-900/50 text-zinc-200 placeholder:text-zinc-600"
+  1179→        />
+  1180→        <Button
+  1181→          onClick={handleSubmit}
+  1182→          disabled={!text.trim()}
+  1183→          className="siem-btn-glow bg-emerald-600 text-white hover:bg-emerald-500"
+  1184→        >
+  1185→          <Send className="mr-1.5 size-3.5" />
+  1186→          Reply
+  1187→        </Button>
+  1188→      </div>
+  1189→    </div>
+  1190→  )
+  1191→}
+  1192→
+  1193→// ===== Linked Items Tab =====
+  1194→
+  1195→function LinkedItemsTab({ items }: { items: LinkedItem[] }) {
+  1196→  return (
+  1197→    <div className="space-y-2">
+  1198→      <p className="text-sm text-zinc-400">{items.length} linked item{items.length !== 1 ? 's' : ''}</p>
+  1199→      <ScrollArea className="max-h-[50vh] pr-2">
+  1200→        <div className="space-y-2">
+  1201→          {items.map((item) => (
+  1202→            <div
+  1203→              key={item.id}
+  1204→              className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 transition-colors hover:border-zinc-700"
+  1205→            >
+  1206→              <div className={cn('rounded-md border px-2 py-1 text-[11px] font-semibold', LINKED_ITEM_COLORS[item.type])}>
+  1207→                {item.type}
+  1208→              </div>
+  1209→              <div className="min-w-0 flex-1">
+  1210→                <p className="truncate text-sm font-medium text-zinc-200">{item.label}</p>
+  1211→                <p className="font-mono text-[11px] text-zinc-500">{item.id}</p>
+  1212→              </div>
+  1213→              <div className="flex items-center gap-1.5">
+  1214→                <span className={cn('size-2 rounded-full', SEVERITY_DOT_COLORS[item.severity])} />
+  1215→                <span className="text-[11px] capitalize text-zinc-400">{item.severity}</span>
+  1216→              </div>
+  1217→              <ChevronRight className="size-4 text-zinc-600" />
+  1218→            </div>
+  1219→          ))}
+  1220→        </div>
+  1221→      </ScrollArea>
+  1222→    </div>
+  1223→  )
+  1224→}
+  1225→
+  1226→// ===== Case Detail Sheet =====
+  1227→
+  1228→function CaseDetailSheet({
+  1229→  caseItem,
+  1230→  open,
+  1231→  onOpenChange,
+  1232→}: {
+  1233→  caseItem: CaseItem | null
+  1234→  open: boolean
+  1235→  onOpenChange: (open: boolean) => void
+  1236→}) {
+  1237→  const [activeTab, setActiveTab] = useState('timeline')
+  1238→  const [status, setStatus] = useState<CaseStatus | null>(null)
+  1239→
+  1240→  if (!caseItem) return null
+  1241→  const currentStatus = status || caseItem.status
+  1242→
+  1243→  const handleStatusChange = (newStatus: CaseStatus) => {
+  1244→    setStatus(newStatus)
+  1245→    toast.success(`Status changed to "${newStatus}"`, { description: `Case ${caseItem.id} updated.` })
+  1246→  }
+  1247→
+  1248→  const handleCloseCase = () => {
+  1249→    setStatus('Closed')
+  1250→    toast.success('Case closed', { description: `${caseItem.id} has been marked as Closed.` })
+  1251→  }
+  1252→
+  1253→  const handleReassign = () => {
+  1254→    toast.info('Reassign dialog', { description: 'Reassignment workflow would open here.' })
+  1255→  }
+  1256→
+  1257→  const handleAddEvidence = () => {
+  1258→    toast.success('Evidence upload started', { description: 'Simulated upload in progress...' })
+  1259→  }
+  1260→
+  1261→  return (
+  1262→    <Sheet open={open} onOpenChange={onOpenChange}>
+  1263→      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto border-zinc-800 bg-zinc-950 p-0">
+  1264→        <SheetHeader className="border-b border-zinc-800 bg-zinc-900/40 p-4">
+  1265→          <div className="flex items-start justify-between gap-3 pr-8">
+  1266→            <div className="min-w-0 flex-1">
+  1267→              <div className="flex items-center gap-2">
+  1268→                <span className="font-mono text-xs text-emerald-400">{caseItem.id}</span>
+  1269→                <CasePriorityBadge priority={caseItem.priority} />
+  1270→                <CaseStatusBadge status={currentStatus} />
+  1271→              </div>
+  1272→              <SheetTitle className="mt-2 text-left text-lg font-semibold text-zinc-100">
+  1273→                {caseItem.title}
+  1274→              </SheetTitle>
+  1275→              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+  1276→                <span className="inline-flex items-center gap-1">
+  1277→                  <Shield className="size-3" />
+  1278→                  {caseItem.category}
+  1279→                </span>
+  1280→                <span className="inline-flex items-center gap-1">
+  1281→                  <UserCheck className="size-3" />
+  1282→                  {caseItem.assignee.name}
+  1283→                </span>
+  1284→                <span className="inline-flex items-center gap-1">
+  1285→                  <Clock className="size-3" />
+  1286→                  Created {formatRelativeTime(caseItem.createdAt)}
+  1287→                </span>
+  1288→              </div>
+  1289→            </div>
+  1290→          </div>
+  1291→        </SheetHeader>
+  1292→
+  1293→        <div className="space-y-4 p-4">
+  1294→          {/* Description */}
+  1295→          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+  1296→            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-400">
+  1297→              Description
+  1298→            </h4>
+  1299→            <p className="text-sm leading-relaxed text-zinc-300">{caseItem.description}</p>
+  1300→            {caseItem.tags.length > 0 && (
+  1301→              <div className="mt-2.5 flex flex-wrap gap-1.5">
+  1302→                {caseItem.tags.map((tag) => (
+  1303→                  <span
+  1304→                    key={tag}
+  1305→                    className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400"
+  1306→                  >
+  1307→                    #{tag}
+  1308→                  </span>
+  1309→                ))}
+  1310→              </div>
+  1311→            )}
+  1312→          </div>
+  1313→
+  1314→          {/* Tabs */}
+  1315→          <Tabs value={activeTab} onValueChange={setActiveTab}>
+  1316→            <TabsList className="grid w-full grid-cols-4 bg-zinc-900/60">
+  1317→              <TabsTrigger value="timeline" className="text-xs data-[state=active]:bg-emerald-900/30 data-[state=active]:text-emerald-400">
+  1318→                <Clock className="mr-1 size-3" />
+  1319→                Timeline
+  1320→              </TabsTrigger>
+  1321→              <TabsTrigger value="evidence" className="text-xs data-[state=active]:bg-emerald-900/30 data-[state=active]:text-emerald-400">
+  1322→                <Paperclip className="mr-1 size-3" />
+  1323→                Evidence ({caseItem.evidence.length})
+  1324→              </TabsTrigger>
+  1325→              <TabsTrigger value="comments" className="text-xs data-[state=active]:bg-emerald-900/30 data-[state=active]:text-emerald-400">
+  1326→                <MessageSquare className="mr-1 size-3" />
+  1327→                Comments ({caseItem.comments.length})
+  1328→              </TabsTrigger>
+  1329→              <TabsTrigger value="linked" className="text-xs data-[state=active]:bg-emerald-900/30 data-[state=active]:text-emerald-400">
+  1330→                <Link2 className="mr-1 size-3" />
+  1331→                Linked ({caseItem.linkedItems.length})
+  1332→              </TabsTrigger>
+  1333→            </TabsList>
+  1334→
+  1335→            <TabsContent value="timeline" className="mt-3">
+  1336→              <TimelineTab events={caseItem.timeline} />
+  1337→            </TabsContent>
+  1338→            <TabsContent value="evidence" className="mt-3">
+  1339→              <EvidenceTab evidence={caseItem.evidence} onAdd={handleAddEvidence} />
+  1340→            </TabsContent>
+  1341→            <TabsContent value="comments" className="mt-3">
+  1342→              <CommentsTab comments={caseItem.comments} />
+  1343→            </TabsContent>
+  1344→            <TabsContent value="linked" className="mt-3">
+  1345→              <LinkedItemsTab items={caseItem.linkedItems} />
+  1346→            </TabsContent>
+  1347→          </Tabs>
+  1348→        </div>
+  1349→
+  1350→        <SheetFooter className="border-t border-zinc-800 bg-zinc-900/40 p-3">
+  1351→          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+  1352→            <DropdownMenu>
+  1353→              <DropdownMenuTrigger asChild>
+  1354→                <Button variant="outline" size="sm" className="border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800">
+  1355→                  <Activity className="mr-1.5 size-3.5" />
+  1356→                  Change Status
+  1357→                </Button>
+  1358→              </DropdownMenuTrigger>
+  1359→              <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900">
+  1360→                <DropdownMenuLabel className="text-zinc-500">Set Status</DropdownMenuLabel>
+  1361→                <DropdownMenuSeparator className="bg-zinc-800" />
+  1362→                {(Object.keys(STATUS_CONFIG) as CaseStatus[]).map((s) => (
+  1363→                  <DropdownMenuItem
+  1364→                    key={s}
+  1365→                    onClick={() => handleStatusChange(s)}
+  1366→                    disabled={s === currentStatus}
+  1367→                    className="text-zinc-300 focus:bg-zinc-800 focus:text-zinc-100"
+  1368→                  >
+  1369→                    <span className={cn('mr-2 size-2 rounded-full', STATUS_CONFIG[s].dot)} />
+  1370→                    {s}
+  1371→                  </DropdownMenuItem>
+  1372→                ))}
+  1373→              </DropdownMenuContent>
+  1374→            </DropdownMenu>
+  1375→            <Button
+  1376→              variant="outline"
+  1377→              size="sm"
+  1378→              onClick={handleReassign}
+  1379→              className="border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+  1380→            >
+  1381→              <UserPlus className="mr-1.5 size-3.5" />
+  1382→              Reassign
+  1383→            </Button>
+  1384→            <Button
+  1385→              size="sm"
+  1386→              onClick={handleCloseCase}
+  1387→              disabled={currentStatus === 'Closed'}
+  1388→              className="siem-btn-glow bg-emerald-600 text-white hover:bg-emerald-500"
+  1389→            >
+  1390→              <CheckCircle2 className="mr-1.5 size-3.5" />
+  1391→              Close Case
+  1392→            </Button>
+  1393→          </div>
+  1394→        </SheetFooter>
+  1395→      </SheetContent>
+  1396→    </Sheet>
+  1397→  )
+  1398→}
+  1399→
+  1400→// ===== New Case Dialog =====
+  1401→
+  1402→function NewCaseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  1403→  const [title, setTitle] = useState('')
+  1404→  const [description, setDescription] = useState('')
+  1405→  const [priority, setPriority] = useState<CasePriority>('P2')
+  1406→  const [category, setCategory] = useState<CaseCategory>('Malware')
+  1407→  const [assignee, setAssignee] = useState(ANALYSTS[0].name)
+  1408→  const [tags, setTags] = useState('')
+  1409→  const [relatedAlert, setRelatedAlert] = useState('')
+  1410→  const [relatedIncident, setRelatedIncident] = useState('')
+  1411→
+  1412→  const reset = () => {
+  1413→    setTitle('')
+  1414→    setDescription('')
+  1415→    setPriority('P2')
+  1416→    setCategory('Malware')
+  1417→    setAssignee(ANALYSTS[0].name)
+  1418→    setTags('')
+  1419→    setRelatedAlert('')
+  1420→    setRelatedIncident('')
+  1421→  }
+  1422→
+  1423→  const handleSubmit = () => {
+  1424→    if (!title.trim()) {
+  1425→      toast.error('Title required', { description: 'Please provide a case title.' })
+  1426→      return
+  1427→    }
+  1428→    toast.success('Case created', {
+  1429→      description: `Case "${title}" has been created with ${priority} priority.`,
+  1430→    })
+  1431→    reset()
+  1432→    onOpenChange(false)
+  1433→  }
+  1434→
+  1435→  return (
+  1436→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1437→      <DialogContent className="max-w-lg border-zinc-800 bg-zinc-950">
+  1438→        <DialogHeader>
+  1439→          <DialogTitle className="flex items-center gap-2 text-zinc-100">
+  1440→            <Briefcase className="size-4 text-emerald-400" />
+  1441→            Create New Case
+  1442→          </DialogTitle>
+  1443→          <DialogDescription className="text-zinc-400">
+  1444→            Open a new security case for investigation and tracking.
+  1445→          </DialogDescription>
+  1446→        </DialogHeader>
+  1447→
+  1448→        <div className="space-y-3">
+  1449→          <div className="space-y-1.5">
+  1450→            <Label htmlFor="case-title" className="text-xs text-zinc-400">Title *</Label>
+  1451→            <Input
+  1452→              id="case-title"
+  1453→              value={title}
+  1454→              onChange={(e) => setTitle(e.target.value)}
+  1455→              placeholder="Brief descriptive title"
+  1456→              className="border-zinc-800 bg-zinc-900/50 text-zinc-200 placeholder:text-zinc-600"
+  1457→            />
+  1458→          </div>
+  1459→
+  1460→          <div className="space-y-1.5">
+  1461→            <Label htmlFor="case-desc" className="text-xs text-zinc-400">Description</Label>
+  1462→            <Textarea
+  1463→              id="case-desc"
+  1464→              value={description}
+  1465→              onChange={(e) => setDescription(e.target.value)}
+  1466→              placeholder="Detailed case description..."
+  1467→              rows={3}
+  1468→              className="resize-none border-zinc-800 bg-zinc-900/50 text-zinc-200 placeholder:text-zinc-600"
+  1469→            />
+  1470→          </div>
+  1471→
+  1472→          <div className="grid grid-cols-2 gap-3">
+  1473→            <div className="space-y-1.5">
+  1474→              <Label className="text-xs text-zinc-400">Priority</Label>
+  1475→              <Select value={priority} onValueChange={(v) => setPriority(v as CasePriority)}>
+  1476→                <SelectTrigger className="border-zinc-800 bg-zinc-900/50 text-zinc-200">
+  1477→                  <SelectValue />
+  1478→                </SelectTrigger>
+  1479→                <SelectContent className="border-zinc-800 bg-zinc-900">
+  1480→                  {PRIORITIES.map((p) => (
+  1481→                    <SelectItem key={p} value={p} className="text-zinc-200 focus:bg-zinc-800">{p}</SelectItem>
+  1482→                  ))}
+  1483→                </SelectContent>
+  1484→              </Select>
+  1485→            </div>
+  1486→            <div className="space-y-1.5">
+  1487→              <Label className="text-xs text-zinc-400">Category</Label>
+  1488→              <Select value={category} onValueChange={(v) => setCategory(v as CaseCategory)}>
+  1489→                <SelectTrigger className="border-zinc-800 bg-zinc-900/50 text-zinc-200">
+  1490→                  <SelectValue />
+  1491→                </SelectTrigger>
+  1492→                <SelectContent className="border-zinc-800 bg-zinc-900">
+  1493→                  {CATEGORIES.map((c) => (
+  1494→                    <SelectItem key={c} value={c} className="text-zinc-200 focus:bg-zinc-800">{c}</SelectItem>
+  1495→                  ))}
+  1496→                </SelectContent>
+  1497→              </Select>
+  1498→            </div>
+  1499→          </div>
+  1500→
+  1501→          <div className="space-y-1.5">
+  1502→            <Label className="text-xs text-zinc-400">Assignee</Label>
+  1503→            <Select value={assignee} onValueChange={setAssignee}>
+  1504→              <SelectTrigger className="border-zinc-800 bg-zinc-900/50 text-zinc-200">
+  1505→                <SelectValue />
+  1506→              </SelectTrigger>
+  1507→              <SelectContent className="border-zinc-800 bg-zinc-900">
+  1508→                {ANALYSTS.map((a) => (
+  1509→                  <SelectItem key={a.name} value={a.name} className="text-zinc-200 focus:bg-zinc-800">{a.name}</SelectItem>
+  1510→                ))}
+  1511→              </SelectContent>
+  1512→            </Select>
+  1513→          </div>
+  1514→
+  1515→          <div className="space-y-1.5">
+  1516→            <Label htmlFor="case-tags" className="text-xs text-zinc-400">Tags (comma-separated)</Label>
+  1517→            <Input
+  1518→              id="case-tags"
+  1519→              value={tags}
+  1520→              onChange={(e) => setTags(e.target.value)}
+  1521→              placeholder="malware, edr, file-server"
+  1522→              className="border-zinc-800 bg-zinc-900/50 text-zinc-200 placeholder:text-zinc-600"
+  1523→            />
+  1524→          </div>
+  1525→
+  1526→          <div className="grid grid-cols-2 gap-3">
+  1527→            <div className="space-y-1.5">
+  1528→              <Label htmlFor="case-alert" className="text-xs text-zinc-400">Related Alert ID</Label>
+  1529→              <Input
+  1530→                id="case-alert"
+  1531→                value={relatedAlert}
+  1532→                onChange={(e) => setRelatedAlert(e.target.value)}
+  1533→                placeholder="ALERT-XXXXX (optional)"
+  1534→                className="border-zinc-800 bg-zinc-900/50 font-mono text-xs text-zinc-200 placeholder:text-zinc-600"
+  1535→              />
+  1536→            </div>
+  1537→            <div className="space-y-1.5">
+  1538→              <Label htmlFor="case-inc" className="text-xs text-zinc-400">Related Incident ID</Label>
+  1539→              <Input
+  1540→                id="case-inc"
+  1541→                value={relatedIncident}
+  1542→                onChange={(e) => setRelatedIncident(e.target.value)}
+  1543→                placeholder="INC-XXXX (optional)"
+  1544→                className="border-zinc-800 bg-zinc-900/50 font-mono text-xs text-zinc-200 placeholder:text-zinc-600"
+  1545→              />
+  1546→            </div>
+  1547→          </div>
+  1548→        </div>
+  1549→
+  1550→        <DialogFooter className="gap-2">
+  1551→          <Button variant="outline" onClick={() => onOpenChange(false)} className="border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800">
+  1552→            Cancel
+  1553→          </Button>
+  1554→          <Button onClick={handleSubmit} className="siem-btn-glow bg-emerald-600 text-white hover:bg-emerald-500">
+  1555→            <Plus className="mr-1.5 size-4" />
+  1556→            Create Case
+  1557→          </Button>
+  1558→        </DialogFooter>
+  1559→      </DialogContent>
+  1560→    </Dialog>
+  1561→  )
+  1562→}
+  1563→
+  1564→// ===== Statistics Panel =====
+  1565→
+  1566→function StatisticsPanel({ cases }: { cases: CaseItem[] }) {
+  1567→  const byPriority = useMemo(() => {
+  1568→    return PRIORITIES.map((p) => ({
+  1569→      label: p,
+  1570→      count: cases.filter((c) => c.priority === p).length,
+  1571→      color: p === 'P1' ? '#ef4444' : p === 'P2' ? '#f59e0b' : p === 'P3' ? '#3b82f6' : '#71717a',
+  1572→    }))
+  1573→  }, [cases])
+  1574→
+  1575→  const byStatus = useMemo(() => {
+  1576→    const statuses: CaseStatus[] = ['Open', 'In Progress', 'Pending Review', 'Closed']
+  1577→    const colors: Record<CaseStatus, string> = {
+  1578→      Open: '#3b82f6',
+  1579→      'In Progress': '#f59e0b',
+  1580→      'Pending Review': '#a855f7',
+  1581→      Closed: '#10b981',
+  1582→    }
+  1583→    return statuses.map((s) => ({
+  1584→      label: s,
+  1585→      count: cases.filter((c) => c.status === s).length,
+  1586→      color: colors[s],
+  1587→    }))
+  1588→  }, [cases])
+  1589→
+  1590→  const byCategory = useMemo(() => {
+  1591→    const colors: Record<CaseCategory, string> = {
+  1592→      Malware: '#ef4444',
+  1593→      Phishing: '#f59e0b',
+  1594→      'Insider Threat': '#a855f7',
+  1595→      'Data Breach': '#ec4899',
+  1596→      'Policy Violation': '#71717a',
+  1597→      Other: '#06b6d4',
+  1598→    }
+  1599→    return CATEGORIES.map((c) => ({
+  1600→      label: c,
+  1601→      count: cases.filter((caseItem) => caseItem.category === c).length,
+  1602→      color: colors[c],
+  1603→    })).filter((d) => d.count > 0)
+  1604→  }, [cases])
+  1605→
+  1606→  // Mock 7-day resolution trend
+  1607→  const resolutionTrend = useMemo(() => [3, 5, 2, 7, 4, 6, 5], [])
+  1608→
+  1609→  return (
+  1610→    <Card className="siem-card-glow border-zinc-800 bg-zinc-900/40">
+  1611→      <CardHeader className="pb-3">
+  1612→        <CardTitle className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
+  1613→          <GitBranch className="size-4 text-emerald-400" />
+  1614→          Case Statistics
+  1615→        </CardTitle>
+  1616→      </CardHeader>
+  1617→      <CardContent className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+  1618→        <div>
+  1619→          <h5 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+  1620→            By Priority
+  1621→          </h5>
+  1622→          <HorizontalBarChart data={byPriority} color="#10b981" />
+  1623→        </div>
+  1624→        <div>
+  1625→          <h5 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+  1626→            By Status
+  1627→          </h5>
+  1628→          <DonutChart data={byStatus} />
+  1629→        </div>
+  1630→        <div>
+  1631→          <h5 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+  1632→            By Category
+  1633→          </h5>
+  1634→          <HorizontalBarChart data={byCategory} color="#06b6d4" />
+  1635→        </div>
+  1636→        <div>
+  1637→          <h5 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+  1638→            Resolution Trend (7d)
+  1639→          </h5>
+  1640→          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+  1641→            <Sparkline data={resolutionTrend} />
+  1642→            <div className="mt-1 flex justify-between text-[10px] text-zinc-600">
+  1643→              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+  1644→                <span key={d}>{d}</span>
+  1645→              ))}
+  1646→            </div>
+  1647→            <p className="mt-2 text-xs text-zinc-400">
+  1648→              Total closed: <span className="font-mono text-emerald-400">{resolutionTrend.reduce((a, b) => a + b, 0)}</span>
+  1649→            </p>
+  1650→          </div>
+  1651→        </div>
+  1652→      </CardContent>
+  1653→    </Card>
+  1654→  )
+  1655→}
+  1656→
+  1657→// ===== Main Component =====
+  1658→
+  1659→export function CasesView() {
+  1660→  const [activeTab, setActiveTab] = useState<typeof FILTER_TABS[number]>('All')
+  1661→  const [search, setSearch] = useState('')
+  1662→  const [priorityFilter, setPriorityFilter] = useState<CasePriority | 'all'>('all')
+  1663→  const [categoryFilter, setCategoryFilter] = useState<CaseCategory | 'all'>('all')
+  1664→  const [sortBy, setSortBy] = useState<'createdAt' | 'updatedAt' | 'priority' | 'title'>('updatedAt')
+  1665→  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  1666→  const [selectedCase, setSelectedCase] = useState<CaseItem | null>(null)
+  1667→  const [detailOpen, setDetailOpen] = useState(false)
+  1668→  const [newCaseOpen, setNewCaseOpen] = useState(false)
+  1669→  const [statsOpen, setStatsOpen] = useState(true)
+  1670→
+  1671→  const filteredCases = useMemo(() => {
+  1672→    let result = MOCK_CASES
+  1673→
+  1674→    if (activeTab !== 'All') {
+  1675→      result = result.filter((c) => c.status === activeTab)
+  1676→    }
+  1677→
+  1678→    if (priorityFilter !== 'all') {
+  1679→      result = result.filter((c) => c.priority === priorityFilter)
+  1680→    }
+  1681→
+  1682→    if (categoryFilter !== 'all') {
+  1683→      result = result.filter((c) => c.category === categoryFilter)
+  1684→    }
+  1685→
+  1686→    if (search.trim()) {
+  1687→      const q = search.toLowerCase()
+  1688→      result = result.filter(
+  1689→        (c) =>
+  1690→          c.id.toLowerCase().includes(q) ||
+  1691→          c.title.toLowerCase().includes(q) ||
+  1692→          c.assignee.name.toLowerCase().includes(q)
+  1693→      )
+  1694→    }
+  1695→
+  1696→    const priorityOrder: Record<CasePriority, number> = { P1: 1, P2: 2, P3: 3, P4: 4 }
+  1697→    const sorted = [...result].sort((a, b) => {
+  1698→      let cmp = 0
+  1699→      if (sortBy === 'priority') {
+  1700→        cmp = priorityOrder[a.priority] - priorityOrder[b.priority]
+  1701→      } else if (sortBy === 'title') {
+  1702→        cmp = a.title.localeCompare(b.title)
+  1703→      } else {
+  1704→        cmp = new Date(a[sortBy]).getTime() - new Date(b[sortBy]).getTime()
+  1705→      }
+  1706→      return sortOrder === 'asc' ? cmp : -cmp
+  1707→    })
+  1708→
+  1709→    return sorted
+  1710→  }, [activeTab, search, priorityFilter, categoryFilter, sortBy, sortOrder])
+  1711→
+  1712→  const stats = useMemo(() => {
+  1713→    const open = MOCK_CASES.filter((c) => c.status === 'Open').length
+  1714→    const inProgress = MOCK_CASES.filter((c) => c.status === 'In Progress').length
+  1715→    const closedThisWeek = MOCK_CASES.filter(
+  1716→      (c) => c.status === 'Closed' && new Date(c.updatedAt).getTime() > Date.now() - 7 * 24 * 3600 * 1000
+  1717→    ).length
+  1718→    const closed = MOCK_CASES.filter((c) => c.status === 'Closed' && c.resolutionTime)
+  1719→    return { open, inProgress, closedThisWeek, avgResolution: closed.length ? '~2d 7h' : 'N/A' }
+  1720→  }, [])
+  1721→
+  1722→  const handleRowClick = (caseItem: CaseItem) => {
+  1723→    setSelectedCase(caseItem)
+  1724→    setDetailOpen(true)
+  1725→  }
+  1726→
+  1727→  const toggleSort = (col: typeof sortBy) => {
+  1728→    if (sortBy === col) {
+  1729→      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+  1730→    } else {
+  1731→      setSortBy(col)
+  1732→      setSortOrder('desc')
+  1733→    }
+  1734→  }
+  1735→
+  1736→  const SortIcon = ({ col }: { col: typeof sortBy }) => {
+  1737→    if (sortBy !== col) return <ChevronDown className="size-3 opacity-30" />
+  1738→    return sortOrder === 'asc' ? (
+  1739→      <ChevronUp className="size-3 text-emerald-400" />
+  1740→    ) : (
+  1741→      <ChevronDown className="size-3 text-emerald-400" />
+  1742→    )
+  1743→  }
+  1744→
+  1745→  const tabCounts = useMemo(() => {
+  1746→    const counts: Record<string, number> = { All: MOCK_CASES.length }
+  1747→    FILTER_TABS.slice(1).forEach((t) => {
+  1748→      counts[t] = MOCK_CASES.filter((c) => c.status === t).length
+  1749→    })
+  1750→    return counts
+  1751→  }, [])
+  1752→
+  1753→  return (
+  1754→    <div className="space-y-4 pb-4">
+  1755→      {/* Header */}
+  1756→      <motion.div
+  1757→        initial={{ opacity: 0, y: -8 }}
+  1758→        animate={{ opacity: 1, y: 0 }}
+  1759→        transition={{ duration: 0.3 }}
+  1760→        className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+  1761→      >
+  1762→        <div>
+  1763→          <div className="flex items-center gap-2">
+  1764→            <div className="rounded-lg bg-emerald-500/15 p-2">
+  1765→              <Briefcase className="size-5 text-emerald-400" />
+  1766→            </div>
+  1767→            <div>
+  1768→              <h1 className="text-xl font-bold text-zinc-100">Case Management</h1>
+  1769→              <p className="text-xs text-zinc-500">
+  1770→                Track, investigate, and resolve security cases with evidence and collaboration
+  1771→              </p>
+  1772→            </div>
+  1773→          </div>
+  1774→        </div>
+  1775→        <Button
+  1776→          onClick={() => setNewCaseOpen(true)}
+  1777→          className="siem-btn-glow self-start bg-emerald-600 text-white hover:bg-emerald-500 md:self-auto"
+  1778→        >
+  1779→          <Plus className="mr-1.5 size-4" />
+  1780→          New Case
+  1781→        </Button>
+  1782→      </motion.div>
+  1783→
+  1784→      {/* Stat Cards */}
+  1785→      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+  1786→        <StatCard
+  1787→          icon={FolderOpen}
+  1788→          iconBg="bg-blue-500/15"
+  1789→          iconColor="text-blue-400"
+  1790→          value={stats.open}
+  1791→          label="Open Cases"
+  1792→          trend="+2 today"
+  1793→          trendUp={false}
+  1794→          delay={0}
+  1795→        />
+  1796→        <StatCard
+  1797→          icon={Activity}
+  1798→          iconBg="bg-amber-500/15"
+  1799→          iconColor="text-amber-400"
+  1800→          value={stats.inProgress}
+  1801→          label="In Progress"
+  1802→          trend="3 assignees active"
+  1803→          trendUp
+  1804→          delay={0.05}
+  1805→        />
+  1806→        <StatCard
+  1807→          icon={CheckCircle2}
+  1808→          iconBg="bg-emerald-500/15"
+  1809→          iconColor="text-emerald-400"
+  1810→          value={stats.closedThisWeek}
+  1811→          label="Closed This Week"
+  1812→          trend="+18% vs last"
+  1813→          trendUp
+  1814→          delay={0.1}
+  1815→        />
+  1816→        <StatCard
+  1817→          icon={Clock}
+  1818→          iconBg="bg-purple-500/15"
+  1819→          iconColor="text-purple-400"
+  1820→          value={stats.avgResolution}
+  1821→          label="Avg Resolution"
+  1822→          trend="-4h vs target"
+  1823→          trendUp
+  1824→          delay={0.15}
+  1825→        />
+  1826→      </div>
+  1827→
+  1828→      {/* Filters & Table Card */}
+  1829→      <Card className="border-zinc-800 bg-zinc-900/40">
+  1830→        <CardContent className="p-4">
+  1831→          {/* Filter Tabs */}
+  1832→          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+  1833→            {FILTER_TABS.map((tab) => (
+  1834→              <button
+  1835→                key={tab}
+  1836→                onClick={() => setActiveTab(tab)}
+  1837→                className={cn(
+  1838→                  'siem-filter-glow rounded-md px-3 py-1.5 text-xs font-medium transition-all',
+  1839→                  activeTab === tab
+  1840→                    ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-500/30'
+  1841→                    : 'border border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+  1842→                )}
+  1843→              >
+  1844→                {tab}
+  1845→                <span className={cn(
+  1846→                  'ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+  1847→                  activeTab === tab ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-800 text-zinc-500'
+  1848→                )}>
+  1849→                  {tabCounts[tab] || 0}
+  1850→                </span>
+  1851→              </button>
+  1852→            ))}
+  1853→          </div>
+  1854→
+  1855→          {/* Search + Filters */}
+  1856→          <div className="mb-3 flex flex-wrap items-center gap-2">
+  1857→            <div className="relative min-w-[200px] flex-1">
+  1858→              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
+  1859→              <Input
+  1860→                value={search}
+  1861→                onChange={(e) => setSearch(e.target.value)}
+  1862→                placeholder="Search by case ID, title, or assignee..."
+  1863→                className="border-zinc-800 bg-zinc-900/50 pl-8 text-sm text-zinc-200 placeholder:text-zinc-600"
+  1864→              />
+  1865→            </div>
+  1866→
+  1867→            {/* Priority Filter */}
+  1868→            <div className="flex items-center gap-1">
+  1869→              {(['all', ...PRIORITIES] as const).map((p) => (
+  1870→                <button
+  1871→                  key={p}
+  1872→                  onClick={() => setPriorityFilter(p)}
+  1873→                  className={cn(
+  1874→                    'rounded-md border px-2 py-1.5 text-xs font-medium transition-all',
+  1875→                    priorityFilter === p
+  1876→                      ? p === 'all'
+  1877→                        ? 'border-emerald-500/30 bg-emerald-900/30 text-emerald-400'
+  1878→                        : cn(PRIORITY_CONFIG[p as CasePriority].border, PRIORITY_CONFIG[p as CasePriority].bg, PRIORITY_CONFIG[p as CasePriority].text)
+  1879→                      : 'border-zinc-800 bg-zinc-900/40 text-zinc-500 hover:text-zinc-300'
+  1880→                  )}
+  1881→                >
+  1882→                  {p === 'all' ? 'All P' : p}
+  1883→                </button>
+  1884→              ))}
+  1885→            </div>
+  1886→
+  1887→            {/* Category Filter */}
+  1888→            <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as CaseCategory | 'all')}>
+  1889→              <SelectTrigger className="h-8 w-[160px] border-zinc-800 bg-zinc-900/50 text-xs text-zinc-300">
+  1890→                <Filter className="mr-1.5 size-3" />
+  1891→                <SelectValue />
+  1892→              </SelectTrigger>
+  1893→              <SelectContent className="border-zinc-800 bg-zinc-900">
+  1894→                <SelectItem value="all" className="text-zinc-200 focus:bg-zinc-800">All Categories</SelectItem>
+  1895→                {CATEGORIES.map((c) => (
+  1896→                  <SelectItem key={c} value={c} className="text-zinc-200 focus:bg-zinc-800">{c}</SelectItem>
+  1897→                ))}
+  1898→              </SelectContent>
+  1899→            </Select>
+  1900→          </div>
+  1901→
+  1902→          {/* Table */}
+  1903→          <div className="overflow-x-auto">
+  1904→            <Table>
+  1905→              <TableHeader>
+  1906→                <TableRow className="border-zinc-800 hover:bg-transparent">
+  1907→                  <TableHead className="h-8 cursor-pointer select-none text-[11px] uppercase tracking-wider text-zinc-500" onClick={() => toggleSort('title')}>
+  1908→                    <span className="inline-flex items-center gap-1">Case ID <SortIcon col="title" /></span>
+  1909→                  </TableHead>
+  1910→                  <TableHead className="h-8 text-[11px] uppercase tracking-wider text-zinc-500">Title</TableHead>
+  1911→                  <TableHead className="h-8 text-[11px] uppercase tracking-wider text-zinc-500">Priority</TableHead>
+  1912→                  <TableHead className="h-8 text-[11px] uppercase tracking-wider text-zinc-500">Status</TableHead>
+  1913→                  <TableHead className="h-8 text-[11px] uppercase tracking-wider text-zinc-500">Category</TableHead>
+  1914→                  <TableHead className="h-8 text-[11px] uppercase tracking-wider text-zinc-500">Assignee</TableHead>
+  1915→                  <TableHead className="h-8 cursor-pointer select-none text-[11px] uppercase tracking-wider text-zinc-500" onClick={() => toggleSort('createdAt')}>
+  1916→                    <span className="inline-flex items-center gap-1">Created <SortIcon col="createdAt" /></span>
+  1917→                  </TableHead>
+  1918→                  <TableHead className="h-8 cursor-pointer select-none text-[11px] uppercase tracking-wider text-zinc-500" onClick={() => toggleSort('updatedAt')}>
+  1919→                    <span className="inline-flex items-center gap-1">Updated <SortIcon col="updatedAt" /></span>
+  1920→                  </TableHead>
+  1921→                  <TableHead className="h-8 text-right text-[11px] uppercase tracking-wider text-zinc-500">Actions</TableHead>
+  1922→                </TableRow>
+  1923→              </TableHeader>
+  1924→              <TableBody>
+  1925→                {filteredCases.length === 0 ? (
+  1926→                  <TableRow className="border-zinc-800">
+  1927→                    <TableCell colSpan={9} className="h-24 text-center text-sm text-zinc-500">
+  1928→                      No cases match the current filters.
+  1929→                    </TableCell>
+  1930→                  </TableRow>
+  1931→                ) : (
+  1932→                  filteredCases.map((caseItem) => (
+  1933→                    <TableRow
+  1934→                      key={caseItem.id}
+  1935→                      onClick={() => handleRowClick(caseItem)}
+  1936→                      className="siem-incident-lift cursor-pointer border-zinc-800 hover:bg-zinc-800/30"
+  1937→                    >
+  1938→                      <TableCell className="py-2.5 font-mono text-xs text-emerald-400">{caseItem.id}</TableCell>
+  1939→                      <TableCell className="max-w-[280px] py-2.5">
+  1940→                        <div className="flex items-center gap-2">
+  1941→                          <span className="truncate text-sm font-medium text-zinc-200">{caseItem.title}</span>
+  1942→                          {caseItem.evidence.length > 0 && (
+  1943→                            <Paperclip className="size-3 shrink-0 text-zinc-600" />
+  1944→                          )}
+  1945→                          {caseItem.comments.length > 0 && (
+  1946→                            <MessageSquare className="size-3 shrink-0 text-zinc-600" />
+  1947→                          )}
+  1948→                        </div>
+  1949→                      </TableCell>
+  1950→                      <TableCell className="py-2.5"><CasePriorityBadge priority={caseItem.priority} /></TableCell>
+  1951→                      <TableCell className="py-2.5"><CaseStatusBadge status={caseItem.status} /></TableCell>
+  1952→                      <TableCell className="py-2.5">
+  1953→                        <span className={cn('inline-block rounded border px-1.5 py-0.5 text-[11px]', CATEGORY_CONFIG[caseItem.category])}>
+  1954→                          {caseItem.category}
+  1955→                        </span>
+  1956→                      </TableCell>
+  1957→                      <TableCell className="py-2.5">
+  1958→                        <div className="flex items-center gap-1.5">
+  1959→                          <AssigneeAvatar initials={caseItem.assignee.initials} color={caseItem.assignee.color} />
+  1960→                          <span className="hidden text-xs text-zinc-400 lg:inline">{caseItem.assignee.name}</span>
+  1961→                        </div>
+  1962→                      </TableCell>
+  1963→                      <TableCell className="py-2.5 text-xs text-zinc-500">{formatRelativeTime(caseItem.createdAt)}</TableCell>
+  1964→                      <TableCell className="py-2.5 text-xs text-zinc-500">{formatRelativeTime(caseItem.updatedAt)}</TableCell>
+  1965→                      <TableCell className="py-2.5 text-right">
+  1966→                        <DropdownMenu>
+  1967→                          <DropdownMenuTrigger asChild>
+  1968→                            <Button
+  1969→                              variant="ghost"
+  1970→                              size="sm"
+  1971→                              onClick={(e) => e.stopPropagation()}
+  1972→                              className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800"
+  1973→                            >
+  1974→                              <Filter className="size-3.5" />
+  1975→                            </Button>
+  1976→                          </DropdownMenuTrigger>
+  1977→                          <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900" onClick={(e) => e.stopPropagation()}>
+  1978→                            <DropdownMenuItem onClick={() => handleRowClick(caseItem)} className="text-zinc-300 focus:bg-zinc-800 focus:text-zinc-100">
+  1979→                              <Eye className="mr-2 size-3.5" />
+  1980→                              View Details
+  1981→                            </DropdownMenuItem>
+  1982→                            <DropdownMenuItem onClick={() => toast.info('Edit case', { description: caseItem.id })} className="text-zinc-300 focus:bg-zinc-800 focus:text-zinc-100">
+  1983→                              <FileEdit className="mr-2 size-3.5" />
+  1984→                              Edit Case
+  1985→                            </DropdownMenuItem>
+  1986→                            <DropdownMenuSeparator className="bg-zinc-800" />
+  1987→                            <DropdownMenuItem onClick={() => toast.success('Case escalated', { description: `${caseItem.id} escalated to P1.` })} className="text-zinc-300 focus:bg-zinc-800 focus:text-zinc-100">
+  1988→                              <Zap className="mr-2 size-3.5" />
+  1989→                              Escalate
+  1990→                            </DropdownMenuItem>
+  1991→                          </DropdownMenuContent>
+  1992→                        </DropdownMenu>
+  1993→                      </TableCell>
+  1994→                    </TableRow>
+  1995→                  ))
+  1996→                )}
+  1997→              </TableBody>
+  1998→            </Table>
+  1999→          </div>
+  2000→
+
+[showing lines 1-2000 of 2044; use offset=2001 with limit to continue reading]

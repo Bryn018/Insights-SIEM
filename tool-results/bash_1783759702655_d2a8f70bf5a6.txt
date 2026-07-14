@@ -1,0 +1,422 @@
+# Insights SIEM - Work Log
+
+## Phase 10 Complete — Case Management, Rule Editor (YARA/Sigma), Alerts & Assets Polish
+
+### Project Status (Updated - Phase 10)
+Enterprise SIEM dashboard with **14 views**, **32+ components**, **26+ API routes**, Socket.io real-time (port 3003). Phase 10 adds Case Management view (14th view) with evidence/timeline/comments, a comprehensive 4-step Rule Editor wizard supporting YARA/Sigma/KQL/Lucene with syntax highlighting, and detailed style polish to Alerts (live indicator, group-by, snooze, bulk bar) and Assets (health topology, grid view, scan simulation).
+
+### Current Architecture
+- **Frontend**: Next.js 16 (App Router) with shadcn/ui, Tailwind CSS 4, Zustand state management, framer-motion animations
+- **Backend**: 26+ API routes with Prisma ORM (SQLite), in-memory caching
+- **Real-time**: Socket.io WebSocket mini-service (port 3003) with simulated SIEM events
+- **Views**: Dashboard, Alerts, Incidents, Log Explorer, Threat Hunt, Network Traffic, MITRE ATT&CK, Detection Rules (enhanced), Assets (enhanced), Compliance, Reports, Cases (NEW), SOAR, Settings (14 views)
+- **Components**: 32 SIEM components (added cases-view.tsx)
+
+### QA Status (Phase 10)
+- All 11 API endpoints returning HTTP 200 (dashboard, alerts, incidents, rules, assets, compliance, reports, search, notifications, audit-logs, integrations)
+- All 14 views render without runtime errors (verified via agent-browser)
+- Console: zero errors/warnings (excluding HMR/DevTools info)
+- Lint: 0 errors
+- Dev server: stable, all compiles clean
+
+---
+
+Task ID: 10-0
+Agent: Main Orchestrator
+Task: Phase 10 QA, new features (Case Management, Rule Editor), style polish
+
+Work Log:
+- Reviewed worklog.md to assess Phase 9 status (13 views, 31 components)
+- QA via curl: all 11 API endpoints returning 200
+- QA via agent-browser: verified Dashboard, Network Traffic, Reports, Settings, Cases, Detection Rules, Alerts, Assets views render correctly with no console errors
+- No bugs found during QA - project stable
+- Launched parallel agents for Case Management (10-1) and Rule Editor (10-2)
+- Launched agent for Alerts & Assets style polish (10-3)
+- Final QA: all 14 views render correctly, lint passes clean, no dev server errors
+
+Stage Summary:
+- New view: Case Management (cases-view.tsx, ~2040 lines) with evidence, timeline, comments, linked items
+- New feature: 4-step Rule Editor wizard with YARA/Sigma syntax highlighting, templates library (10 templates)
+- Style polish: Alerts (live indicator, group-by, snooze, bulk bar, severity tints), Assets (health topology, grid view, scan simulation)
+- 10+ new CSS micro-interaction classes
+- View count: 14 (was 13)
+- Component count: 32 (was 31)
+
+---
+
+Task ID: 10-1
+Agent: Case Management Agent
+Task: Create Case Management view with evidence, timeline, comments
+
+Work Log:
+- Created src/components/siem/cases-view.tsx (~2040 lines)
+- Header: Briefcase icon, 4 stat cards (Open Cases, In Progress, Closed This Week, Avg Resolution)
+- Case List: 15 mock cases, 5 filter tabs, search, P1-P4 priority filters, category dropdown, sortable columns
+- Case Detail Sheet: 4 tabs (Timeline with 8 event types, Evidence with type icons, Comments thread, Linked Items)
+- New Case Dialog: Title, Description, Priority, Category, Assignee, Tags, Related IDs
+- Statistics Panel: SVG bar/donut charts for Priority/Status/Category, 7-day resolution trend sparkline
+- Integration: types.ts (added 'cases'), page.tsx (lazy import), sidebar.tsx (Briefcase nav), header.tsx (viewLabel), search-command.tsx (command), use-keyboard-shortcuts.ts (g+c, moved compliance to g+v), shortcuts-help.tsx
+- Fixed lint error: refactored DonutChart with reduce() instead of variable reassignment
+
+Stage Summary:
+- 14th view fully integrated with keyboard shortcuts, search command, sidebar navigation
+- 15 realistic mock cases with full evidence/timeline/comments
+- 4-tab detail drawer with rich interactions
+- Lint: 0 errors
+
+---
+
+Task ID: 10-2
+Agent: Rule Editor Agent
+Task: Add YARA/Sigma rule editor with syntax highlighting to Detection Rules
+
+Work Log:
+- Enhanced src/components/siem/detection-rules-view.tsx (555 → ~1100 lines)
+- 4-Step Rule Editor Wizard: Basic Info → Rule Type → Rule Definition → Schedule & Actions
+- Sigma Editor: 5 YAML templates (Process Creation, Network Connection, File Creation, Registry Mod, Auth), YAML tokenizer
+- YARA Editor: 5 templates (Malware Family, Ransomware, Web Shell, RAT, Exploit Kit), YARA tokenizer
+- CodeEditor: overlay technique (transparent textarea over syntax-highlighted pre with line numbers)
+- Rule Test Panel: simulated 1.5s test with progress, match count, execution time, FP estimate, sample matches
+- Templates Library: 10-card grid (5 Sigma + 5 YARA) with search, type filter, Use Template button
+- Rule Detail: syntax-highlighted source view, Edit/Duplicate/Export buttons
+- CSS: 6 syntax token classes (keyword/string/comment/number/operator/variable), code editor, gutter, wizard cards
+
+Stage Summary:
+- Comprehensive rule editor with 4 query languages (Sigma, YARA, KQL, Lucene)
+- 10 pre-built templates with MITRE technique badges
+- Syntax highlighting via overlay tokenizer technique
+- Test panel with simulated execution
+- Lint: 0 errors
+
+---
+
+Task ID: 10-3
+Agent: Alerts & Assets Polish Agent
+Task: Add style polish to Alerts and Assets views with micro-interactions
+
+Work Log:
+- Added 10+ new CSS classes to globals.css (prefers-reduced-motion aware)
+- Alerts: Live indicator (LIVE/PAUSED pulsing), count-up animation, Group by dropdown, staggered row animations, severity background tints, new-alert pulse, hover-expand preview, Snooze dropdown (15min/1hr/4hr/24hr), bulk action bar
+- Assets: Health topology strip (Healthy/Degraded/Offline %), grid/table view toggle, asset cards with HealthRing SVG, hover quick stats, Scan button with progress, filter pills with "All" option
+- CSS classes: siem-stagger-in, siem-new-pulse, siem-severity-tint-*, siem-health-ring, siem-bulk-bar, siem-card-view, siem-scan-progress, siem-live-dot, siem-paused-dot, siem-hover-preview, siem-count-up-flash
+
+Stage Summary:
+- Alerts: 7+ new interactive features (live, group-by, snooze, bulk, tints, stagger, hover-preview)
+- Assets: 6+ new features (health strip, grid view, health ring, hover stats, scan, filter pills)
+- All animations respect prefers-reduced-motion
+- Lint: 0 errors
+
+## Unresolved Issues / Risks
+- Sandbox 4GB RAM: Dev server uses ~1.2GB after home page compile; concurrent browser + server may OOM
+- Cases view file is ~2040 lines (mostly mock data) - could be compacted if memory issues arise
+- React 19 false-positive nested-button warning (pre-existing, not blocking)
+- WebSocket shows "Disconnected" in footer when socket.io service has connection issues
+- Keyboard shortcut conflict resolved: compliance moved from g+c to g+v (cases now uses g+c)
+
+## Priority Recommendations for Phase 11
+1. Add API endpoints for Cases (CRUD) - currently mock-only
+2. Add API endpoints for Rule Templates - currently mock-only
+3. Add real rule testing backend (YARA/Sigma validation)
+4. Add case-to-incident promotion workflow
+5. Add collaborative case editing (real-time multi-user)
+6. Performance optimization: lazy-load heavy mock data
+7. Add export/import for rules (YAML/Sigma/YARA files)
+8. Add rule versioning and change history
+9. Mobile responsiveness testing for new views
+10. Add evidence file upload to real storage
+
+---
+
+## Phase 9 History (Preserved)
+
+## Phase 9 Complete — Network Traffic View, Style Polish, Dashboard & Settings Enhancements
+
+### Project Status (Updated - Phase 9)
+Enterprise SIEM dashboard with 13 views, 30+ components, 26+ API routes, Socket.io real-time (port 3003). Phase 9 adds Network Traffic Analysis view, comprehensive style polish across all views, enhanced Dashboard with quick actions and live feed improvements, and expanded Settings with User Management, Audit Log, and Data Sources tabs.
+
+### Current Architecture
+- **Frontend**: Next.js 16 (App Router) with shadcn/ui, Tailwind CSS 4, Zustand state management, framer-motion animations
+- **Backend**: 26+ API routes with Prisma ORM (SQLite), in-memory caching
+- **Real-time**: Socket.io WebSocket mini-service (port 3003) with simulated SIEM events
+- **Views**: Dashboard, Alerts, Incidents, Log Explorer, Threat Hunt, Network Traffic, MITRE ATT&CK, Detection Rules, Assets, Compliance, Reports, SOAR, Settings (13 views)
+- **Components**: 31 SIEM components (added network-view.tsx)
+
+---
+
+Task ID: 9-0
+Agent: Main Orchestrator
+Task: Phase 9 QA, bug fixes, style improvements, and new features
+
+Work Log:
+- Read worklog.md to assess Phase 8 status (12 views, 29 components)
+- QA via curl: all 8 core API endpoints returning 200
+- QA via agent-browser: verified Dashboard, Alerts, Threat Hunt, SOAR views render correctly
+- Found bug: MTTA floating point precision (`5.1000000000000005min` displayed in system-diagnostics)
+- Found: Footer shows "Disconnected" correctly (WebSocket not connected in test context)
+- Fixed MTTA/MTTR floating point: `Math.round((base + random * range) * 10) / 10` + `.toFixed(1)` display
+- Launched parallel agents for style polish (9-1) and Network Traffic view (9-2)
+- Launched parallel agents for Dashboard enhancements (9-3) and Settings enhancements (9-4)
+- Final QA: all 13 views render correctly, lint passes clean, no dev server errors
+
+Stage Summary:
+- Bug fix: MTTA/MTTR floating point precision (system-diagnostics.tsx)
+- New view: Network Traffic Analysis (network-view.tsx, ~750 lines) with 7 sections
+- Style polish: 15+ new CSS utility classes across globals.css
+- Dashboard enhancements: Quick actions, threat banner, activity feed, incident lifecycle
+- Settings enhancements: User Management (10 users), Audit Log (20 entries), Data Sources (8 sources)
+- View count: 13 (was 12)
+- Component count: 31 (was 29)
+
+---
+Task ID: 9-1
+Agent: Style Polish Agent
+Task: Add visual polish and detail across SIEM views
+
+Work Log:
+- Added 15+ new CSS utility classes to globals.css
+- Applied siem-card-glow to dashboard stat cards and other cards
+- Applied siem-btn-glow to Create Alert, Create Incident buttons
+- Applied siem-filter-glow to severity filter buttons
+- Applied siem-critical-badge-pulse to critical severity dots
+- Applied siem-incident-lift to incident table rows
+- Applied siem-log-row-hover with emerald accent to log explorer rows
+- Applied siem-brand-gradient with animated shimmer to footer branding
+- Applied siem-connection-pulse to footer connection dot
+- Enhanced SeverityBadge with pulse prop for critical badges
+- Enhanced PriorityBadge with gradient prop
+
+Stage Summary:
+- 15+ new CSS utility classes in globals.css
+- Style improvements applied to: dashboard, alerts, incidents, logs, footer
+- Lint: 0 errors
+
+---
+Task ID: 9-2
+Agent: Network View Agent
+Task: Create Network Traffic Analysis view
+
+Work Log:
+- Created src/components/siem/network-view.tsx (~750 lines)
+- Added 'network' to ViewType in types.ts and store.ts
+- Added lazy import in page.tsx
+- Added Wifi icon nav item in sidebar.tsx (ANALYSIS section)
+- Added viewLabel in header.tsx
+- Added search command in search-command.tsx
+- Added keyboard shortcut (g+n) in use-keyboard-shortcuts.ts
+- Added shortcut help entry in shortcuts-help.tsx
+
+Stage Summary:
+- New component: network-view.tsx with 7 sections (stat cards, flow table, protocol distribution, bandwidth sparkline, top talkers, anomaly detection, geo IP summary)
+- Full integration across 8 files
+- Lint: 0 errors
+
+---
+Task ID: 9-3
+Agent: Dashboard Enhancement Agent
+Task: Enhance dashboard with live activity feed and interactive elements
+
+Work Log:
+- Enhanced Recent Activity: 5 new entries, type icons, severity timeline dots, type badges, Load More, 30s timestamp refresh, live pulse indicator
+- Enhanced Threat Level Banner: animated gradient background, View Details button, shield icons per level
+- Added Quick Actions Row: Run Scan, Export Report, View MITRE Map with emerald outline style
+- Enhanced Stat Cards: click handlers navigate to relevant views
+- Enhanced Recent Alerts: severity icons, time-since-alert progress bars
+- Enhanced Active Incidents: assignee avatar initials, time-since-opened, lifecycle progress bar
+
+Stage Summary:
+- Dashboard has quick actions, enhanced threat banner, richer activity feed, incident lifecycle
+- All navigation handlers wired to store's setActiveView
+- Lint: 0 errors
+
+---
+Task ID: 9-4
+Agent: Settings Enhancement Agent
+Task: Add User Management, Audit Log, and Data Sources tabs to Settings
+
+Work Log:
+- Expanded User Management: 10 users, search/filter, detail dialog, invite dialog, lock/unlock/deactivate actions
+- Created Audit Log tab: 20 entries, 5 action types with colored badges, date/action/search filters, export
+- Created Data Sources tab: 8 sources with type badges, status indicators, connection testing, add source dialog
+- Reordered tabs: General, Users, Data Sources, Audit Log, Integrations, Notifications
+
+Stage Summary:
+- User Management: 10 users, full CRUD, search/filter, detail/invite dialogs
+- Audit Log: 20 entries, 5 action types, date range + action type + search filters, export
+- Data Sources: 8 sources, test connection simulation, add source dialog
+- Lint: 0 errors
+
+## Unresolved Issues / Risks
+- Sandbox 4GB RAM: Dev server uses ~1.2GB after home page compile; concurrent browser + server may OOM
+- React 19 false-positive nested-button warning (pre-existing, not blocking)
+- WebSocket shows "Disconnected" in footer when socket.io service has connection issues
+- Known issue: Sandbox memory limits concurrent API compilation under heavy load
+
+## Priority Recommendations for Phase 10
+1. Add API endpoints for Network Traffic data (currently mock-only)
+2. Add API endpoints for User Management / Audit Log (currently mock-only)
+3. Add alert rule editor with YARA/Sigma rule syntax
+4. Add case management with evidence attachment
+5. Performance optimization: code-split heavy views, reduce bundle size
+6. Add dark/light theme toggle functionality (currently dark-only)
+7. Mobile responsiveness testing and optimization
+
+---
+Original worklog entries preserved below:
+
+---
+Task ID: 9-4
+Agent: Settings Enhancement Agent
+Task: Add User Management, Audit Log, and Data Sources tabs to Settings
+
+Work Log:
+- Read existing settings-view.tsx (1616 lines) to understand current structure: 5 tabs (General, Integrations, Users, Audit Log, Notifications)
+- Identified existing types: UserData with 4 users, AuditLogData with API fetch, IntegrationData with config, roleConfig with Admin(blue)/Analyst(blue)/Responder(amber)/Viewer(zinc)
+- Rewrote entire settings-view.tsx with comprehensive enhancements:
+  1. **User Management Tab**: Expanded from 4 to 10 mock users with realistic names/roles (Marcus Chen-admin, Sarah Kim-analyst, David Okafor-analyst, Elena Petrova-responder, James Whitfield-viewer, Priya Sharma-analyst-Inactive, Alex Morrison-admin, Tom Nguyen-viewer-Locked, Maria Santos-responder, Robert Zhang-analyst). Changed role badge colors: Admin=red, Analyst=emerald, Viewer=zinc as specified. Added Avatar with role-based color backgrounds. Added search by name/email, role dropdown filter, status dropdown filter (Active/Inactive/Locked). Added User Detail dialog with login history, assigned playbooks, recent actions. Added Invite User dialog with name, email, role select, message textarea. Added Lock/Unlock/Deactivate/Reactivate actions. Summary bar with role counts.
+  2. **Audit Log Tab**: Created 20 mock audit entries covering Create(4), Update(6), Delete(2), Login(3), Export(3) actions with color-coded badges (Create=emerald, Update=blue, Delete=red, Login=cyan, Export=amber). Added date range filter (Last 24h/7d/30d), action type filter buttons, search by user/resource. Added Export button triggering toast. Custom scrollbar styling with max-h-96. Summary bar with action type counts.
+  3. **Data Sources Tab**: Created 8 mock data sources (OpenSearch-SIEM, Suricata-Firewall, CrowdStrike-EDR, AWS CloudTrail-Cloud, Azure Sentinel-Cloud-Error, MISP-Threat Intel, VirusTotal-Threat Intel, Fluent Bit-Log Collector-Disconnected). Each card shows: icon, name, type badge, status badge with green/red dot, last sync (relative time), events/day count, Test Connection and Configure buttons. Test Connection simulates progress (1.5-3s delay) then shows success/error toast. Error cards have red border styling. Disconnected cards are dimmed. Added Add Source dialog with name, type select, URL, API key fields.
+  4. **Tab Navigation**: Reordered tabs to General, Users, Data Sources, Audit Log, Integrations, Notifications. Integrations tab now redirects to Data Sources tab.
+  5. **Notifications Tab**: Simplified to inline data instead of separate state (reduced complexity/memory).
+- Lint: passed with no errors
+- Dev server: compiled successfully, no errors
+
+Stage Summary:
+- Complete rewrite of settings-view.tsx with 3 enhanced/new tabs
+- User Management: 10 users, search/filter, detail dialog with login history/playbooks/actions, invite dialog
+- Audit Log: 20 entries, 5 action types with colored badges, date/action/search filters, export
+- Data Sources: 8 sources with type badges, status indicators, connection testing, add source dialog
+- All mock data self-contained (no API dependencies for these tabs)
+- Custom scrollbar styling on overflow areas
+- Dark SOC theme with emerald accent maintained throughout
+
+---
+Task ID: 10-2
+Agent: Rule Editor Agent
+Task: Add YARA/Sigma rule editor with syntax highlighting to Detection Rules
+
+Work Log:
+- Read worklog.md (Phase 9 complete: 13 views, 31 components) and existing detection-rules-view.tsx (555 lines: rules table + simple create dialog)
+- Confirmed PATCH /api/rules/[id] and DELETE endpoints exist for edit/duplicate support
+- Added CSS to src/app/globals.css: `.siem-code-editor` (overlay editor: transparent textarea over syntax-highlighted pre, shared font metrics), `.siem-code-gutter` (line numbers), 6 syntax token classes (`.siem-syntax-keyword`=emerald, `string`=amber, `comment`=zinc-500, `number`=cyan, `operator`=purple, `variable`=pink for YARA $vars), `.siem-wizard-step-active/done`, `.siem-rule-type-card-selected`, `.siem-template-card` hover, `.siem-code-scroll` custom thin scrollbar
+- Rewrote detection-rules-view.tsx (now ~1100 lines) preserving all existing functionality (rules table, filters, toggle, sparkline, MITRE tooltips) and ADDING:
+  1. **Tab toggle** (Rules | Templates) in header with counts
+  2. **4-step Rule Editor Wizard** dialog (replaces simple create dialog):
+     - Step 1 Basic Info: name*, description, category dropdown (6 SOC categories), severity select, tags input with badge preview, MITRE tactic/technique
+     - Step 2 Rule Type: 4 selectable cards (Sigma/YARA/KQL/Lucene) with icons + descriptions + live preview; auto-seeds default template on type change
+     - Step 3 Rule Definition: overlay CodeEditor with line-number gutter + live syntax highlighting, Load Template dropdown (5 Sigma or 5 YARA templates), Fields hint dropdown (20 common log fields), syntax legend, embedded Rule Test Panel
+     - Step 4 Schedule & Actions: schedule select (Real-time/5min/Hourly/Daily), lookback select, threshold, index pattern, 4 alert action toggles (Email/SIEM/Webhook/SOAR), summary card
+     - Wizard progress indicator (clickable back, 4 steps with check/done states), Back/Next/Test Rule/Create-or-Update buttons, per-step validation
+  3. **Sigma editor**: 5 templates (Process Creation, Network Connection, File Creation, Registry Modification, Authentication) with full YAML; YAML tokenizer highlights keys (emerald), values/strings (amber), numbers (cyan), operators (purple), comments (zinc)
+  4. **YARA editor**: 5 templates (Malware Family, Ransomware, Web Shell, RAT, Exploit Kit); YARA tokenizer highlights keywords (emerald), strings/regex (amber), $variables (pink), hex (cyan), comments, operators
+  5. **Rule Test Panel**: Test Rule button runs 1.5s simulated test → progress bar → results: match count, execution time, FP estimate, sample matches table (timestamp/source/matched field/sample value, 3-5 mock rows)
+  6. **Templates Library** (10 cards: 5 Sigma + 5 YARA): type badge, category, MITRE badge, severity, description, "Use Template" button → loads into editor; search by name/category + filter by type
+  7. **Enhanced rule detail**: syntax-highlighted source view (read-only), Edit button (opens wizard in edit mode → PATCH), Duplicate button (POST copy disabled), Export button (downloads .yml/.yara/.txt file + toast)
+- Edit mode wired to PATCH /api/rules/:id; create to POST /api/rules; duplicate to POST with "(Copy)" suffix
+- Fixed invalid Tailwind class `h-4.5` → `h-4`
+- Set pointerEvents:auto on read-only detail pre so source text is selectable
+- Lint: 0 errors on edited files (pre-existing error in unrelated cases-view.tsx)
+- Dev server: compiling cleanly, page serving 200
+
+Stage Summary:
+- Detection Rules view enhanced from 555 → ~1100 lines with full YARA/Sigma rule editor
+- New: 4-step wizard, overlay syntax-highlighted code editor (Sigma YAML + YARA + KQL/Lucene tokenizers), rule test panel with simulated matches, 10-template library with search/filter, enhanced detail with Edit/Duplicate/Export
+- 5 Sigma templates + 5 YARA templates + 10 library cards
+- 6 new CSS syntax classes + 4 editor/wizard component classes in globals.css
+- All existing functionality preserved; lint clean; dark SOC emerald/zinc theme maintained
+
+---
+Task ID: 10-1
+Agent: Case Management Agent
+Task: Create Case Management view with evidence, timeline, comments
+
+Work Log:
+- Read worklog.md, types.ts, store.ts, page.tsx, sidebar.tsx, header.tsx, search-command.tsx, use-keyboard-shortcuts.ts, shortcuts-help.tsx to understand integration patterns
+- Created src/components/siem/cases-view.tsx (~2040 lines) with 5 feature areas:
+  1. Header section: Briefcase icon, title, subtitle, 4 stat cards (Open Cases, In Progress, Closed This Week, Avg Resolution) with colored icon tiles, values, trend indicators
+  2. Case List View: 5 filter tabs (All/Open/In Progress/Pending Review/Closed) with counts, search by ID/title/assignee, P1-P4 priority filter chips, category dropdown (6 categories), sortable table (Case ID, Title, Priority, Status, Category, Assignee avatar, Created, Updated, Actions) with 15 realistic mock cases; priority badges P1=red/P2=amber/P3=blue/P4=zinc; status badges Open=blue/In Progress=amber/Pending Review=purple/Closed=emerald; clickable rows open detail sheet; row actions menu (View/Edit/Escalate)
+  3. Case Detail Sheet (right-side drawer): Header with case ID, title, priority+status badges, category, assignee, created date; Description section with tags; 4 tabs - Timeline (vertical timeline with 8 event types and icons), Evidence (list with type icons, filename, size, uploader, time, description, View/Download buttons + Add Evidence), Comments (4-5 mock comments with avatar/role/text/time + reply input), Linked Items (Alerts/Incidents/IOCs with severity dots); Footer with Change Status dropdown, Reassign button, Close Case button
+  4. New Case Dialog: Title (required), Description textarea, Priority select, Category select, Assignee select, Tags input, Related Alert ID, Related Incident ID inputs, Create button triggers toast notification
+  5. Collapsible Statistics Panel: Cases by Priority (horizontal bar chart with custom SVG), Cases by Status (donut chart with SVG + legend), Cases by Category (horizontal bars), Resolution Trend 7-day sparkline (SVG with gradient fill)
+- Mock data: 15 realistic cases covering Malware/Phishing/Insider Threat/Data Breach/Policy Violation/Other categories; 5 analyst profiles with initials/colors; each case has 1-3 evidence items, 2-4 comments, 3-7 timeline events, 1-3 linked items
+- Applied SOC styling: siem-card-glow on stat/statistics cards, siem-btn-glow on action buttons, siem-incident-lift on case table rows, siem-filter-glow on filter tabs, emerald accent throughout
+- Framer-motion animations: stat card entrance, evidence/comment list items, donut chart segments, bar chart bars, sparkline path draw, drawer/tab transitions
+- Integration (surgical edits only):
+  1. types.ts: Added 'cases' to ViewType union (1 line)
+  2. store.ts: No edit needed - ViewType re-exported from types.ts automatically picks up 'cases' (no view-specific state required; component uses local state)
+  3. page.tsx: Added CasesView dynamic import + `cases: CasesView` to viewComponents record (2 lines)
+  4. sidebar.tsx: Added Briefcase import + `{ id: 'cases', label: 'Cases', icon: Briefcase }` in MANAGEMENT section between Reports and SOAR
+  5. header.tsx: Added `cases: 'Case Management'` to viewLabels record
+  6. search-command.tsx: Added Briefcase import + "Go to Case Management" CommandItem in Quick Navigation
+  7. use-keyboard-shortcuts.ts: Added 'cases' to viewOrder array; reassigned 'c' from compliance to cases (resolved conflict by moving compliance to 'v'); updated docstring comment
+  8. shortcuts-help.tsx: Added 'g then c' for Case Management entry; updated Compliance entry to 'g then v'
+- Resolved lint error react-hooks/immutability: Refactored DonutChart to precompute SVG segment offsets using reduce() instead of variable reassignment during render map
+- Cleaned up unused imports (AnimatePresence, AlertCircle, X, ArrowUpRight, ArrowDownRight, Badge, Avatar, AvatarFallback) - ScrollArea accidentally removed and re-added
+- Lint: 0 errors (verified after all edits)
+- Dev server: GET / 200 in 226ms with 60ms compile; no errors in dev.log
+
+Stage Summary:
+- New component: src/components/siem/cases-view.tsx (~2040 lines) with 5 feature areas and 15 realistic mock cases
+- Full integration across 8 files (types.ts, store.ts implicit via ViewType re-export, page.tsx, sidebar.tsx, header.tsx, search-command.tsx, use-keyboard-shortcuts.ts, shortcuts-help.tsx)
+- View count: 14 (was 13) - new Cases view
+- Component count: 32 (was 31)
+- Keyboard shortcut conflict resolved: 'g then c' now navigates to Cases; Compliance moved to 'g then v'
+- All dark SOC theme styling preserved (zinc-950 bg, emerald accent); existing utility classes siem-card-glow, siem-btn-glow, siem-incident-lift, siem-filter-glow applied
+- Lint: 0 errors; dev server compiles cleanly
+- Note: File is ~2x the suggested 900-1100 line budget due to rich mock data (15 cases × ~40-50 lines each for evidence/comments/timeline/linkedItems arrays); component logic itself is ~1000 lines. Mock data is data, not logic - bundle/runtime impact is minimal. Could be reduced by compacting data to single-line objects if memory becomes a concern.
+
+---
+Task ID: 10-3
+Agent: Alerts & Assets Polish Agent
+Task: Add style polish to Alerts and Assets views with micro-interactions
+
+Work Log:
+- Read worklog.md (Phase 9 complete + 10-1/10-2: 14 views, 32 components) and the three target files (alerts-view.tsx 1746 lines, assets-view.tsx 1281 lines, globals.css 1560 lines)
+- Confirmed store exposes `liveMode` + `toggleLiveMode`; AlertFilters type unchanged (groupBy tracked in local state)
+- Appended 9 new CSS component classes + 2 keyframe helpers to globals.css:
+  1. `.siem-stagger-in` — fade-in-up with `--siem-stagger-i` index-based delay (0–8 capped, 35ms step)
+  2. `.siem-new-pulse` — one-shot emerald ring glow that fades out (1.6s)
+  3. `.siem-severity-tint-critical/high/medium/low` — subtle 10% background tints (red-950/amber-950/blue-950/zinc-900) with hover intensify
+  4. `.siem-health-ring` + track/progress circle classes — SVG circular progress with stroke-dashoffset draw-in animation
+  5. `.siem-bulk-bar` — slide-down + fade-in keyframe for bulk action toolbar
+  6. `.siem-card-view` — hover lift + emerald border tint + soft glow
+  7. `.siem-scan-progress` — animated striped + shimmer overlay progress bar
+  8. `.siem-live-dot` / `.siem-paused-dot` — pulsing emerald dot for live, solid zinc for paused
+  9. `.siem-hover-preview` + `.siem-count-up-flash` — supporting transition + count-up flash
+- All classes respect `prefers-reduced-motion`
+- Alerts view enhancements (surgical edits to alerts-view.tsx):
+  * Added `Layers, Bell, Pause, Play` lucide imports; added `useRef, Fragment` react imports
+  * Wired `liveMode` + `toggleLiveMode` from store
+  * Added local state: `groupBy`, `snoozedAlerts`, `prevTotal`, `newAlertIds`; refs `totalRef`, `alertsRef` to keep fetchAlerts deps minimal
+  * Added `CountUp` helper component (requestAnimationFrame, easeOutCubic, 600ms) for animated total count
+  * Added `severityTintClass`, `GROUP_BY_OPTIONS`, `SNOOZE_DURATIONS` constants
+  * Header: live/paused toggle button with `.siem-live-dot`/`.siem-paused-dot`, total count-up badge with `.siem-count-up-flash` on change, existing filter badge retained
+  * Filter bar: new "Group" dropdown (None/Severity/Source/Category/Status) with active-state badge
+  * Bulk action toolbar: applied `.siem-bulk-bar` class for slide-down animation
+  * Alert rows: pass `staggerIndex`, `isNew`, `snoozedUntil`, `onSnooze`, `onUnsnooze` to row component
+  * Row component: applied `.siem-stagger-in` (style `--siem-stagger-i`), `.siem-severity-tint-*` based on alert.severity, `.siem-new-pulse` when isNew
+  * Row title cell: hover-expand description preview popover (group/relative + group-hover fade/slide in, line-clamp-3)
+  * Row status cell: snooze countdown badge (Bell + "Xm"/"Xh Ym") when snoozedUntil set
+  * Row actions cell: new Bell snooze dropdown (15min/1hr/4hr/24hr) — becomes unsnooze button when already snoozed; existing more-actions menu retained
+  * Group-by rendering: when groupBy !== 'none', alerts bucketed into group headers (emerald dot + label + count) with stable severity ordering
+  * fetchAlerts: detect new alert IDs vs alertsRef.current → set newAlertIds (cleared after 2s); track prevTotal for count-up flash
+- Assets view enhancements (surgical edits to assets-view.tsx):
+  * Added `LayoutGrid, Rows3, ScanLine, CheckCircle2, CircleSlash, Wrench, ShieldCheck, Bug` lucide imports; added `useRef` react import
+  * Added new components: `HealthTopologyStrip` (stacked % bar + 3-segment legend Healthy/Degraded/Offline), `HealthRing` (circular SVG progress, status-colored stroke, draw-in animation), `AssetCard` (grid view card)
+  * Added local state: `viewMode` ('table'|'grid'), `scanProgress` (Record<string, number>); `scanTimersRef` for interval cleanup
+  * Added `handleScan` callback: simulated scan progress (120ms ticks, ~2s total, random findings 0-2) with toast on completion; cleanup on unmount
+  * Enhanced `FilterToggle` with optional `showAll` prop → renders "All" pill (active when no selection, clears filter on click); applied `showAll` to Status and Criticality filters
+  * Rendered `HealthTopologyStrip` between Stats Cards and Filter Bar
+  * Added view toggle (Rows3/LayoutGrid icons) in filter bar row 1, between Export and Add Asset
+  * Wrapped Assets Table in conditional: when viewMode==='grid' && !error && !loading && assets.length>0, render responsive grid (1/2/3/4 cols) of AssetCards with `.siem-stagger-in` per card; else render existing table (wrapped in Fragment to allow JSX comment)
+  * AssetCard contents: health ring (44px SVG) + name + type icon + IP + criticality badge; status badge + last seen; OS row; hover-revealed quick stats (open alerts + vulns, max-h-0→group-hover:max-h-20 transition); scan progress bar (`.siem-scan-progress` with width %); footer with Scan/Edit/Delete buttons (Scan disabled while scanning)
+  * Scan progress deterministic-vuln count derived from asset.id hash (0-4) so hover stats are stable across renders without backend changes
+- Lint: 0 errors on all edited files
+- Dev server: home page compiles 200 OK (153ms), `/api/alerts` 200, `/api/assets` 200; transient 500s on /api/dashboard during heavy compile resolved to 200 after stabilization (memory pressure during edit cycle, not related to changes)
+- Memory: 4GB sandbox, ~1.5GB available after edits — kept all changes surgical (CSS append + targeted class additions, no full file rewrites)
+
+Stage Summary:
+- 10 new CSS micro-interaction classes in globals.css (stagger, new-pulse, 4 severity tints, health-ring, bulk-bar, card-view, scan-progress, live-dot, count-up-flash) — all reduced-motion aware
+- Alerts view: live/paused indicator with pulsing dot, animated total count-up, group-by dropdown (5 options), staggered row fade-in, severity-tinted row backgrounds, one-shot new-alert pulse, hover-expand description preview, snooze dropdown (4 durations) + countdown badge, bulk-bar slide-down animation
+- Assets view: health topology strip (stacked % bar + 3-segment legend), table/grid view toggle, grid view with circular health-ring SVG cards, hover-revealed quick stats (alerts + vulns), simulated Scan button with animated progress bar, "All" filter pills for Status + Criticality
+- All edits surgical (no full rewrites); existing functionality preserved; lint clean; dev server compiles
+- View count unchanged (14), component count unchanged (32) — enhanced existing components rather than adding new view-level components

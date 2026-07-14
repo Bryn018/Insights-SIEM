@@ -1,0 +1,479 @@
+   700→   700→   - Added soar and setSoar (accepts array or updater function) to SIEMStore interface + implementation
+   701→   701→   - Re-exported SoarPlaybook and SoarStep from store for component use
+   702→   702→3. Created `/home/z/my-project/src/components/siem/soar-view.tsx` (~700 lines) with all required features:
+   703→   703→   a. Playbook Library Header: Title "SOAR Playbooks" with Zap icon + 4 stat cards (Total Active, Runs Today, Avg Success Rate, Avg Duration) - each with color-coded icon tile
+   704→   704→   b. Playbook Grid: Responsive 1/2/3 column grid. Each card shows: name, status dot, 2-line description, trigger badge (with icon), status badge, steps-count badge, 3-metric grid (Runs/Success%/Avg), mini horizontal step flow diagram (up to 8 step icons + overflow count), last-run timestamp, inline Run button, hover lift effect, top-right activate/disable toggle
+   705→   705→   c. Playbook Detail Dialog: Click card opens dialog with full playbook info, all badges, 4-card execution metrics row, vertical stepper visualization with connector line + step icon + step #/name/type badge + action description + optional config JSON, scrollable steps list, "Duplicate"/"Edit"/"Run Now" (emerald, with Zap icon) buttons in footer
+   706→   706→   d. Create Playbook Dialog: Form with name input, description textarea, trigger Select dropdown, dynamic initial-steps list (add/remove rows, each with type Select showing icon, name input, action input), creates as draft status
+   707→   707→   e. Execution History Panel: Collapsible Card with table showing recent executions - status icon+label, playbook name, relative timestamp, duration, triggered by (with type badge), 8 mock executions initially, max-h-80 scroll
+   708→   708→   f. 6 pre-built mock playbooks with realistic data:
+   709→   709→      - "Phishing Email Response" (alert-based, active, 8 steps: triage, extract IOCs, check threat intel, block sender, quarantine email, notify user, create incident, escalate) - 312 runs, 95.5% success, 87s avg
+   710→   710→      - "Brute Force Lockout" (alert-based, active, 5 steps: detect threshold, verify source, disable account, block IP, notify admin) - 1042 runs, 98.9% success, 23s avg
+   711→   711→      - "Malware Containment" (alert-based, active, 7 steps: isolate host, capture memory, scan endpoints, block hashes, update rules, create ticket, notify SOC) - 87 runs, 90.8% success, 312s avg
+   712→   712→      - "User Onboarding Security" (scheduled, active, 4 steps: verify identity, assign role, set permissions, schedule training) - 156 runs, 98.7% success, 41s avg
+   713→   713→      - "Data Exfiltration Response" (alert-based, draft, 6 steps: confirm detection, identify data, block channel, preserve evidence, notify legal, escalate) - 19 runs, 73.7% success, 540s avg
+   714→   714→      - "Scheduled Vulnerability Scan" (scheduled, disabled, 3 steps: trigger scan, parse results, create tickets) - 52 runs, 96.2% success, 1820s avg
+   715→   715→   - Interactive "Run Now" with simulated execution: shows overlay spinner on card, ~1.5s delay, randomly succeeds/fails (85% success), updates playbook metrics in store (runCount, successCount, avgDuration rolling), adds new execution to history, syncs detail dialog if open, toast notifications on start/success/failure
+   716→   716→   - "Duplicate" creates draft copy with reset metrics
+   717→   717→   - Activate/Disable toggle (active -> disabled, draft/disabled -> active)
+   718→   718→   - Filter bar: search input (name/description), status filter Select (all/active/draft/disabled), trigger filter Select (all/manual/scheduled/alert-based), showing count
+   719→   719→   - Empty state with dashed border card and CTA when no playbooks match filters
+   720→   720→   - Step type visual config: trigger=emerald Zap, condition=amber GitBranch, action=sky Cpu, notification=purple Bell, wait=zinc PauseCircle, approval=rose UserCheck
+   721→   721→   - Trigger config: manual=zinc Play, scheduled=sky Calendar, alert-based=rose Bell
+   722→   722→   - Status config: active=emerald dot (pulsing), draft=amber dot, disabled=zinc dot
+   723→   723→   - Dark SOC theme: bg-zinc-950, border-zinc-800, emerald accents, framer-motion entrance animations (staggered card fade-up)
+   724→   724→4. Updated `/home/z/my-project/src/app/page.tsx`:
+   725→   725→   - Added lazy-loaded dynamic import for SoarView (ssr: false, same pattern as other views)
+   726→   726→   - Added `soar: SoarView` to viewComponents record
+   727→   727→5. Updated `/home/z/my-project/src/components/siem/sidebar.tsx`:
+   728→   728→   - Imported Zap from lucide-react
+   729→   729→   - Added nav item `{ id: 'soar', label: 'SOAR', icon: Zap }` between 'compliance' and 'settings' (MANAGEMENT section)
+   730→   730→6. Updated `/home/z/my-project/src/components/siem/header.tsx`:
+   731→   731→   - Added `soar: 'SOAR'` to viewLabels record
+   732→   732→7. Updated `/home/z/my-project/src/components/siem/search-command.tsx`:
+   733→   733→   - Imported Zap from lucide-react
+   734→   734→   - Added "Go to SOAR" command palette entry with Zap icon (after Go to Assets)
+   735→   735→8. Updated `/home/z/my-project/src/hooks/use-keyboard-shortcuts.ts`:
+   736→   736→   - Added 'soar' to viewOrder array (after 'settings' - now 10 views)
+   737→   737→   - Added `o: 'soar'` to gMap (o for sOar)
+   738→   738→   - Updated regex from `/^[1-9]$/` to `/^[0-9]$/` to support 10 views (0 = 10th view = soar)
+   739→   739→   - Updated comment docs to reflect 1..0 mapping and g+o shortcut
+   740→   740→9. Updated `/home/z/my-project/src/components/siem/shortcuts-help.tsx`:
+   741→   741→   - Changed `['1', '-', '9']` to `['1', '-', '0']` (now 10 views)
+   742→   742→   - Added `{ keys: ['g', 'then', 'o'], description: 'Go to SOAR', group: 'Navigation' }` shortcut entry
+   743→   743→10. Ran `cd /home/z/my-project && bun run lint` - 0 errors
+   744→   744→11. Verified page loads cleanly at HTTP 200, dev.log shows no compile errors
+   745→   745→
+   746→   746→Stage Summary:
+   747→   747→- All 9 files modified/created successfully (types.ts, store.ts, soar-view.tsx new, page.tsx, sidebar.tsx, header.tsx, search-command.tsx, use-keyboard-shortcuts.ts, shortcuts-help.tsx)
+   748→   748→- SOAR view fully integrated into navigation, header, search palette, keyboard shortcuts
+   749→   749→- Dark SOC theme with emerald accents consistent with other views (bg-zinc-950, border-zinc-800, emerald-400 accents)
+   750→   750→- No new dependencies required (reuses framer-motion, shadcn/ui, lucide-react, sonner, date-fns)
+   751→   751→- 6 pre-built playbooks with realistic mock data and step-by-step workflows
+   752→   752→- Interactive features: Run Now with simulated execution, Duplicate, Activate/Disable toggle, Create new playbook, Filter/search, Execution history tracking
+   753→   753→- Lint: 0 errors, page: HTTP 200, server stable
+   754→   754→- Component inventory: 27 SIEM components (added soar-view.tsx)
+   755→   755→- Keyboard shortcuts now support 10 views (1-0) plus g+o for SOAR
+   756→   756→
+   757→   757→---
+   758→   758→Task ID: 9
+   759→   759→Agent: Main Orchestrator (cron-triggered improvement cycle #5)
+   760→   760→Task: QA test via agent-browser, fix bugs, improve styling, add SOAR feature, update worklog
+   761→   761→
+   762→   762→Work Log:
+   763→   763→- Reviewed worklog.md - identified Phase 8 completed with Threat Hunt view, styling enhancements
+   764→   764→- Server running: Next.js dev (port 3000), Socket.io WS (port 3003)
+   765→   765→- Memory: 2.4GB/4GB used (1.7GB available) - stable
+   766→   766→- Performed comprehensive QA via agent-browser (9.5/10 score):
+   767→   767→  - All 9 views render correctly with zero console errors
+   768→   768→  - Threat Hunt view fully functional (query builder, execute, results, IOC extraction)
+   769→   769→  - Section headers (OVERVIEW/ANALYSIS/MANAGEMENT) visible in sidebar
+   770→   770→  - Severity color borders on alert rows working
+   771→   771→  - PROD badge in header, footer active view indicator
+   772→   772→  - Only 1 minor issue: Radix DialogContent accessibility warning
+   773→   773→
+   774→   774→Bug Fixes Applied:
+   775→   775→- Fixed Dialog accessibility warning in detection-rules-view.tsx: Added DialogDescription to Create Rule dialog
+   776→   776→- Fixed Dialog accessibility warning in assets-view.tsx: Added DialogDescription to Create/Edit Asset dialog (with conditional text for edit vs create)
+   777→   777→- Fixed WebSocket roomMap: Added 'threat-hunt' view to room subscription map (subscribes to alerts + logs rooms)
+   778→   778→- Imported DialogDescription in both files
+   779→   779→
+   780→   780→Styling Improvements (Task 9-b, subagent):
+   781→   781→- Global CSS: Added 4 new component classes
+   782→   782→  - gradient-sweep keyframes + .siem-gradient-hover (diagonal emerald sweep on hover via ::before)
+   783→   783→  - .siem-progress-ring (conic-gradient donut with light-mode override)
+   784→   784→  - .siem-priority-border-p1..p4 (3px colored left borders: red/amber/yellow/zinc)
+   785→   785→  - .siem-edge-glow (vertical accent bar with box-shadow glow)
+   786→   786→- Dashboard metric cards: Added siem-gradient-hover + siem-edge-glow classes, hover lift effect
+   787→   787→- Incidents view: Priority-colored left borders on rows, pulsing status dots for open/investigating, bolder title text
+   788→   788→- Compliance view: Inline SVG progress rings next to framework scores, Last Updated badges, red left border on non-compliant controls
+   789→   789→- Detection rules view: HitsSparkline SVG (44x14, color varies by hit count), smoother toggle animation, MITRE tooltips with 20-technique lookup map
+   790→   790→
+   791→   791→New Feature: SOAR View (Task 9-a, subagent, ~1342 lines):
+   792→   792→- Created soar-view.tsx with full SOAR (Security Orchestration, Automation, and Response) interface
+   793→   793→- Header with 4 stat cards (Total Active, Runs Today, Avg Success Rate, Avg Duration)
+   794→   794→- Playbook grid with 6 pre-built playbooks:
+   795→   795→  1. Phishing Email Response (alert-based, 8 steps)
+   796→   796→  2. Brute Force Lockout (alert-based, 5 steps)
+   797→   797→  3. Malware Containment (alert-based, 7 steps)
+   798→   798→  4. User Onboarding Security (scheduled, 4 steps)
+   799→   799→  5. Data Exfiltration Response (alert-based, 6 steps)
+   800→   800→  6. Scheduled Vulnerability Scan (scheduled, 3 steps)
+   801→   801→- Each card shows mini step-flow diagram with icons
+   802→   802→- Detail dialog with vertical stepper, execution metrics, Run Now/Edit/Duplicate buttons
+   803→   803→- Create Playbook dialog with dynamic step builder
+   804→   804→- Collapsible Execution History panel
+   805→   805→- Interactive Run Now with simulated execution + metric updates + toast feedback
+   806→   806→- Added ViewType 'soar' to types.ts
+   807→   807→- Added SoarPlaybook/SoarStep interfaces to store.ts with setSoar action
+   808→   808→- Added lazy-loaded import in page.tsx
+   809→   809→- Added nav item in sidebar.tsx (Zap icon, between Compliance and Settings)
+   810→   810→- Added viewLabel in header.tsx
+   811→   811→- Added search command entry in search-command.tsx
+   812→   812→- Updated keyboard shortcuts: g+o for SOAR, 1-0 for 10 views (0 = SOAR)
+   813→   813→- Updated shortcuts help dialog
+   814→   814→
+   815→   815→Final QA Verification (10/10 score):
+   816→   816→- All 10 views render correctly (Dashboard, Alerts, Incidents, Logs, Threat Hunt, Detection Rules, Assets, Compliance, SOAR, Settings)
+   817→   817→- SOAR view: 6 playbooks visible, detail dialog opens, Run Now works with toast feedback
+   818→   818→- Dashboard: gradient hover + edge glow on metric cards
+   819→   819→- Incidents: priority-colored left borders (P1=red, P2=orange, P3=yellow)
+   820→   820→- Compliance: progress rings on framework cards (70%/70%/68%/71%)
+   821→   821→- Detection Rules: sparklines next to hit counts, MITRE tooltips working
+   822→   822→- Zero console errors, zero uncaught page errors
+   823→   823→- All 26+ API endpoints verified working (HTTP 200)
+   824→   824→- Lint: 0 errors
+   825→   825→
+   826→   826→Stage Summary:
+   827→   827→- QA score: 10/10 (perfect pass)
+   828→   828→- Bugs fixed: 2 Dialog accessibility warnings, 1 WS roomMap missing threat-hunt
+   829→   829→- New component: soar-view.tsx (~1342 lines)
+   830→   830→- Styling: 4 new CSS classes, 5 view enhancements (dashboard, incidents, compliance, detection rules)
+   831→   831→- Component inventory: 27 SIEM components (added soar-view.tsx)
+   832→   832→- View count: 10 views (added SOAR)
+   833→   833→- Keyboard shortcuts: 10 views (1-0), g+o for SOAR
+   834→   834→- All 26+ API endpoints verified working (HTTP 200)
+   835→   835→- Lint: 0 errors, Build: stable, Server: ~2GB RSS
+   836→   836→
+   837→   837→---
+   838→   838→Task ID: 10-a
+   839→   839→Agent: MITRE ATT&CK Navigator Feature Agent
+   840→   840→Task: Add MITRE ATT&CK Navigator View - interactive matrix visualization with detection coverage tracking
+   841→   841→
+   842→   842→Work Log:
+   843→   843→1. Added 'mitre' to ViewType union in `/home/z/my-project/src/lib/types.ts` (after 'soar').
+   844→   844→2. Updated `/home/z/my-project/src/lib/store.ts`:
+   845→   845→   - Added MitreDetectionStatus type ('detected' | 'partial' | 'gap' | 'n/a')
+   846→   846→   - Added MitreState interface: selectedTactic, selectedTechnique, filterSeverity, filterPlatform
+   847→   847→   - Added defaultMitre constant (nulls + 'all' filters)
+   848→   848→   - Added mitre: MitreState and setMitre: (Partial<MitreState>) => void to SIEMStore interface + implementation
+   849→   849→   - Re-exported MitreState and MitreDetectionStatus for component use
+   850→   850→3. Created `/home/z/my-project/src/components/siem/mitre-view.tsx` (~900 lines) with all required features:
+   851→   851→   a. Header: Title "MITRE ATT&CK Navigator" with Target icon + Enterprise v15 badge + subtitle
+   852→   852→   b. Coverage Statistics Panel: 4 StatCards in grid-cols-2 lg:grid-cols-4:
+   853→   853→      - Techniques Tracked (85 total, 14 tactics) - sky accent
+   854→   854→      - Detection Coverage % (animated progress bar) - emerald accent
+   855→   855→      - Partial Coverage % (animated progress bar) - amber accent
+   856→   856→      - Detection Gaps count (animated progress bar) - red accent
+   857→   857→   c. Filter Bar Card: Platform Select (All/Windows/Linux/macOS/Network/Container/Office 365/Azure AD),
+   858→   858→      Detection Status Select (All/Detected/Partial/Gap/N-A), search input (T1059 or name),
+   859→   859→      Clear-filters button, result-count footer
+   860→   860→   d. Legend: Inline row of 4 status chips with hover tooltips showing status meaning
+   861→   861→   e. MITRE Matrix Grid: Horizontally-scrollable ScrollArea with 14 tactic columns (140px each).
+   862→   862→      Each tactic header: tactic ID (TA0043), full name, tech count, detected/total ratio.
+   863→   863→      Each tactic column: vertically-stacked compact technique cells (~50px) with status dot,
+   864→   864→      technique ID, truncated name (line-clamp-2), and tiny red corner indicator for techniques
+   865→   865→      with recent alerts. Empty tactics show "No matches" italic placeholder.
+   866→   866→   f. Technique Cell: Color-coded by status (green=detected, amber=partial, red=gap, gray=N/A);
+   867→   867→      framer-motion whileHover scale 1.02 / whileTap 0.98; hover border shifts to emerald;
+   868→   868→      hover tooltip shows technique ID, name, full description, status badge, rule/alert counts.
+   869→   869→   g. Coverage Health Footer Card: Weighted coverage score (detected + partial*0.5) as large %
+   870→   870→      and "Export Coverage Report" button.
+   871→   871→   h. Technique Detail Dialog (max-w-3xl scrollable): Header with technique name + ID badge +
+   872→   872→      tactic ID/name + status badge. Body sections:
+   873→   873→      - Description (full text)
+   874→   874→      - Platforms (badges)
+   875→   875→      - Sub-Techniques (grid with ID badges)
+   876→   876→      - Detection Rules (list with severity badge, rule ID mono, name, enabled/disabled badge,
+   877→   877→        chevron - click navigates to Detection Rules view + toast)
+   878→   878→      - Recent Alerts (list with severity, title, relative time, chevron - click navigates to
+   879→   879→        Alerts view + toast)
+   880→   880→      - Mitigation Recommendations (emerald-tinted grid with AlertTriangle icon)
+   881→   881→      - Update Coverage Status (4 buttons for Detected/Partial/Gap/N/A - click fires toast)
+   882→   882→      Footer: Close button + "Create Detection Rule" button (navigates to Rules view)
+   883→   883→   i. Mock data: ~85 real MITRE ATT&CK techniques across 14 Enterprise tactics (TA0043-TA0040)
+   884→   884→      with accurate IDs (T1059, T1566, T1078, T1003, T1486, T1490, T1496, etc.), descriptions,
+   885→   885→      platforms, sub-techniques, detection rules, recent alerts (38 mock alerts total),
+   886→   886→      and mitigation recommendations
+   887→   887→   j. Interactive status change: Click status button in dialog shows toast (mock - not persisted)
+   888→   888→   k. Dark SOC theme: bg-zinc-950, border-zinc-800, emerald-400 accents, framer-motion entrance
+   889→   889→      animations (staggered), responsive (grid-cols-2 lg:grid-cols-4 stats, sm:flex-row filters)
+   890→   890→4. Updated `/home/z/my-project/src/app/page.tsx`:
+   891→   891→   - Added lazy-loaded dynamic import for MitreView (ssr: false)
+   892→   892→   - Added `mitre: MitreView` to viewComponents record
+   893→   893→5. Updated `/home/z/my-project/src/components/siem/sidebar.tsx`:
+   894→   894→   - Imported Target from lucide-react
+   895→   895→   - Added nav item { id: 'mitre', label: 'MITRE ATT&CK', icon: Target } between 'threat-hunt'
+   896→   896→     and 'rules' in ANALYSIS section
+   897→   897→6. Updated `/home/z/my-project/src/components/siem/header.tsx`:
+   898→   898→   - Added `mitre: 'MITRE ATT&CK'` to viewLabels record
+   899→   899→7. Updated `/home/z/my-project/src/components/siem/search-command.tsx`:
+   900→   900→   - Imported Target from lucide-react
+   901→   901→   - Added "Go to MITRE ATT&CK" command palette entry with Target icon (between Threat Hunt
+   902→   902→     and Detection Rules)
+   903→   903→8. Updated `/home/z/my-project/src/hooks/use-keyboard-shortcuts.ts`:
+   904→   904→   - Added 'mitre' to viewOrder array (after 'soar' - now 11 views)
+   905→   905→   - Added `x: 'mitre'` to gMap (x for matriX)
+   906→   906→   - Updated JSDoc comment to document g+x shortcut
+   907→   907→   - 1-0 mapping unchanged (covers first 10 views); 11th view (mitre) accessible only via g+x
+   908→   908→9. Updated `/home/z/my-project/src/components/siem/shortcuts-help.tsx`:
+   909→   909→   - Added `{ keys: ['g', 'then', 'x'], description: 'Go to MITRE ATT&CK', group: 'Navigation' }`
+   910→   910→     entry (after g+o for SOAR)
+   911→   911→
+   912→   912→Pre-existing Bug Fix:
+   913→   913→- soar-view.tsx had lint error: 'Pencil' was removed from imports but still used at line 686
+   914→   914→  (Edit button in detail dialog). Restored the Pencil import to fix react/jsx-no-undef error
+   915→   915→  so `bun run lint` passes cleanly.
+   916→   916→
+   917→   917→Verification:
+   918→   918→- `cd /home/z/my-project && bun run lint` - passes with 0 errors
+   919→   919→- HTTP 200 on / route, dev server compiles cleanly
+   920→   920→- All existing 26+ API endpoints still working
+   921→   921→- Memory stable (no new dependencies added)
+   922→   922→
+   923→   923→Stage Summary:
+   924→   924→- All 9 files modified/created successfully (types.ts, store.ts, mitre-view.tsx new, page.tsx,
+   925→   925→  sidebar.tsx, header.tsx, search-command.tsx, use-keyboard-shortcuts.ts, shortcuts-help.tsx)
+   926→   926→- 1 pre-existing bug fixed (Pencil import restored in soar-view.tsx)
+   927→   927→- MITRE view fully integrated into navigation, header, search palette, keyboard shortcuts
+   928→   928→- Dark SOC theme with emerald accents consistent with other views
+   929→   929→- No new dependencies required (reuses framer-motion, shadcn/ui, lucide-react, sonner)
+   930→   930→- ~85 real ATT&CK techniques across 14 Enterprise tactics with detection rules, alerts,
+   931→   931→  sub-techniques, mitigations, and platform mapping
+   932→   932→- Interactive features: Filter by platform/detection-status/search, click technique for detail
+   933→   933→  dialog, click detection rule/alert to navigate to that view, quick status change with toasts,
+   934→   934→  export report button
+   935→   935→- Component inventory: 28 SIEM components (added mitre-view.tsx)
+   936→   936→- View count: 11 views (added MITRE ATT&CK)
+   937→   937→- Keyboard shortcuts: 11 views (1-0 for first 10, g+x for MITRE)
+   938→   938→- Lint: 0 errors, HTTP 200, server stable
+   939→   939→
+   940→   940→---
+   941→   941→Task ID: 10-b
+   942→   942→Agent: SIEM Styling Polish Agent (SOAR / Threat Hunt / Assets / Logs / Settings)
+   943→   943→Task: Apply visual polish to 5 SIEM views + global CSS (animated glow borders, success rate bars, severity-colored borders, syntax highlighting, line numbers, scan overlays, intensity indicators, tab gradients, save animations)
+   944→   944→
+   945→   945→Work Log:
+   946→   946→- Read worklog.md and all 5 target view files + globals.css (~6,150 LOC total reviewed)
+   947→   947→- globals.css: added 13 new @layer components blocks (pulse-glow keyframes + .siem-pulse-glow,
+   948→   948→  .siem-criticality-border-{critical,high,medium,low}, .siem-log-level-{error,warn,info,debug},
+   949→   949→  .siem-asset-row hover glow, .siem-scan-bar + .siem-scan-overlay hunt-scan keyframes,
+   950→   950→  .siem-intensity-segment pulse, .siem-ioc-copied pop animation, .siem-tab-active gradient,
+   951→   951→  .siem-save-success pop animation, .siem-live-pulse keyframes, .siem-log-{ts,ip,url,sev,kw,num}
+   952→   952→  syntax color helpers, .siem-step-connector dashed emerald line, .siem-rate-bar gradient fill)
+   953→   953→- soar-view.tsx: MiniStepFlow now uses dashed .siem-step-connector spans between icons (replaced
+   954→   954→  ChevronRight); PlaybookCard adds .siem-pulse-glow on active playbooks, success-rate progress bar
+   955→   955→  with severity-aware gradient, status dot now pulses with concentric ping for active playbooks;
+   956→   956→  cleaned up unused ChevronRight import
+   957→   957→- threat-hunt-view.tsx: new HuntIntensityBar component (8-segment level meter with intensity-
+   958→   958→  derived colors + animated pulse while hunting), new HuntScanOverlay component (scan-bar + sweep
+   959→   959→  overlay + spinner while hunt is executing), IOC items now show .siem-ioc-copied pop animation +
+   960→   960→  emerald ring + colored icon on copy success, hunt result rows now use
+   961→   961→  siem-severity-border-${severity} classes via cn()
+   962→   962→- assets-view.tsx: AssetRow now applies siem-criticality-border-${criticality} left border +
+   963→   963→  siem-asset-row hover glow class; asset name bumped from font-medium to font-semibold; added
+   964→   964→  separate health indicator dot with concentric ping for active assets, amber for maintenance,
+   965→   965→  red for inactive/decommissioned, with tooltip showing "Healthy/Warning/Offline"; widened status
+   966→   966→  column w-24 -> w-28 to fit the new dot + badge
+   967→   967→- logs-view.tsx: new highlightLogFields() + colorizeLogText() helpers tokenize messages and wrap
+   968→   968→  IPs (cyan), URLs (emerald), severity keywords (red, e.g. ERROR/FAILED/DROP/WARN/INFO), and
+   969→   969→  numbers (purple) in colored spans; preserved search-term <mark> highlighting by isolating matched
+   970→   970→  regions before colorizing; LogRow now uses siem-log-level-${level} classes (replaced inline
+   971→   971→  border-l-2 classes) and gained a muted line-number column (w-8, zinc-700, tabular-nums); table
+   972→   972→  header and skeleton rows updated to include the new column; LIVE badge converted to pulsing pill
+   973→   973→  via .siem-live-pulse with embedded ping dot
+   974→   974→- settings-view.tsx: swapped FileText -> ScrollText icon on Audit Log tab (FileText kept for other
+   975→   975→  usages); added ScrollText to lucide imports; each TabsTrigger now conditionally applies
+   976→   976→  .siem-tab-active gradient when active; added savedFlash + lastSavedAt state; Save Button shows
+   977→   977→  .siem-save-success pop animation + CheckCircle icon + "Saved" label for 900ms after success;
+   978→   978→  last-saved timestamp (with Clock icon) shown next to save button after first successful save
+   979→   979→- Lint: bun run lint -> 0 errors
+   980→   980→- Smoke test: curl http://localhost:3000/ -> HTTP 200, dev log shows clean recompile, no errors
+   981→   981→
+   982→   982→Stage Summary:
+   983→   983→- 6 files edited (globals.css, soar-view.tsx, threat-hunt-view.tsx, assets-view.tsx,
+   984→   984→  logs-view.tsx, settings-view.tsx), 0 new files created
+   985→   985→- 0 new dependencies added (memory budget preserved)
+   986→   986→- All custom CSS placed in @layer components (Tailwind v4 safe)
+   987→   987→- Dark SOC theme preserved: emerald accents on zinc-950, no indigo/blue
+   988→   988→- Light-mode fallbacks added for every new class via html:not(.dark) selectors
+   989→   989→- Lint: 0 errors, HTTP 200 on / route, dev server compiles cleanly
+   990→   990→
+   991→   991→---
+   992→   992→Task ID: 10
+   993→   993→Agent: Main Orchestrator (cron-triggered improvement cycle #6)
+   994→   994→Task: QA test via agent-browser, fix bugs, improve styling, add MITRE ATT&CK view, update worklog
+   995→   995→
+   996→   996→Work Log:
+   997→   997→- Reviewed worklog.md - identified Phase 9 completed with SOAR view, styling enhancements
+   998→   998→- Killed lingering Chrome processes from previous QA run (freed ~500MB memory)
+   999→   999→- Server running: Next.js dev (port 3000), Socket.io WS (port 3003)
+  1000→  1000→- Memory: 2.6GB/4GB used (1.5GB available) - stable
+  1001→  1001→- Performed comprehensive QA via agent-browser (9.5/10 score):
+  1002→  1002→  - All 10 views render correctly with zero console errors
+  1003→  1003→  - Threat Hunt execute works (39 matches returned)
+  1004→  1004→  - SOAR Run Now works with toast feedback
+  1005→  1005→  - All visual polish verified (severity borders, priority badges, progress rings, sparklines, MITRE tooltips)
+  1006→  1006→  - 1 minor issue: Incident priority borders not visible enough (opacity too low, conflict with selected state)
+  1007→  1007→  - 1 minor issue: SOAR Run Now button z-index could cause click occlusion
+  1008→  1008→
+  1009→  1009→Bug Fixes Applied:
+  1010→  1010→- Fixed incident priority border visibility: Changed from 3px 0.75 opacity to 4px solid !important with inset box-shadow for stronger visual. Added !important to override the selected state's border-l-2 conflict
+  1011→  1011→- Fixed SOAR Run Now button z-index: Added relative z-10 to DialogFooter and relative z-20 to Run Now button to prevent click occlusion from sibling elements in scroll area
+  1012→  1012→
+  1013→  1013→New Feature: MITRE ATT&CK Navigator View (Task 10-a, subagent, ~900 lines):
+  1014→  1014→- Created mitre-view.tsx with comprehensive MITRE ATT&CK matrix visualization
+  1015→  1015→- Coverage Statistics Panel: 4 cards (Total Techniques=80, Detection Coverage=49%, Partial Coverage, Detection Gaps)
+  1016→  1016→- ATT&CK Matrix Grid: 14 tactic columns (Reconnaissance through Impact) with ~80 real techniques
+  1017→  1017→- Color-coded technique cells: green (detected), amber (partial), red (gap), gray (N/A)
+  1018→  1018→- Hover tooltip: technique ID, name, description, status, rule count
+  1019→  1019→- Detail dialog: technique info, sub-techniques, detection rules, recent alerts, mitigations, status change buttons
+  1020→  1020→- Filter bar: platform filter (Windows/Linux/macOS/Network/Container/Office 365/Azure AD), detection status filter, search
+  1021→  1021→- Color legend with tooltips
+  1022→  1022→- Coverage Health footer card with weighted score and export button
+  1023→  1023→- Click on rules/alerts in dialog navigates to corresponding view with toast
+  1024→  1024→- Added ViewType 'mitre' to types.ts
+  1025→  1025→- Added MitreState to store.ts with setMitre action
+  1026→  1026→- Added lazy-loaded import in page.tsx
+  1027→  1027→- Added nav item in sidebar.tsx (Target icon, ANALYSIS section, after Threat Hunt)
+  1028→  1028→- Added viewLabel in header.tsx
+  1029→  1029→- Added search command entry in search-command.tsx
+  1030→  1030→- Updated keyboard shortcuts: g+x for MITRE (x for matriX)
+  1031→  1031→- Updated shortcuts help dialog
+  1032→  1032→
+  1033→  1033→Styling Improvements (Task 10-b, subagent):
+  1034→  1034→- Global CSS: Added 13 new component classes:
+  1035→  1035→  - pulse-glow keyframes + .siem-pulse-glow (soft pulsing emerald card border glow)
+  1036→  1036→  - .siem-criticality-border-{critical,high,medium,low} (asset row left borders)
+  1037→  1037→  - .siem-log-level-{error,warn,info,debug} (log row left borders)
+  1038→  1038→  - .siem-asset-row:hover (emerald inset glow on hover)
+  1039→  1039→  - .siem-scan-bar + .siem-scan-overlay + hunt-scan keyframes (executing hunt progress)
+  1040→  1040→  - .siem-intensity-segment (animated level-meter pulse)
+  1041→  1041→  - .siem-ioc-copied (copy-success checkmark pop animation)
+  1042→  1042→  - .siem-tab-active (emerald gradient backdrop for active tab)
+  1043→  1043→  - .siem-save-success (save button success pop animation)
+  1044→  1044→  - .siem-live-pulse (live-mode badge pulse ring)
+  1045→  1045→  - .siem-log-{ts,ip,url,sev,kw,num} (inline syntax color helpers)
+  1046→  1046→  - .siem-step-connector (dashed emerald flow connector)
+  1047→  1047→  - .siem-rate-bar (success-rate progress bar fill)
+  1048→  1048→
+  1049→  1049→- SOAR view: Active playbook cards glow with siem-pulse-glow, MiniStepFlow uses dashed emerald connectors, success-rate progress bar with severity-aware gradient + role="progressbar", status dot pulses with concentric ping for active playbooks
+  1050→  1050→
+  1051→  1051→- Threat Hunt view: New HuntIntensityBar (8-segment level meter), new HuntScanOverlay (scan-bar + sweep + spinner) during execution, IOC items get siem-ioc-copied pop + emerald ring on copy, hunt result rows apply siem-severity-border-* classes
+  1052→  1052→
+  1053→  1053→- Assets view: AssetRow gains siem-criticality-border-* left border + siem-asset-row hover glow, asset name bumped to font-semibold, separate health dot (green ping for active, amber for maintenance, red for offline) with tooltip
+  1054→  1054→
+  1055→  1055→- Log Explorer view: New highlightLogFields + colorizeLogText tokenize messages and colorize IPs (cyan), URLs (emerald), severity keywords (red), numbers (purple). LogRow uses siem-log-level-* classes and gained muted line-number column. LIVE badge converted to pulsing pill with embedded ping dot
+  1056→  1056→
+  1057→  1057→- Settings view: Audit Log tab icon swapped from FileText to ScrollText. Each TabsTrigger conditionally applies siem-tab-active gradient. Save Button shows siem-save-success pop + CheckCircle icon + "Saved" label for 900ms after success. "Last saved" timestamp shown next to button after first successful save
+  1058→  1058→
+  1059→  1059→Final QA Verification (9.5/10 score):
+  1060→  1060→- All 11 views render correctly (Dashboard, Alerts, Incidents, Logs, Threat Hunt, MITRE ATT&CK, Detection Rules, Assets, Compliance, SOAR, Settings)
+  1061→  1061→- MITRE view: 14 tactic columns, 80 techniques, color-coded cells, detail dialog opens
+  1062→  1062→- SOAR: active playbook cards have pulsing glow, success rate progress bars
+  1063→  1063→- Threat Hunt: hunt intensity bar, scan overlay during execution, severity borders on results
+  1064→  1064→- Assets: criticality-colored left borders on 11 rows, 33 health indicator dots
+  1065→  1065→- Log Explorer: IPs cyan, URLs emerald, log level left borders, 80 line numbers
+  1066→  1066→- Settings: icons on 5 tabs, active tab gradient, save button success animation
+  1067→  1067→- Zero console errors, zero uncaught page errors
+  1068→  1068→- All 26+ API endpoints verified working (HTTP 200)
+  1069→  1069→- Lint: 0 errors
+  1070→  1070→- Browser properly closed after QA
+  1071→  1071→
+  1072→  1072→Stage Summary:
+  1073→  1073→- QA score: 9.5/10
+  1074→  1074→- Bugs fixed: Incident priority border visibility, SOAR Run Now z-index
+  1075→  1075→- New component: mitre-view.tsx (~900 lines)
+  1076→  1076→- Styling: 13 new CSS classes, 5 view enhancements (SOAR, Threat Hunt, Assets, Logs, Settings)
+  1077→  1077→- Component inventory: 28 SIEM components (added mitre-view.tsx)
+  1078→  1078→- View count: 11 views (added MITRE ATT&CK)
+  1079→  1079→- Keyboard shortcuts: 11 views (1-0 + g+x for MITRE)
+  1080→  1080→- All 26+ API endpoints verified working (HTTP 200)
+  1081→  1081→- Lint: 0 errors, Build: stable, Server: ~2GB RSS
+  1082→  1082→
+  1083→  1083→---
+  1084→  1084→Task ID: 11
+  1085→  1085→Agent: Main Orchestrator (cron-triggered improvement cycle #7)
+  1086→  1086→Task: QA test via agent-browser, fix bugs, add Reports & Exports view, apply styling polish, update worklog
+  1087→  1087→
+  1088→  1088→Work Log:
+  1089→  1089→- Reviewed worklog.md - identified Phase 10 completed with MITRE view + styling polish (11 views, 28 components)
+  1090→  1090→- Verified dev server running (port 3000) + WS service running (port 3003)
+  1091→  1091→- Initial QA via agent-browser on http://localhost:3000 (dev port):
+  1092→  1092→  - All 11 views rendered correctly with zero JS errors
+  1093→  1093→  - WebSocket showed "Service unavailable, retrying" debug log
+  1094→  1094→  - Investigated WS issue: WS service IS running on port 3003 but dev port 3000 doesn't proxy WS
+  1095→  1095→  - Tested WS through Caddy gateway (port 81): WS connects successfully ("[SIEM WS] Connected" log)
+  1096→  1096→  - Confirmed WS issue is dev-mode only; production gateway works correctly (NOT a bug)
+  1097→  1097→- Took QA screenshots of Dashboard, MITRE, Threat Hunt, SOAR views
+  1098→  1098→
+  1099→  1099→QA Findings (Pre-existing, not blocking):
+  1100→  1100→- React 19 false-positive "button cannot contain nested button" warning fires when:
+  1101→  1101→  1. Opening dashboard's Report Generator dialog (Checkbox inside div with onClick)
+  1102→  1102→  2. Selecting report types in the new Reports view
+  1103→  1103→- DOM inspection confirmed NO actual nested buttons - warning is misleading
+  1104→  1104→- Functionality unaffected - pages render and interact correctly
+  1105→  1105→
+  1106→  1106→New Feature: Reports & Exports View (12th view, ~1740 lines):
+  1107→  1107→- Created src/components/siem/reports-view.tsx with comprehensive report management
+  1108→  1108→- 4 tabs: Generator, Templates (6 templates), Scheduled (5 schedules), History (8 items)
+  1109→  1109→- Generator tab: 5 report types (Daily Summary, Weekly Threat, Compliance Audit, Incident Post-Mortem, Executive Brief), 4 output formats (PDF/HTML/CSV/JSON), 6 section options, date range selector, live preview panel, simulated generation with progress bar
+  1110→  1110→- Templates tab: 6 pre-configured templates with section badges, schedule badges, total-generated counts, "Use" button to load template config into Generator
+  1111→  1111→- Scheduled tab: 5 scheduled reports with next-run countdown bar, recipients dropdown, run-now button, pause/resume toggle, delete
+  1112→  1112→- History tab: 8 historical reports with filterable table (by format/status), preview dialog, download/forward/print/copy actions, 7-day generation trend bar chart
+  1113→  1113→- New Schedule dialog: name, template selector, cadence (daily/weekly/monthly/quarterly), format, recipient multi-select with suggestions
+  1114→  1114→- 6 stat cards: Total Reports, Success Rate, Active Schedules, Recipients, Avg Duration, Failed
+  1115→  1115→- Custom lightweight SVG bar chart (replaced recharts to reduce bundle size)
+  1116→  1116→- All actions trigger toast notifications (sonner)
+  1117→  1117→
+  1118→  1118→Integration Points (8 files modified):
+  1119→  1119→1. src/lib/types.ts: Added 'reports' to ViewType union
+  1120→  1120→2. src/lib/store.ts: Added ReportsState interface, ReportFormat, ReportSchedule, ReportTemplate, ReportHistoryItem types, defaultReports state, reports + setReports in store
+  1121→  1121→3. src/app/page.tsx: Added lazy-loaded ReportsView dynamic import, added to viewComponents record, added siem-scan-line class to LoadingFallback
+  1122→  1122→4. src/components/siem/sidebar.tsx: Added FileBarChart import, added 'reports' nav item (MANAGEMENT section, after Compliance)
+  1123→  1123→5. src/components/siem/header.tsx: Added 'reports: Reports & Exports' to viewLabels
+  1124→  1124→6. src/components/siem/search-command.tsx: Added FileBarChart import, added "Go to Reports & Exports" command
+  1125→  1125→7. src/hooks/use-keyboard-shortcuts.ts: Added 'reports' to viewOrder (position 12), added 'p: reports' to gMap (p for rePort), updated JSDoc
+  1126→  1126→8. src/components/siem/shortcuts-help.tsx: Added { keys: ['g', 'then', 'p'], description: 'Go to Reports' } entry
+  1127→  1127→
+  1128→  1128→Styling Polish (src/app/globals.css, +188 lines, 12 new CSS classes):
+  1129→  1129→- .siem-stat-card: hover lift + border glow (transform translateY, box-shadow)
+  1130→  1130→- .siem-type-card-selected: multi-layer box-shadow with inset glow for selected report types
+  1131→  1131→- .siem-progress-shimmer: animated moving shimmer on progress bars (siem-progress-shimmer keyframes)
+  1132→  1132→- .siem-history-row: left border accent appears on hover for table rows
+  1133→  1133→- .siem-template-card: diagonal corner accent fades in on hover
+  1134→  1134→- .siem-scan-line: moving scan shimmer for loading states (siem-scan-shimmer keyframes)
+  1135→  1135→- .siem-critical-dot: pulsing red dot for critical-severity items (siem-critical-pulse keyframes)
+  1136→  1136→- .siem-tabular-nums: tabular numerals for IDs and counters
+  1137→  1137→- .siem-nav-item-active: active nav item icon gets drop-shadow glow + scale on hover
+  1138→  1138→- .siem-schedule-bar: thin progress bar showing time-until-next-run for scheduled reports
+  1139→  1139→- .siem-format-badge: format badges get subtle lift on hover
+  1140→  1140→
+  1141→  1141→Applied styling classes to:
+  1142→  1142→- reports-view.tsx: StatCard (siem-stat-card), report type buttons (siem-type-card-selected), progress bar (siem-progress-shimmer), history rows (siem-history-row), template cards (siem-template-card), FormatBadge (siem-format-badge), size display (siem-tabular-nums), schedule bar (siem-schedule-bar)
+  1143→  1143→- page.tsx: LoadingFallback (siem-scan-line)
+  1144→  1144→- dashboard-view.tsx: Critical alert severity dots (siem-critical-dot for pulsing red effect)
+  1145→  1145→
+  1146→  1146→Memory/Sandbox Challenges:
+  1147→  1147→- Initial QA via agent-browser worked fine (all 11 views verified)
+  1148→  1148→- After adding Reports view (12th view, ~1740 lines), dev server became unstable
+  1149→  1149→- Home page compile uses ~1.7GB (was ~1.2GB with 11 views)
+  1150→  1150→- OOM killer killed next-server multiple times during testing
+  1151→  1151→- Fix applied: Removed recharts dependency from reports-view (replaced with custom SVG bar chart), simplified StatCard style (removed CSS custom property), reduced bundle size
+  1152→  1152→- Final stable config: NODE_OPTIONS="--max-old-space-size=1024" (original worklog setting)
+  1153→  1153→- Server compiles home page in ~6-8s, handles 5+ sequential API requests before memory pressure
+  1154→  1154→- All 26+ API endpoints verified working (sequential testing with 3s delays between requests)
+  1155→  1155→
+  1156→  1156→Verification:
+  1157→  1157→- bun run lint: 0 errors
+  1158→  1158→- HTTP 200 on / route (via port 3000 and Caddy port 81)
+  1159→  1159→- HTTP 200 on /api/dashboard, /api/alerts, /api/incidents, /api/rules, /api/reports
+  1160→  1160→- WebSocket connects successfully through Caddy gateway (port 81)
+  1161→  1161→- Reports view renders correctly (verified via agent-browser before memory constraints)
+  1162→  1162→- All 4 tabs functional: Generator, Templates, Scheduled, History
+  1163→  1163→- All 12 views accessible via sidebar, search command, keyboard shortcuts (1-0 + g+x for MITRE + g+p for Reports)
+  1164→  1164→
+  1165→  1165→Stage Summary:
+  1166→  1166→- QA score: 9/10 (deduction for sandbox memory constraints limiting full sequential API testing)
+  1167→  1167→- Bugs fixed: StatCard undefined variable (accentColor → accent), removed unused imports (Checkbox, ScrollArea, Skeleton, AnimatePresence, useEffect, Calendar, FileDown, recharts components)
+  1168→  1168→- New component: reports-view.tsx (~1740 lines, 12th view)
+  1169→  1169→- Styling: 12 new CSS classes in globals.css, applied to reports-view, page.tsx, dashboard-view.tsx
+  1170→  1170→- Component inventory: 29 SIEM components (added reports-view.tsx)
+  1171→  1171→- View count: 12 views (added Reports & Exports)
+  1172→  1172→- Keyboard shortcuts: 12 views (1-0 for first 10, g+x for MITRE, g+p for Reports)
+  1173→  1173→- All 26+ API endpoints verified working (HTTP 200)
+  1174→  1174→- Lint: 0 errors, Server: stable with 1024MB heap limit
+  1175→  1175→- Memory: Dev server uses ~1.2GB after home compile, ~2GB total with WS service + bash
+  1176→  1176→- Known issue: React 19 false-positive nested-button warning (pre-existing, not blocking)
+  1177→  1177→- Known issue: Sandbox 4GB RAM limits concurrent API compilation (server may crash under heavy load)
+  1178→  1178→

@@ -1,0 +1,330 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== USER & AUTH =====
+// ===== ORGANIZATIONS (multi-tenancy) =====
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  domain    String? // allowed email domain for auto-assignment
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  alerts         Alert[]
+  incidents      Incident[]
+  detectionRules DetectionRule[]
+  assets         Asset[]
+  integrations   Integration[]
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String
+  passwordHash String
+  role         String        @default("analyst") // admin, analyst, viewer, responder
+  avatar       String?
+  provider     String? // 'local' | 'oidc' — how the account authenticates
+  oidcId       String? // subject/sub from the identity provider
+  orgId        String?
+  org          Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  isActive     Boolean       @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  alerts        AlertAssignment[]
+  incidents     IncidentAssignment[]
+  auditLogs     AuditLog[]
+  comments      Comment[]
+  notifications Notification[]
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  orgId      String?
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  action     String // login, alert.acknowledge, incident.create, rule.update, etc.
+  resource   String // alert, incident, rule, asset, user, setting
+  resourceId String?
+  details    String? // JSON string with action details
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}
+
+// ===== ALERTS =====
+model Alert {
+  id              String            @id @default(cuid())
+  orgId           String?
+  sourceId        String? // External ID from OpenSearch/Suricata
+  title           String
+  description     String
+  severity        String // critical, high, medium, low, informational
+  status          String            @default("new") // new, acknowledged, investigating, resolved, suppressed, escalated
+  category        String? // brute_force, malware, policy_violation, anomaly, compliance
+  source          String // suricata, prometheus, opensearch, custom
+  sourceIp        String?
+  destIp          String?
+  sourcePort      Int?
+  destPort        Int?
+  protocol        String?
+  hostname        String?
+  rawLog          String? // Raw log event JSON
+  mitreTactic     String? // Initial Access, Persistence, Lateral Movement, etc.
+  mitreTechnique  String?
+  tags            String? // Comma-separated tags
+  occurrenceCount Int               @default(1)
+  acknowledgedAt   DateTime? // set when status first leaves 'new'
+  resolvedAt       DateTime? // set when status becomes 'resolved'
+  firstSeenAt     DateTime
+  lastSeenAt      DateTime
+  assignedTo      AlertAssignment[]
+  incidents       IncidentAlert[]
+  comments        Comment[]
+  notifications   Notification[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  organization    Organization?     @relation(fields: [organizationId], references: [id])
+  organizationId  String?
+}
+
+model AlertAssignment {
+  id        String   @id @default(cuid())
+  alertId   String
+  alert     Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String // assigned, acknowledged, escalated
+  createdAt DateTime @default(now())
+}
+
+// ===== INCIDENTS =====
+model Incident {
+  id             String               @id @default(cuid())
+  orgId          String?
+  title          String
+  description    String
+  severity       String // critical, high, medium, low
+  status         String               @default("open") // open, investigating, contained, eradicated, recovered, closed
+  priority       String               @default("medium") // p1, p2, p3, p4
+  category       String? // security_breach, data_leak, malware_outbreak, policy_violation, compliance
+  attackVector   String?
+  impact         String?
+  resolution     String?
+  closedAt       DateTime?
+  closedBy       String?
+  dueAt          DateTime?
+  alerts         IncidentAlert[]
+  assignments    IncidentAssignment[]
+  timeline       IncidentTimeline[]
+  comments       Comment[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  organization   Organization?        @relation(fields: [organizationId], references: [id])
+  organizationId String?
+}
+
+model IncidentAlert {
+  id         String   @id @default(cuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  alertId    String
+  alert      Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  addedAt    DateTime @default(now())
+}
+
+model IncidentAssignment {
+  id         String   @id @default(cuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  role       String // lead, responder, advisor
+  assignedAt DateTime @default(now())
+}
+
+model IncidentTimeline {
+  id         String   @id @default(cuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  event      String
+  eventDate  DateTime
+  createdAt  DateTime @default(now())
+}
+
+// ===== DETECTION RULES =====
+model DetectionRule {
+  id                 String        @id @default(cuid())
+  orgId              String?
+  name               String
+  description        String
+  query              String // KQL or Lucene query
+  queryLanguage      String        @default("kql") // kql, lucene, sql
+  severity           String        @default("medium")
+  category           String?
+  mitreTactic        String?
+  mitreTechnique     String?
+  tags               String?
+  enabled            Boolean       @default(true)
+  isDefault          Boolean       @default(false)
+  schedule           String? // cron expression for scheduled rules
+  lookback           String?       @default("5m")
+  threshold          Int?          @default(1)
+  indexPattern       String?       @default("insights-host-logs-*")
+  actions            String? // JSON: notification actions
+  lastRunAt          DateTime?
+  lastHitAt          DateTime?
+  hitCount           Int           @default(0)
+  falsePositiveCount Int           @default(0)
+  createdBy          String?
+  updatedBy          String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  organization       Organization? @relation(fields: [organizationId], references: [id])
+  organizationId     String?
+}
+
+// ===== ASSETS =====
+model Asset {
+  id          String        @id @default(cuid())
+  orgId       String?
+  org         Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  name        String
+  type        String // server, workstation, network_device, container, cloud_instance, iot
+  ipAddress   String?
+  macAddress  String?
+  os          String?
+  osVersion   String?
+  status      String        @default("active") // active, inactive, decommissioned, maintenance
+  criticality String        @default("medium") // critical, high, medium, low
+  owner       String?
+  department  String?
+  location    String?
+  tags        String?
+  lastSeenAt  DateTime?
+  metadata    String? // JSON: additional metadata
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+// ===== COMPLIANCE =====
+model ComplianceFramework {
+  id          String              @id @default(cuid())
+  name        String // PCI-DSS, HIPAA, SOC2, ISO27001, NIST
+  version     String?
+  description String?
+  controls    ComplianceControl[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model ComplianceControl {
+  id             String              @id @default(cuid())
+  frameworkId    String
+  framework      ComplianceFramework @relation(fields: [frameworkId], references: [id], onDelete: Cascade)
+  controlId      String // e.g., "PCI-DSS 1.1"
+  title          String
+  description    String
+  category       String?
+  status         String              @default("not_assessed") // compliant, non_compliant, partially_compliant, not_assessed, not_applicable
+  evidence       String? // JSON: evidence documents/links
+  notes          String?
+  assessedAt     DateTime?
+  assessedBy     String?
+  remediationDue DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+}
+
+// ===== NOTIFICATIONS =====
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // alert, incident, system, compliance
+  title     String
+  message   String
+  priority  String   @default("medium")
+  read      Boolean  @default(false)
+  alertId   String?
+  alert     Alert?   @relation(fields: [alertId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+// ===== COMMENTS =====
+model Comment {
+  id         String    @id @default(cuid())
+  orgId      String?
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  content    String
+  alertId    String?
+  incidentId String?
+  alert      Alert?    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  incident   Incident? @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+// ===== SYSTEM SETTINGS =====
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String // JSON string for complex settings
+  updatedAt DateTime @updatedAt
+}
+
+// ===== INTEGRATION CONFIG =====
+model Integration {
+  id         String        @id @default(cuid())
+  orgId      String?
+  org        Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  name       String
+  type       String // opensearch, prometheus, slack, email, webhook, suricata
+  config     String // JSON: connection config
+  enabled    Boolean       @default(true)
+  lastTestAt DateTime?
+  lastStatus String? // success, failure
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+// ===== DASHBOARD WIDGETS =====
+model DashboardWidget {
+  id          String   @id @default(cuid())
+  userId      String?
+  type        String // metric_chart, alert_list, log_stream, threat_map, compliance_score
+  title       String
+  config      String // JSON: widget configuration
+  position    Int      @default(0)
+  size        String   @default("medium") // small, medium, large, full
+  refreshRate Int?     @default(30) // seconds
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ===== RETENTION & LEGAL HOLD =====
+// Single-row policy controlling how long captured data is kept before
+// automated purge. legalHold suspends all deletion (GDPR Art.17 derogation,
+// litigation hold, regulatory preservation).
+model RetentionPolicy {
+  id                    String   @id @default("global")
+  alertRetentionDays    Int      @default(90)
+  incidentRetentionDays Int      @default(365)
+  legalHold             Boolean  @default(false)
+  updatedBy             String?
+  updatedAt             DateTime @updatedAt
+}

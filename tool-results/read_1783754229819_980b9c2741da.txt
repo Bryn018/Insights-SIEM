@@ -1,0 +1,1616 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback, useMemo } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import {
+     6→  Settings as SettingsIcon,
+     7→  Users,
+     8→  Plug,
+     9→  FileText,
+    10→  ScrollText,
+    11→  Bell,
+    12→  RefreshCw,
+    13→  Plus,
+    14→  Trash2,
+    15→  CheckCircle,
+    16→  XCircle,
+    17→  Save,
+    18→  Search,
+    19→  ChevronLeft,
+    20→  ChevronRight,
+    21→  Shield,
+    22→  Mail,
+    23→  MessageSquare,
+    24→  AlertTriangle,
+    25→  Activity,
+    26→  Wifi,
+    27→  WifiOff,
+    28→  Pencil,
+    29→  UserPlus,
+    30→  Eye,
+    31→  Clock,
+    32→  Zap,
+    33→  Globe,
+    34→  Database,
+    35→  HardDrive,
+    36→} from 'lucide-react'
+    37→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+    38→import { Button } from '@/components/ui/button'
+    39→import { Input } from '@/components/ui/input'
+    40→import { Badge } from '@/components/ui/badge'
+    41→import {
+    42→  Tabs,
+    43→  TabsContent,
+    44→  TabsList,
+    45→  TabsTrigger,
+    46→} from '@/components/ui/tabs'
+    47→import {
+    48→  Select,
+    49→  SelectContent,
+    50→  SelectItem,
+    51→  SelectTrigger,
+    52→  SelectValue,
+    53→} from '@/components/ui/select'
+    54→import {
+    55→  Dialog,
+    56→  DialogContent,
+    57→  DialogHeader,
+    58→  DialogTitle,
+    59→  DialogFooter,
+    60→  DialogDescription,
+    61→} from '@/components/ui/dialog'
+    62→import {
+    63→  Table,
+    64→  TableBody,
+    65→  TableCell,
+    66→  TableHead,
+    67→  TableHeader,
+    68→  TableRow,
+    69→} from '@/components/ui/table'
+    70→import { ScrollArea } from '@/components/ui/scroll-area'
+    71→import { Skeleton } from '@/components/ui/skeleton'
+    72→import { Switch } from '@/components/ui/switch'
+    73→import { Textarea } from '@/components/ui/textarea'
+    74→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    75→import { Label } from '@/components/ui/label'
+    76→import { useSIEMStore } from '@/lib/store'
+    77→import type { Integration, AuditLog, UserRole } from '@/lib/types'
+    78→import { cn } from '@/lib/utils'
+    79→import { toast } from 'sonner'
+    80→import { format } from 'date-fns'
+    81→
+    82→// ===== Types =====
+    83→
+    84→interface SettingsData {
+    85→  [key: string]: string
+    86→}
+    87→
+    88→interface IntegrationData {
+    89→  id: string
+    90→  name: string
+    91→  type: string
+    92→  config: Record<string, unknown> | string
+    93→  enabled: boolean
+    94→  lastTestAt: string | null
+    95→  lastStatus: 'success' | 'failure' | null
+    96→  createdAt: string
+    97→  updatedAt: string
+    98→}
+    99→
+   100→interface UserData {
+   101→  id: string
+   102→  name: string
+   103→  email: string
+   104→  role: UserRole
+   105→  isActive: boolean
+   106→  lastLoginAt: string | null
+   107→  createdAt: string
+   108→}
+   109→
+   110→interface AuditLogData {
+   111→  id: string
+   112→  action: string
+   113→  resource: string
+   114→  resourceId: string | null
+   115→  details: Record<string, unknown> | null
+   116→  user: { name: string; email: string; role: string }
+   117→  ipAddress: string | null
+   118→  createdAt: string
+   119→}
+   120→
+   121→// ===== Role Badge Config =====
+   122→
+   123→const roleConfig: Record<UserRole, { label: string; className: string; icon: React.ReactNode }> = {
+   124→  admin: {
+   125→    label: 'Admin',
+   126→    className: 'bg-red-500/15 text-red-400 border-red-500/30',
+   127→    icon: <Shield className="h-3 w-3" />,
+   128→  },
+   129→  analyst: {
+   130→    label: 'Analyst',
+   131→    className: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+   132→    icon: <Eye className="h-3 w-3" />,
+   133→  },
+   134→  responder: {
+   135→    label: 'Responder',
+   136→    className: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+   137→    icon: <Zap className="h-3 w-3" />,
+   138→  },
+   139→  viewer: {
+   140→    label: 'Viewer',
+   141→    className: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
+   142→    icon: <FileText className="h-3 w-3" />,
+   143→  },
+   144→}
+   145→
+   146→// ===== Integration Type Config =====
+   147→
+   148→const integrationTypeConfig: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+   149→  opensearch: { label: 'OpenSearch', icon: <Search className="h-4 w-4" />, color: 'text-blue-400' },
+   150→  prometheus: { label: 'Prometheus', icon: <Activity className="h-4 w-4" />, color: 'text-orange-400' },
+   151→  suricata: { label: 'Suricata', icon: <Shield className="h-4 w-4" />, color: 'text-emerald-400' },
+   152→  slack: { label: 'Slack', icon: <MessageSquare className="h-4 w-4" />, color: 'text-purple-400' },
+   153→  email: { label: 'Email', icon: <Mail className="h-4 w-4" />, color: 'text-amber-400' },
+   154→  webhook: { label: 'Webhook', icon: <Globe className="h-4 w-4" />, color: 'text-cyan-400' },
+   155→}
+   156→
+   157→// ===== Notification Preferences =====
+   158→
+   159→interface NotificationPref {
+   160→  id: string
+   161→  title: string
+   162→  description: string
+   163→  icon: React.ReactNode
+   164→  enabled: boolean
+   165→  type: string
+   166→}
+   167→
+   168→const defaultNotificationPrefs: NotificationPref[] = [
+   169→  {
+   170→    id: 'alert_critical',
+   171→    title: 'Critical Alert Notifications',
+   172→    description: 'Receive immediate notifications for critical severity alerts',
+   173→    icon: <AlertTriangle className="h-4 w-4 text-red-400" />,
+   174→    enabled: true,
+   175→    type: 'alert',
+   176→  },
+   177→  {
+   178→    id: 'alert_high',
+   179→    title: 'High Alert Notifications',
+   180→    description: 'Receive notifications for high severity alerts',
+   181→    icon: <AlertTriangle className="h-4 w-4 text-amber-400" />,
+   182→    enabled: true,
+   183→    type: 'alert',
+   184→  },
+   185→  {
+   186→    id: 'incident_assigned',
+   187→    title: 'Incident Assignment',
+   188→    description: 'Notify when you are assigned to an incident',
+   189→    icon: <Users className="h-4 w-4 text-blue-400" />,
+   190→    enabled: true,
+   191→    type: 'incident',
+   192→  },
+   193→  {
+   194→    id: 'incident_status',
+   195→    title: 'Incident Status Changes',
+   196→    description: 'Notify when incident status changes',
+   197→    icon: <Activity className="h-4 w-4 text-emerald-400" />,
+   198→    enabled: false,
+   199→    type: 'incident',
+   200→  },
+   201→  {
+   202→    id: 'compliance_drift',
+   203→    title: 'Compliance Drift Alerts',
+   204→    description: 'Alert when compliance score drops below threshold',
+   205→    icon: <Shield className="h-4 w-4 text-purple-400" />,
+   206→    enabled: true,
+   207→    type: 'compliance',
+   208→  },
+   209→  {
+   210→    id: 'system_health',
+   211→    title: 'System Health Warnings',
+   212→    description: 'Notify about system health issues and outages',
+   213→    icon: <Activity className="h-4 w-4 text-orange-400" />,
+   214→    enabled: true,
+   215→    type: 'system',
+   216→  },
+   217→  {
+   218→    id: 'rule_triggered',
+   219→    title: 'Detection Rule Triggers',
+   220→    description: 'Notify when a detection rule is triggered',
+   221→    icon: <Zap className="h-4 w-4 text-yellow-400" />,
+   222→    enabled: false,
+   223→    type: 'alert',
+   224→  },
+   225→  {
+   226→    id: 'email_digest',
+   227→    title: 'Daily Email Digest',
+   228→    description: 'Receive a daily summary email of important events',
+   229→    icon: <Mail className="h-4 w-4 text-cyan-400" />,
+   230→    enabled: false,
+   231→    type: 'system',
+   232→  },
+   233→]
+   234→
+   235→// ===== Helper: Parse JSON setting value =====
+   236→
+   237→function parseSettingValue(value: string | null | undefined, fallback: string = ''): string {
+   238→  if (!value) return fallback
+   239→  try {
+   240→    const parsed = JSON.parse(value)
+   241→    if (typeof parsed === 'object' && parsed !== null && 'value' in parsed) {
+   242→      return String((parsed as { value: unknown }).value)
+   243→    }
+   244→    return String(parsed)
+   245→  } catch {
+   246→    return value
+   247→  }
+   248→}
+   249→
+   250→// ===== Main Settings View =====
+   251→
+   252→export function SettingsView() {
+   253→  const { settings, setSettings } = useSIEMStore()
+   254→
+   255→  // Data states
+   256→  const [settingsData, setSettingsData] = useState<SettingsData>({})
+   257→  const [integrations, setIntegrations] = useState<IntegrationData[]>([])
+   258→  const [users, setUsers] = useState<UserData[]>([])
+   259→  const [auditLogs, setAuditLogs] = useState<AuditLogData[]>([])
+   260→  const [auditPagination, setAuditPagination] = useState({
+   261→    page: 1,
+   262→    pageSize: 15,
+   263→    total: 0,
+   264→    totalPages: 0,
+   265→  })
+   266→  const [auditFilters, setAuditFilters] = useState({
+   267→    action: '',
+   268→    resource: '',
+   269→    dateFrom: '',
+   270→    dateTo: '',
+   271→  })
+   272→  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPref[]>(defaultNotificationPrefs)
+   273→
+   274→  // UI states
+   275→  const [loading, setLoading] = useState(true)
+   276→  const [saving, setSaving] = useState(false)
+   277→  const [savedFlash, setSavedFlash] = useState(false)
+   278→  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+   279→  const [addIntegrationOpen, setAddIntegrationOpen] = useState(false)
+   280→  const [editIntegrationOpen, setEditIntegrationOpen] = useState(false)
+   281→  const [addUserOpen, setAddUserOpen] = useState(false)
+   282→  const [testIntegrationId, setTestIntegrationId] = useState<string | null>(null)
+   283→
+   284→  // Form states
+   285→  const [newIntegration, setNewIntegration] = useState({
+   286→    name: '',
+   287→    type: 'opensearch',
+   288→    config: '{}',
+   289→    enabled: true,
+   290→  })
+   291→  const [editingIntegration, setEditingIntegration] = useState<IntegrationData | null>(null)
+   292→  const [editConfig, setEditConfig] = useState('')
+   293→  const [newUser, setNewUser] = useState({
+   294→    name: '',
+   295→    email: '',
+   296→    role: 'viewer' as UserRole,
+   297→  })
+   298→
+   299→  // ===== Data Fetching =====
+   300→
+   301→  const fetchSettings = useCallback(async () => {
+   302→    try {
+   303→      const res = await fetch('/api/settings')
+   304→      if (res.ok) {
+   305→        const json = await res.json()
+   306→        const map: SettingsData = {}
+   307→        const items = json.data || json
+   308→        if (Array.isArray(items)) {
+   309→          items.forEach((s: { key: string; value: string }) => {
+   310→            map[s.key] = s.value
+   311→          })
+   312→        }
+   313→        setSettingsData(map)
+   314→      }
+   315→    } catch {
+   316→      // ignore
+   317→    }
+   318→  }, [])
+   319→
+   320→  const fetchIntegrations = useCallback(async () => {
+   321→    try {
+   322→      const res = await fetch('/api/integrations')
+   323→      if (res.ok) {
+   324→        const json = await res.json()
+   325→        setIntegrations(json.data || json)
+   326→      }
+   327→    } catch {
+   328→      // ignore
+   329→    }
+   330→  }, [])
+   331→
+   332→  const fetchUsers = useCallback(async () => {
+   333→    try {
+   334→      const res = await fetch('/api/settings?resource=users')
+   335→      // Since we don't have a dedicated users API, we simulate from seed data
+   336→      // In production this would be a real API call
+   337→      if (res.ok) {
+   338→        // Use seed data placeholder
+   339→      }
+   340→    } catch {
+   341→      // ignore
+   342→    }
+   343→    // Simulated users data for the UI
+   344→    setUsers([
+   345→      { id: 'usr-1', name: 'Admin User', email: 'admin@siem.local', role: 'admin', isActive: true, lastLoginAt: new Date().toISOString(), createdAt: '2024-01-15T10:00:00Z' },
+   346→      { id: 'usr-2', name: 'Jane Analyst', email: 'jane@siem.local', role: 'analyst', isActive: true, lastLoginAt: new Date(Date.now() - 3600000).toISOString(), createdAt: '2024-02-20T14:30:00Z' },
+   347→      { id: 'usr-3', name: 'John Responder', email: 'john@siem.local', role: 'responder', isActive: true, lastLoginAt: new Date(Date.now() - 86400000).toISOString(), createdAt: '2024-03-10T09:15:00Z' },
+   348→      { id: 'usr-4', name: 'Sarah Viewer', email: 'sarah@siem.local', role: 'viewer', isActive: false, lastLoginAt: null, createdAt: '2024-04-05T16:45:00Z' },
+   349→    ])
+   350→  }, [])
+   351→
+   352→  const fetchAuditLogs = useCallback(async (page = 1, filters?: typeof auditFilters) => {
+   353→    try {
+   354→      const params = new URLSearchParams({
+   355→        page: String(page),
+   356→        pageSize: String(auditPagination.pageSize),
+   357→      })
+   358→      const f = filters || auditFilters
+   359→      if (f.action) params.set('action', f.action)
+   360→      if (f.resource) params.set('resource', f.resource)
+   361→      if (f.dateFrom) params.set('dateFrom', f.dateFrom)
+   362→      if (f.dateTo) params.set('dateTo', f.dateTo)
+   363→
+   364→      const res = await fetch(`/api/audit-logs?${params}`)
+   365→      if (res.ok) {
+   366→        const json = await res.json()
+   367→        setAuditLogs(json.data || json)
+   368→        if (json.pagination) {
+   369→          setAuditPagination(json.pagination)
+   370→        }
+   371→      }
+   372→    } catch {
+   373→      // ignore
+   374→    }
+   375→  }, [auditFilters, auditPagination.pageSize])
+   376→
+   377→  // Initial data load
+   378→  useEffect(() => {
+   379→    const loadAll = async () => {
+   380→      setLoading(true)
+   381→      await Promise.all([fetchSettings(), fetchIntegrations(), fetchUsers(), fetchAuditLogs()])
+   382→      setLoading(false)
+   383→    }
+   384→    loadAll()
+   385→  }, [fetchSettings, fetchIntegrations, fetchUsers, fetchAuditLogs])
+   386→
+   387→  // ===== Handlers =====
+   388→
+   389→  const handleSaveSettings = async () => {
+   390→    setSaving(true)
+   391→    try {
+   392→      const entries = Object.entries(settingsData).map(([key, value]) => ({ key, value }))
+   393→      const res = await fetch('/api/settings', {
+   394→        method: 'PATCH',
+   395→        headers: { 'Content-Type': 'application/json' },
+   396→        body: JSON.stringify({ settings: entries }),
+   397→      })
+   398→      if (res.ok) {
+   399→        toast.success('Settings saved successfully')
+   400→        setLastSavedAt(new Date())
+   401→        setSavedFlash(true)
+   402→        setTimeout(() => setSavedFlash(false), 900)
+   403→      } else {
+   404→        toast.error('Failed to save settings')
+   405→      }
+   406→    } catch {
+   407→      toast.error('Failed to save settings')
+   408→    } finally {
+   409→      setSaving(false)
+   410→    }
+   411→  }
+   412→
+   413→  const handleTestIntegration = async (id: string) => {
+   414→    setTestIntegrationId(id)
+   415→    try {
+   416→      const res = await fetch(`/api/integrations/${id}/test`, { method: 'POST' })
+   417→      if (res.ok) {
+   418→        const json = await res.json()
+   419→        if (json.success) {
+   420→          toast.success(`Connection successful: ${json.message || 'OK'}`)
+   421→        } else {
+   422→          toast.error(`Connection failed: ${json.message || 'Unknown error'}`)
+   423→        }
+   424→        fetchIntegrations()
+   425→      } else {
+   426→        toast.error('Test request failed')
+   427→      }
+   428→    } catch {
+   429→      toast.error('Connection test failed')
+   430→    } finally {
+   431→      setTestIntegrationId(null)
+   432→    }
+   433→  }
+   434→
+   435→  const handleAddIntegration = async () => {
+   436→    if (!newIntegration.name.trim()) {
+   437→      toast.error('Integration name is required')
+   438→      return
+   439→    }
+   440→    try {
+   441→      const res = await fetch('/api/integrations', {
+   442→        method: 'POST',
+   443→        headers: { 'Content-Type': 'application/json' },
+   444→        body: JSON.stringify(newIntegration),
+   445→      })
+   446→      if (res.ok) {
+   447→        toast.success('Integration added')
+   448→        setAddIntegrationOpen(false)
+   449→        setNewIntegration({ name: '', type: 'opensearch', config: '{}', enabled: true })
+   450→        fetchIntegrations()
+   451→      } else {
+   452→        toast.error('Failed to add integration')
+   453→      }
+   454→    } catch {
+   455→      toast.error('Failed to add integration')
+   456→    }
+   457→  }
+   458→
+   459→  const handleEditIntegration = async () => {
+   460→    if (!editingIntegration) return
+   461→    try {
+   462→      const res = await fetch('/api/integrations', {
+   463→        method: 'PATCH',
+   464→        headers: { 'Content-Type': 'application/json' },
+   465→        body: JSON.stringify({
+   466→          id: editingIntegration.id,
+   467→          config: editConfig,
+   468→          enabled: editingIntegration.enabled,
+   469→        }),
+   470→      })
+   471→      if (res.ok) {
+   472→        toast.success('Integration updated')
+   473→        setEditIntegrationOpen(false)
+   474→        setEditingIntegration(null)
+   475→        fetchIntegrations()
+   476→      } else {
+   477→        toast.error('Failed to update integration')
+   478→      }
+   479→    } catch {
+   480→      toast.error('Failed to update integration')
+   481→    }
+   482→  }
+   483→
+   484→  const handleToggleIntegration = async (intg: IntegrationData) => {
+   485→    try {
+   486→      const res = await fetch('/api/integrations', {
+   487→        method: 'PATCH',
+   488→        headers: { 'Content-Type': 'application/json' },
+   489→        body: JSON.stringify({ id: intg.id, enabled: !intg.enabled }),
+   490→      })
+   491→      if (res.ok) {
+   492→        toast.success(`Integration ${intg.enabled ? 'disabled' : 'enabled'}`)
+   493→        fetchIntegrations()
+   494→      }
+   495→    } catch {
+   496→      toast.error('Failed to toggle integration')
+   497→    }
+   498→  }
+   499→
+   500→  const handleAddUser = () => {
+   501→    if (!newUser.name.trim() || !newUser.email.trim()) {
+   502→      toast.error('Name and email are required')
+   503→      return
+   504→    }
+   505→    const user: UserData = {
+   506→      id: `usr-${Date.now()}`,
+   507→      name: newUser.name,
+   508→      email: newUser.email,
+   509→      role: newUser.role,
+   510→      isActive: true,
+   511→      lastLoginAt: null,
+   512→      createdAt: new Date().toISOString(),
+   513→    }
+   514→    setUsers((prev) => [...prev, user])
+   515→    toast.success(`User ${newUser.name} added`)
+   516→    setAddUserOpen(false)
+   517→    setNewUser({ name: '', email: '', role: 'viewer' })
+   518→  }
+   519→
+   520→  const handleAuditFilterChange = (key: string, value: string) => {
+   521→    const newFilters = { ...auditFilters, [key]: value }
+   522→    setAuditFilters(newFilters)
+   523→    setAuditPagination((prev) => ({ ...prev, page: 1 }))
+   524→    fetchAuditLogs(1, newFilters)
+   525→  }
+   526→
+   527→  const handleAuditPageChange = (page: number) => {
+   528→    setAuditPagination((prev) => ({ ...prev, page }))
+   529→    fetchAuditLogs(page)
+   530→  }
+   531→
+   532→  const toggleNotificationPref = (id: string) => {
+   533→    setNotificationPrefs((prev) =>
+   534→      prev.map((p) => (p.id === id ? { ...p, enabled: !p.enabled } : p))
+   535→    )
+   536→    toast.success('Notification preference updated')
+   537→  }
+   538→
+   539→  // ===== Get setting helper =====
+   540→  const getSetting = (key: string, fallback: string = ''): string =>
+   541→    parseSettingValue(settingsData[key], fallback)
+   542→
+   543→  const setSetting = (key: string, value: string) =>
+   544→    setSettingsData((prev) => ({ ...prev, [key]: JSON.stringify({ value }) }))
+   545→
+   546→  // ===== Audit log action categories =====
+   547→  const auditActions = useMemo(
+   548→    () => [...new Set(auditLogs.map((l) => l.action.split('.')[0]))].filter(Boolean),
+   549→    [auditLogs]
+   550→  )
+   551→
+   552→  const auditResources = useMemo(
+   553→    () => [...new Set(auditLogs.map((l) => l.resource))].filter(Boolean),
+   554→    [auditLogs]
+   555→  )
+   556→
+   557→  return (
+   558→    <motion.div
+   559→      initial={{ opacity: 0, y: 10 }}
+   560→      animate={{ opacity: 1, y: 0 }}
+   561→      transition={{ duration: 0.3 }}
+   562→      className="space-y-4 p-4"
+   563→    >
+   564→      {/* ===== Header ===== */}
+   565→      <div>
+   566→        <h2 className="text-lg font-bold tracking-tight">Settings</h2>
+   567→        <p className="text-xs text-muted-foreground">
+   568→          Configure system settings, integrations, users, and notifications
+   569→        </p>
+   570→      </div>
+   571→
+   572→      {/* ===== Tabs ===== */}
+   573→      <Tabs
+   574→        value={settings.activeTab}
+   575→        onValueChange={(v) => setSettings({ activeTab: v })}
+   576→      >
+   577→        <TabsList className="bg-muted/50 w-full justify-start overflow-x-auto">
+   578→          <TabsTrigger value="general" className={cn('text-xs gap-1.5 shrink-0', settings.activeTab === 'general' && 'siem-tab-active')}>
+   579→            <SettingsIcon className="h-3.5 w-3.5" />
+   580→            General
+   581→          </TabsTrigger>
+   582→          <TabsTrigger value="integrations" className={cn('text-xs gap-1.5 shrink-0', settings.activeTab === 'integrations' && 'siem-tab-active')}>
+   583→            <Plug className="h-3.5 w-3.5" />
+   584→            Integrations
+   585→          </TabsTrigger>
+   586→          <TabsTrigger value="users" className={cn('text-xs gap-1.5 shrink-0', settings.activeTab === 'users' && 'siem-tab-active')}>
+   587→            <Users className="h-3.5 w-3.5" />
+   588→            Users
+   589→          </TabsTrigger>
+   590→          <TabsTrigger value="audit" className={cn('text-xs gap-1.5 shrink-0', settings.activeTab === 'audit' && 'siem-tab-active')}>
+   591→            <ScrollText className="h-3.5 w-3.5" />
+   592→            Audit Log
+   593→          </TabsTrigger>
+   594→          <TabsTrigger value="notifications" className={cn('text-xs gap-1.5 shrink-0', settings.activeTab === 'notifications' && 'siem-tab-active')}>
+   595→            <Bell className="h-3.5 w-3.5" />
+   596→            Notifications
+   597→          </TabsTrigger>
+   598→        </TabsList>
+   599→
+   600→        {/* ============================== */}
+   601→        {/* ===== General Tab ===== */}
+   602→        {/* ============================== */}
+   603→        <TabsContent value="general" className="mt-4">
+   604→          <Card className="border-border bg-card">
+   605→            <CardHeader>
+   606→              <CardTitle className="text-sm flex items-center gap-2">
+   607→                <SettingsIcon className="h-4 w-4 text-muted-foreground" />
+   608→                General Settings
+   609→              </CardTitle>
+   610→              <CardDescription className="text-[10px]">
+   611→                System configuration and data retention policies
+   612→              </CardDescription>
+   613→            </CardHeader>
+   614→            <CardContent>
+   615→              {loading ? (
+   616→                <div className="space-y-4">
+   617→                  {[1, 2, 3, 4, 5, 6].map((i) => (
+   618→                    <Skeleton key={i} className="h-10 rounded" />
+   619→                  ))}
+   620→                </div>
+   621→              ) : (
+   622→                <div className="space-y-6">
+   623→                  {/* System Info Section */}
+   624→                  <div>
+   625→                    <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   626→                      System Information
+   627→                    </h4>
+   628→                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   629→                      <div className="space-y-1.5">
+   630→                        <Label className="text-xs">System Name</Label>
+   631→                        <Input
+   632→                          value={getSetting('general.systemName', 'Insights SIEM')}
+   633→                          onChange={(e) => setSetting('general.systemName', e.target.value)}
+   634→                          className="h-9 text-sm"
+   635→                          placeholder="Insights SIEM"
+   636→                        />
+   637→                      </div>
+   638→                      <div className="space-y-1.5">
+   639→                        <Label className="text-xs">Timezone</Label>
+   640→                        <Select
+   641→                          value={getSetting('general.timezone', 'UTC')}
+   642→                          onValueChange={(v) => setSetting('general.timezone', v)}
+   643→                        >
+   644→                          <SelectTrigger className="h-9 text-xs">
+   645→                            <SelectValue />
+   646→                          </SelectTrigger>
+   647→                          <SelectContent>
+   648→                            <SelectItem value="UTC">UTC</SelectItem>
+   649→                            <SelectItem value="US/Eastern">US/Eastern (EST)</SelectItem>
+   650→                            <SelectItem value="US/Pacific">US/Pacific (PST)</SelectItem>
+   651→                            <SelectItem value="US/Central">US/Central (CST)</SelectItem>
+   652→                            <SelectItem value="Europe/London">Europe/London (GMT)</SelectItem>
+   653→                            <SelectItem value="Europe/Berlin">Europe/Berlin (CET)</SelectItem>
+   654→                            <SelectItem value="Asia/Shanghai">Asia/Shanghai (CST)</SelectItem>
+   655→                            <SelectItem value="Asia/Tokyo">Asia/Tokyo (JST)</SelectItem>
+   656→                          </SelectContent>
+   657→                        </Select>
+   658→                      </div>
+   659→                    </div>
+   660→                  </div>
+   661→
+   662→                  {/* Data Retention Section */}
+   663→                  <div>
+   664→                    <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+   665→                      <Database className="h-3 w-3" />
+   666→                      Data Retention
+   667→                    </h4>
+   668→                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   669→                      <div className="space-y-1.5">
+   670→                        <Label className="text-xs">Alert Retention (days)</Label>
+   671→                        <Input
+   672→                          type="number"
+   673→                          value={getSetting('alerts.retentionDays', '90')}
+   674→                          onChange={(e) => setSetting('alerts.retentionDays', e.target.value)}
+   675→                          className="h-9 text-sm"
+   676→                          min={1}
+   677→                          max={3650}
+   678→                        />
+   679→                        <p className="text-[10px] text-muted-foreground">
+   680→                          Alerts older than this will be automatically purged
+   681→                        </p>
+   682→                      </div>
+   683→                      <div className="space-y-1.5">
+   684→                        <Label className="text-xs">Incident Retention (days)</Label>
+   685→                        <Input
+   686→                          type="number"
+   687→                          value={getSetting('incidents.retentionDays', '365')}
+   688→                          onChange={(e) =>
+   689→                            setSetting('incidents.retentionDays', e.target.value)
+   690→                          }
+   691→                          className="h-9 text-sm"
+   692→                          min={1}
+   693→                          max={3650}
+   694→                        />
+   695→                        <p className="text-[10px] text-muted-foreground">
+   696→                          Incidents older than this will be archived
+   697→                        </p>
+   698→                      </div>
+   699→                      <div className="space-y-1.5">
+   700→                        <Label className="text-xs">Log Retention (days)</Label>
+   701→                        <Input
+   702→                          type="number"
+   703→                          value={getSetting('logs.retentionDays', '30')}
+   704→                          onChange={(e) => setSetting('logs.retentionDays', e.target.value)}
+   705→                          className="h-9 text-sm"
+   706→                          min={1}
+   707→                          max={365}
+   708→                        />
+   709→                        <p className="text-[10px] text-muted-foreground">
+   710→                          Raw log data retention period
+   711→                        </p>
+   712→                      </div>
+   713→                      <div className="space-y-1.5">
+   714→                        <Label className="text-xs">Audit Log Retention (days)</Label>
+   715→                        <Input
+   716→                          type="number"
+   717→                          value={getSetting('audit.retentionDays', '730')}
+   718→                          onChange={(e) => setSetting('audit.retentionDays', e.target.value)}
+   719→                          className="h-9 text-sm"
+   720→                          min={30}
+   721→                          max={3650}
+   722→                        />
+   723→                        <p className="text-[10px] text-muted-foreground">
+   724→                          Audit logs are retained longer for compliance
+   725→                        </p>
+   726→                      </div>
+   727→                    </div>
+   728→                  </div>
+   729→
+   730→                  {/* Alert Settings Section */}
+   731→                  <div>
+   732→                    <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+   733→                      <HardDrive className="h-3 w-3" />
+   734→                      Alert Configuration
+   735→                    </h4>
+   736→                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   737→                      <div className="space-y-1.5">
+   738→                        <Label className="text-xs">Default Severity Threshold</Label>
+   739→                        <Select
+   740→                          value={getSetting('alerts.defaultSeverity', 'medium')}
+   741→                          onValueChange={(v) => setSetting('alerts.defaultSeverity', v)}
+   742→                        >
+   743→                          <SelectTrigger className="h-9 text-xs">
+   744→                            <SelectValue />
+   745→                          </SelectTrigger>
+   746→                          <SelectContent>
+   747→                            <SelectItem value="critical">Critical only</SelectItem>
+   748→                            <SelectItem value="high">High and above</SelectItem>
+   749→                            <SelectItem value="medium">Medium and above</SelectItem>
+   750→                            <SelectItem value="low">Low and above</SelectItem>
+   751→                          </SelectContent>
+   752→                        </Select>
+   753→                      </div>
+   754→                      <div className="space-y-1.5">
+   755→                        <Label className="text-xs">Dashboard Refresh Interval (sec)</Label>
+   756→                        <Input
+   757→                          type="number"
+   758→                          value={getSetting('dashboard.refreshInterval', '30')}
+   759→                          onChange={(e) =>
+   760→                            setSetting('dashboard.refreshInterval', e.target.value)
+   761→                          }
+   762→                          className="h-9 text-sm"
+   763→                          min={5}
+   764→                          max={300}
+   765→                        />
+   766→                      </div>
+   767→                    </div>
+   768→                  </div>
+   769→
+   770→                  {/* Save Button */}
+   771→                  <div className="flex items-center gap-3 border-t border-border pt-4 flex-wrap">
+   772→                    <Button
+   773→                      size="sm"
+   774→                      className={cn(
+   775→                        'gap-1.5 bg-emerald-600 hover:bg-emerald-700',
+   776→                        savedFlash && 'siem-save-success'
+   777→                      )}
+   778→                      onClick={handleSaveSettings}
+   779→                      disabled={saving}
+   780→                    >
+   781→                      {savedFlash ? (
+   782→                        <CheckCircle className="h-3.5 w-3.5" />
+   783→                      ) : (
+   784→                        <Save className="h-3.5 w-3.5" />
+   785→                      )}
+   786→                      {saving ? 'Saving...' : savedFlash ? 'Saved' : 'Save Settings'}
+   787→                    </Button>
+   788→                    <span className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+   789→                      {lastSavedAt ? (
+   790→                        <>
+   791→                          <Clock className="h-3 w-3" />
+   792→                          Last saved: {format(lastSavedAt, 'yyyy-MM-dd HH:mm:ss')}
+   793→                        </>
+   794→                      ) : (
+   795→                        'Changes will take effect immediately'
+   796→                      )}
+   797→                    </span>
+   798→                  </div>
+   799→                </div>
+   800→              )}
+   801→            </CardContent>
+   802→          </Card>
+   803→        </TabsContent>
+   804→
+   805→        {/* ============================== */}
+   806→        {/* ===== Integrations Tab ===== */}
+   807→        {/* ============================== */}
+   808→        <TabsContent value="integrations" className="mt-4">
+   809→          <Card className="border-border bg-card">
+   810→            <CardHeader className="flex flex-row items-center justify-between">
+   811→              <div>
+   812→                <CardTitle className="text-sm flex items-center gap-2">
+   813→                  <Plug className="h-4 w-4 text-muted-foreground" />
+   814→                  Integrations
+   815→                </CardTitle>
+   816→                <CardDescription className="text-[10px]">
+   817→                  Manage external service connections and data sources
+   818→                </CardDescription>
+   819→              </div>
+   820→              <Button
+   821→                size="sm"
+   822→                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+   823→                onClick={() => setAddIntegrationOpen(true)}
+   824→              >
+   825→                <Plus className="h-3.5 w-3.5" />
+   826→                Add Integration
+   827→              </Button>
+   828→            </CardHeader>
+   829→            <CardContent>
+   830→              {loading ? (
+   831→                <div className="space-y-3">
+   832→                  {[1, 2, 3].map((i) => (
+   833→                    <Skeleton key={i} className="h-20 rounded-lg" />
+   834→                  ))}
+   835→                </div>
+   836→              ) : integrations.length === 0 ? (
+   837→                <div className="flex flex-col items-center justify-center py-12 text-center">
+   838→                  <Plug className="mb-3 h-10 w-10 text-muted-foreground/30" />
+   839→                  <p className="text-sm font-medium text-muted-foreground">
+   840→                    No integrations configured
+   841→                  </p>
+   842→                  <p className="text-xs text-muted-foreground/70">
+   843→                    Add an integration to connect external data sources
+   844→                  </p>
+   845→                  <Button
+   846→                    variant="outline"
+   847→                    size="sm"
+   848→                    className="mt-3 gap-1.5 text-xs"
+   849→                    onClick={() => setAddIntegrationOpen(true)}
+   850→                  >
+   851→                    <Plus className="h-3 w-3" />
+   852→                    Add First Integration
+   853→                  </Button>
+   854→                </div>
+   855→              ) : (
+   856→                <div className="grid grid-cols-1 gap-3">
+   857→                  {integrations.map((intg) => {
+   858→                    const typeConf = integrationTypeConfig[intg.type]
+   859→                    return (
+   860→                      <div
+   861→                        key={intg.id}
+   862→                        className={cn(
+   863→                          'flex items-center justify-between rounded-lg border p-3 transition-colors',
+   864→                          intg.enabled
+   865→                            ? 'border-border bg-muted/20 hover:bg-muted/30'
+   866→                            : 'border-border/50 bg-muted/10 opacity-60'
+   867→                        )}
+   868→                      >
+   869→                        <div className="flex items-center gap-3">
+   870→                          <div
+   871→                            className={cn(
+   872→                              'flex h-9 w-9 items-center justify-center rounded-lg bg-muted/50',
+   873→                              typeConf?.color
+   874→                            )}
+   875→                          >
+   876→                            {typeConf?.icon || <Plug className="h-4 w-4" />}
+   877→                          </div>
+   878→                          <div>
+   879→                            <div className="flex items-center gap-2">
+   880→                              <span className="text-sm font-medium">{intg.name}</span>
+   881→                              <Badge
+   882→                                className={cn(
+   883→                                  'text-[9px] border',
+   884→                                  intg.enabled
+   885→                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+   886→                                    : 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30'
+   887→                                )}
+   888→                                variant="outline"
+   889→                              >
+   890→                                {intg.enabled ? 'Enabled' : 'Disabled'}
+   891→                              </Badge>
+   892→                              {intg.lastStatus && (
+   893→                                <Badge
+   894→                                  className={cn(
+   895→                                    'text-[9px] gap-0.5 border',
+   896→                                    intg.lastStatus === 'success'
+   897→                                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+   898→                                      : 'bg-red-500/10 text-red-400 border-red-500/20'
+   899→                                  )}
+   900→                                  variant="outline"
+   901→                                >
+   902→                                  {intg.lastStatus === 'success' ? (
+   903→                                    <CheckCircle className="h-2.5 w-2.5" />
+   904→                                  ) : (
+   905→                                    <XCircle className="h-2.5 w-2.5" />
+   906→                                  )}
+   907→                                  {intg.lastStatus}
+   908→                                </Badge>
+   909→                              )}
+   910→                            </div>
+   911→                            <div className="flex items-center gap-2 mt-0.5">
+   912→                              <span className="text-[10px] text-muted-foreground capitalize">
+   913→                                {typeConf?.label || intg.type}
+   914→                              </span>
+   915→                              {intg.lastTestAt && (
+   916→                                <span className="text-[9px] text-muted-foreground">
+   917→                                  Last tested: {format(new Date(intg.lastTestAt), 'MMM d, HH:mm')}
+   918→                                </span>
+   919→                              )}
+   920→                            </div>
+   921→                          </div>
+   922→                        </div>
+   923→                        <div className="flex items-center gap-2">
+   924→                          <Switch
+   925→                            checked={intg.enabled}
+   926→                            onCheckedChange={() => handleToggleIntegration(intg)}
+   927→                            className="scale-75"
+   928→                          />
+   929→                          <Button
+   930→                            variant="outline"
+   931→                            size="sm"
+   932→                            className="h-7 gap-1 text-[10px]"
+   933→                            onClick={() => handleTestIntegration(intg.id)}
+   934→                            disabled={testIntegrationId === intg.id}
+   935→                          >
+   936→                            {testIntegrationId === intg.id ? (
+   937→                              <RefreshCw className="h-3 w-3 animate-spin" />
+   938→                            ) : (
+   939→                              <Wifi className="h-3 w-3" />
+   940→                            )}
+   941→                            Test
+   942→                          </Button>
+   943→                          <Button
+   944→                            variant="ghost"
+   945→                            size="sm"
+   946→                            className="h-7 gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+   947→                            onClick={() => {
+   948→                              setEditingIntegration(intg)
+   949→                              const cfg =
+   950→                                typeof intg.config === 'string'
+   951→                                  ? intg.config
+   952→                                  : JSON.stringify(intg.config, null, 2)
+   953→                              setEditConfig(cfg)
+   954→                              setEditIntegrationOpen(true)
+   955→                            }}
+   956→                          >
+   957→                            <Pencil className="h-3 w-3" />
+   958→                            Edit
+   959→                          </Button>
+   960→                        </div>
+   961→                      </div>
+   962→                    )
+   963→                  })}
+   964→                </div>
+   965→              )}
+   966→            </CardContent>
+   967→          </Card>
+   968→        </TabsContent>
+   969→
+   970→        {/* ============================== */}
+   971→        {/* ===== Users Tab ===== */}
+   972→        {/* ============================== */}
+   973→        <TabsContent value="users" className="mt-4">
+   974→          <Card className="border-border bg-card">
+   975→            <CardHeader className="flex flex-row items-center justify-between">
+   976→              <div>
+   977→                <CardTitle className="text-sm flex items-center gap-2">
+   978→                  <Users className="h-4 w-4 text-muted-foreground" />
+   979→                  User Management
+   980→                </CardTitle>
+   981→                <CardDescription className="text-[10px]">
+   982→                  {users.length} users &middot; {users.filter((u) => u.isActive).length} active
+   983→                </CardDescription>
+   984→              </div>
+   985→              <Button
+   986→                size="sm"
+   987→                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+   988→                onClick={() => setAddUserOpen(true)}
+   989→              >
+   990→                <UserPlus className="h-3.5 w-3.5" />
+   991→                Add User
+   992→              </Button>
+   993→            </CardHeader>
+   994→            <CardContent className="p-0">
+   995→              {loading ? (
+   996→                <div className="space-y-2 p-4">
+   997→                  {[1, 2, 3, 4].map((i) => (
+   998→                    <Skeleton key={i} className="h-12 rounded" />
+   999→                  ))}
+  1000→                </div>
+  1001→              ) : users.length === 0 ? (
+  1002→                <div className="flex flex-col items-center justify-center py-12 text-center">
+  1003→                  <Users className="mb-3 h-10 w-10 text-muted-foreground/30" />
+  1004→                  <p className="text-sm font-medium text-muted-foreground">
+  1005→                    No users configured
+  1006→                  </p>
+  1007→                </div>
+  1008→              ) : (
+  1009→                <ScrollArea className="max-h-96">
+  1010→                  <Table>
+  1011→                    <TableHeader>
+  1012→                      <TableRow className="hover:bg-transparent">
+  1013→                        <TableHead className="text-[10px] font-medium">User</TableHead>
+  1014→                        <TableHead className="text-[10px] font-medium">Role</TableHead>
+  1015→                        <TableHead className="text-[10px] font-medium hidden sm:table-cell">
+  1016→                          Status
+  1017→                        </TableHead>
+  1018→                        <TableHead className="text-[10px] font-medium hidden md:table-cell">
+  1019→                          Last Login
+  1020→                        </TableHead>
+  1021→                        <TableHead className="text-[10px] font-medium text-right w-16">
+  1022→                          Actions
+  1023→                        </TableHead>
+  1024→                      </TableRow>
+  1025→                    </TableHeader>
+  1026→                    <TableBody>
+  1027→                      {users.map((user) => {
+  1028→                        const roleConf = roleConfig[user.role]
+  1029→                        return (
+  1030→                          <TableRow key={user.id} className="hover:bg-accent/30">
+  1031→                            <TableCell>
+  1032→                              <div className="flex items-center gap-2">
+  1033→                                <Avatar className="h-7 w-7">
+  1034→                                  <AvatarFallback
+  1035→                                    className={cn(
+  1036→                                      'text-[10px] font-medium bg-muted',
+  1037→                                      user.isActive ? 'text-foreground' : 'text-muted-foreground'
+  1038→                                    )}
+  1039→                                  >
+  1040→                                    {user.name
+  1041→                                      .split(' ')
+  1042→                                      .map((n) => n[0])
+  1043→                                      .join('')}
+  1044→                                  </AvatarFallback>
+  1045→                                </Avatar>
+  1046→                                <div>
+  1047→                                  <div className="text-xs font-medium">{user.name}</div>
+  1048→                                  <div className="text-[10px] text-muted-foreground">
+  1049→                                    {user.email}
+  1050→                                  </div>
+  1051→                                </div>
+  1052→                              </div>
+  1053→                            </TableCell>
+  1054→                            <TableCell>
+  1055→                              <Badge
+  1056→                                variant="outline"
+  1057→                                className={cn(
+  1058→                                  'text-[9px] gap-0.5 border',
+  1059→                                  roleConf.className
+  1060→                                )}
+  1061→                              >
+  1062→                                {roleConf.icon}
+  1063→                                {roleConf.label}
+  1064→                              </Badge>
+  1065→                            </TableCell>
+  1066→                            <TableCell className="hidden sm:table-cell">
+  1067→                              <Badge
+  1068→                                variant="outline"
+  1069→                                className={cn(
+  1070→                                  'text-[9px] border gap-1',
+  1071→                                  user.isActive
+  1072→                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+  1073→                                    : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+  1074→                                )}
+  1075→                              >
+  1076→                                <span className={cn(
+  1077→                                  'inline-block h-1.5 w-1.5 rounded-full',
+  1078→                                  user.isActive ? 'bg-emerald-400' : 'bg-rose-400'
+  1079→                                )} />
+  1080→                                {user.isActive ? 'Active' : 'Inactive'}
+  1081→                              </Badge>
+  1082→                            </TableCell>
+  1083→                            <TableCell className="hidden md:table-cell text-[10px] text-muted-foreground">
+  1084→                              {user.lastLoginAt
+  1085→                                ? format(new Date(user.lastLoginAt), 'MMM d, HH:mm')
+  1086→                                : 'Never'}
+  1087→                            </TableCell>
+  1088→                            <TableCell className="text-right">
+  1089→                              <Button
+  1090→                                variant="ghost"
+  1091→                                size="sm"
+  1092→                                className="h-6 text-[10px] text-muted-foreground hover:text-foreground"
+  1093→                              >
+  1094→                                <Pencil className="h-2.5 w-2.5" />
+  1095→                              </Button>
+  1096→                            </TableCell>
+  1097→                          </TableRow>
+  1098→                        )
+  1099→                      })}
+  1100→                    </TableBody>
+  1101→                  </Table>
+  1102→                </ScrollArea>
+  1103→              )}
+  1104→            </CardContent>
+  1105→          </Card>
+  1106→        </TabsContent>
+  1107→
+  1108→        {/* ============================== */}
+  1109→        {/* ===== Audit Log Tab ===== */}
+  1110→        {/* ============================== */}
+  1111→        <TabsContent value="audit" className="mt-4">
+  1112→          <Card className="border-border bg-card">
+  1113→            <CardHeader>
+  1114→              <CardTitle className="text-sm flex items-center gap-2">
+  1115→                <FileText className="h-4 w-4 text-muted-foreground" />
+  1116→                Audit Log
+  1117→              </CardTitle>
+  1118→              <CardDescription className="text-[10px]">
+  1119→                {auditPagination.total} total entries &middot; Page {auditPagination.page} of{' '}
+  1120→                {auditPagination.totalPages || 1}
+  1121→              </CardDescription>
+  1122→            </CardHeader>
+  1123→            <CardContent className="p-0">
+  1124→              {/* Filters */}
+  1125→              <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+  1126→                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+  1127→                  <Search className="h-3 w-3" />
+  1128→                  Filters:
+  1129→                </div>
+  1130→                <Input
+  1131→                  placeholder="Action..."
+  1132→                  value={auditFilters.action}
+  1133→                  onChange={(e) => handleAuditFilterChange('action', e.target.value)}
+  1134→                  className="h-7 w-28 text-[10px]"
+  1135→                />
+  1136→                <Select
+  1137→                  value={auditFilters.resource || '_all'}
+  1138→                  onValueChange={(v) =>
+  1139→                    handleAuditFilterChange('resource', v === '_all' ? '' : v)
+  1140→                  }
+  1141→                >
+  1142→                  <SelectTrigger className="h-7 w-28 text-[10px]">
+  1143→                    <SelectValue placeholder="Resource" />
+  1144→                  </SelectTrigger>
+  1145→                  <SelectContent>
+  1146→                    <SelectItem value="_all">All Resources</SelectItem>
+  1147→                    <SelectItem value="alert">Alert</SelectItem>
+  1148→                    <SelectItem value="incident">Incident</SelectItem>
+  1149→                    <SelectItem value="integration">Integration</SelectItem>
+  1150→                    <SelectItem value="compliance">Compliance</SelectItem>
+  1151→                    <SelectItem value="setting">Setting</SelectItem>
+  1152→                    <SelectItem value="rule">Rule</SelectItem>
+  1153→                  </SelectContent>
+  1154→                </Select>
+  1155→                <Input
+  1156→                  type="date"
+  1157→                  value={auditFilters.dateFrom}
+  1158→                  onChange={(e) => handleAuditFilterChange('dateFrom', e.target.value)}
+  1159→                  className="h-7 w-32 text-[10px]"
+  1160→                  placeholder="From"
+  1161→                />
+  1162→                <Input
+  1163→                  type="date"
+  1164→                  value={auditFilters.dateTo}
+  1165→                  onChange={(e) => handleAuditFilterChange('dateTo', e.target.value)}
+  1166→                  className="h-7 w-32 text-[10px]"
+  1167→                  placeholder="To"
+  1168→                />
+  1169→                <Button
+  1170→                  variant="ghost"
+  1171→                  size="sm"
+  1172→                  className="h-7 text-[10px]"
+  1173→                  onClick={() => {
+  1174→                    setAuditFilters({ action: '', resource: '', dateFrom: '', dateTo: '' })
+  1175→                    fetchAuditLogs(1, { action: '', resource: '', dateFrom: '', dateTo: '' })
+  1176→                  }}
+  1177→                >
+  1178→                  Clear
+  1179→                </Button>
+  1180→              </div>
+  1181→
+  1182→              {/* Log Table */}
+  1183→              {loading ? (
+  1184→                <div className="space-y-2 p-4">
+  1185→                  {[1, 2, 3, 4, 5].map((i) => (
+  1186→                    <Skeleton key={i} className="h-8 rounded" />
+  1187→                  ))}
+  1188→                </div>
+  1189→              ) : auditLogs.length === 0 ? (
+  1190→                <div className="flex flex-col items-center justify-center py-12 text-center">
+  1191→                  <FileText className="mb-3 h-10 w-10 text-muted-foreground/30" />
+  1192→                  <p className="text-sm font-medium text-muted-foreground">No audit logs</p>
+  1193→                  <p className="text-xs text-muted-foreground/70">
+  1194→                    Audit entries will appear here as users interact with the system
+  1195→                  </p>
+  1196→                </div>
+  1197→              ) : (
+  1198→                <ScrollArea className="max-h-96">
+  1199→                  <Table>
+  1200→                    <TableHeader>
+  1201→                      <TableRow className="hover:bg-transparent">
+  1202→                        <TableHead className="text-[10px] font-medium w-36">Action</TableHead>
+  1203→                        <TableHead className="text-[10px] font-medium w-20">Resource</TableHead>
+  1204→                        <TableHead className="text-[10px] font-medium hidden lg:table-cell w-24">
+  1205→                          Resource ID
+  1206→                        </TableHead>
+  1207→                        <TableHead className="text-[10px] font-medium w-20">User</TableHead>
+  1208→                        <TableHead className="text-[10px] font-medium hidden md:table-cell w-24">
+  1209→                          IP Address
+  1210→                        </TableHead>
+  1211→                        <TableHead className="text-[10px] font-medium w-28">Timestamp</TableHead>
+  1212→                      </TableRow>
+  1213→                    </TableHeader>
+  1214→                    <TableBody>
+  1215→                      {auditLogs.map((log) => (
+  1216→                        <TableRow key={log.id} className="hover:bg-accent/30">
+  1217→                          <TableCell>
+  1218→                            <Badge
+  1219→                              variant="outline"
+  1220→                              className="text-[9px] border-border bg-muted/30 font-mono"
+  1221→                            >
+  1222→                              {log.action}
+  1223→                            </Badge>
+  1224→                          </TableCell>
+  1225→                          <TableCell className="text-[10px] text-muted-foreground capitalize">
+  1226→                            {log.resource}
+  1227→                          </TableCell>
+  1228→                          <TableCell className="hidden lg:table-cell text-[10px] text-muted-foreground font-mono truncate max-w-24">
+  1229→                            {log.resourceId?.slice(0, 12) || '—'}
+  1230→                          </TableCell>
+  1231→                          <TableCell className="text-[10px] text-muted-foreground">
+  1232→                            {log.user?.name || '—'}
+  1233→                          </TableCell>
+  1234→                          <TableCell className="hidden md:table-cell text-[10px] text-muted-foreground font-mono">
+  1235→                            {log.ipAddress || '—'}
+  1236→                          </TableCell>
+  1237→                          <TableCell className="text-[10px] text-muted-foreground">
+  1238→                            {format(new Date(log.createdAt), 'MMM d, HH:mm:ss')}
+  1239→                          </TableCell>
+  1240→                        </TableRow>
+  1241→                      ))}
+  1242→                    </TableBody>
+  1243→                  </Table>
+  1244→                </ScrollArea>
+  1245→              )}
+  1246→
+  1247→              {/* Pagination */}
+  1248→              {auditPagination.totalPages > 1 && (
+  1249→                <div className="flex items-center justify-between border-t border-border px-4 py-2.5">
+  1250→                  <span className="text-[10px] text-muted-foreground">
+  1251→                    Showing {(auditPagination.page - 1) * auditPagination.pageSize + 1}–
+  1252→                    {Math.min(
+  1253→                      auditPagination.page * auditPagination.pageSize,
+  1254→                      auditPagination.total
+  1255→                    )}{' '}
+  1256→                    of {auditPagination.total}
+  1257→                  </span>
+  1258→                  <div className="flex items-center gap-1">
+  1259→                    <Button
+  1260→                      variant="outline"
+  1261→                      size="sm"
+  1262→                      className="h-7 w-7 p-0"
+  1263→                      disabled={auditPagination.page <= 1}
+  1264→                      onClick={() => handleAuditPageChange(auditPagination.page - 1)}
+  1265→                    >
+  1266→                      <ChevronLeft className="h-3 w-3" />
+  1267→                    </Button>
+  1268→                    {Array.from(
+  1269→                      { length: Math.min(auditPagination.totalPages, 5) },
+  1270→                      (_, i) => {
+  1271→                        const page = i + 1
+  1272→                        return (
+  1273→                          <Button
+  1274→                            key={page}
+  1275→                            variant={
+  1276→                              auditPagination.page === page ? 'default' : 'outline'
+  1277→                            }
+  1278→                            size="sm"
+  1279→                            className={cn(
+  1280→                              'h-7 w-7 p-0 text-[10px]',
+  1281→                              auditPagination.page === page &&
+  1282→                                'bg-emerald-600 hover:bg-emerald-700'
+  1283→                            )}
+  1284→                            onClick={() => handleAuditPageChange(page)}
+  1285→                          >
+  1286→                            {page}
+  1287→                          </Button>
+  1288→                        )
+  1289→                      }
+  1290→                    )}
+  1291→                    <Button
+  1292→                      variant="outline"
+  1293→                      size="sm"
+  1294→                      className="h-7 w-7 p-0"
+  1295→                      disabled={auditPagination.page >= auditPagination.totalPages}
+  1296→                      onClick={() => handleAuditPageChange(auditPagination.page + 1)}
+  1297→                    >
+  1298→                      <ChevronRight className="h-3 w-3" />
+  1299→                    </Button>
+  1300→                  </div>
+  1301→                </div>
+  1302→              )}
+  1303→            </CardContent>
+  1304→          </Card>
+  1305→        </TabsContent>
+  1306→
+  1307→        {/* ============================== */}
+  1308→        {/* ===== Notifications Tab ===== */}
+  1309→        {/* ============================== */}
+  1310→        <TabsContent value="notifications" className="mt-4">
+  1311→          <Card className="border-border bg-card">
+  1312→            <CardHeader>
+  1313→              <CardTitle className="text-sm flex items-center gap-2">
+  1314→                <Bell className="h-4 w-4 text-muted-foreground" />
+  1315→                Notification Preferences
+  1316→              </CardTitle>
+  1317→              <CardDescription className="text-[10px]">
+  1318→                Configure how and when you receive notifications
+  1319→              </CardDescription>
+  1320→            </CardHeader>
+  1321→            <CardContent>
+  1322→              {loading ? (
+  1323→                <div className="space-y-4">
+  1324→                  {[1, 2, 3, 4, 5].map((i) => (
+  1325→                    <Skeleton key={i} className="h-12 rounded" />
+  1326→                  ))}
+  1327→                </div>
+  1328→              ) : (
+  1329→                <div className="space-y-1">
+  1330→                  {/* Group by type */}
+  1331→                  {['alert', 'incident', 'compliance', 'system'].map((type) => {
+  1332→                    const prefs = notificationPrefs.filter((p) => p.type === type)
+  1333→                    if (prefs.length === 0) return null
+  1334→                    return (
+  1335→                      <div key={type} className="mb-4">
+  1336→                        <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+  1337→                          {type === 'alert' && 'Alert Notifications'}
+  1338→                          {type === 'incident' && 'Incident Notifications'}
+  1339→                          {type === 'compliance' && 'Compliance Notifications'}
+  1340→                          {type === 'system' && 'System Notifications'}
+  1341→                        </h4>
+  1342→                        <div className="space-y-1">
+  1343→                          {prefs.map((pref) => (
+  1344→                            <div
+  1345→                              key={pref.id}
+  1346→                              className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-muted/20 transition-colors"
+  1347→                            >
+  1348→                              <div className="flex items-center gap-3">
+  1349→                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/50">
+  1350→                                  {pref.icon}
+  1351→                                </div>
+  1352→                                <div>
+  1353→                                  <div className="text-xs font-medium">{pref.title}</div>
+  1354→                                  <div className="text-[10px] text-muted-foreground">
+  1355→                                    {pref.description}
+  1356→                                  </div>
+  1357→                                </div>
+  1358→                              </div>
+  1359→                              <Switch
+  1360→                                checked={pref.enabled}
+  1361→                                onCheckedChange={() => toggleNotificationPref(pref.id)}
+  1362→                              />
+  1363→                            </div>
+  1364→                          ))}
+  1365→                        </div>
+  1366→                      </div>
+  1367→                    )
+  1368→                  })}
+  1369→
+  1370→                  {/* Global Severity Threshold */}
+  1371→                  <div className="border-t border-border pt-4 mt-4">
+  1372→                    <h4 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+  1373→                      Severity Threshold
+  1374→                    </h4>
+  1375→                    <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-muted/20">
+  1376→                      <div className="flex items-center gap-3">
+  1377→                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/50">
+  1378→                          <AlertTriangle className="h-4 w-4 text-amber-400" />
+  1379→                        </div>
+  1380→                        <div>
+  1381→                          <div className="text-xs font-medium">
+  1382→                            Minimum Notification Severity
+  1383→                          </div>
+  1384→                          <div className="text-[10px] text-muted-foreground">
+  1385→                            Only receive notifications for alerts at or above this severity
+  1386→                          </div>
+  1387→                        </div>
+  1388→                      </div>
+  1389→                      <Select defaultValue="high">
+  1390→                        <SelectTrigger className="h-8 w-36 text-xs">
+  1391→                          <SelectValue />
+  1392→                        </SelectTrigger>
+  1393→                        <SelectContent>
+  1394→                          <SelectItem value="critical">Critical only</SelectItem>
+  1395→                          <SelectItem value="high">High and above</SelectItem>
+  1396→                          <SelectItem value="medium">Medium and above</SelectItem>
+  1397→                          <SelectItem value="low">All alerts</SelectItem>
+  1398→                        </SelectContent>
+  1399→                      </Select>
+  1400→                    </div>
+  1401→                  </div>
+  1402→                </div>
+  1403→              )}
+  1404→            </CardContent>
+  1405→          </Card>
+  1406→        </TabsContent>
+  1407→      </Tabs>
+  1408→
+  1409→      {/* ===== Add Integration Dialog ===== */}
+  1410→      <Dialog open={addIntegrationOpen} onOpenChange={setAddIntegrationOpen}>
+  1411→        <DialogContent className="bg-card border-border sm:max-w-md">
+  1412→          <DialogHeader>
+  1413→            <DialogTitle className="text-sm">Add Integration</DialogTitle>
+  1414→            <DialogDescription className="text-xs">
+  1415→              Configure a new external service connection
+  1416→            </DialogDescription>
+  1417→          </DialogHeader>
+  1418→          <div className="space-y-4">
+  1419→            <div className="space-y-1.5">
+  1420→              <Label className="text-xs">Name *</Label>
+  1421→              <Input
+  1422→                value={newIntegration.name}
+  1423→                onChange={(e) =>
+  1424→                  setNewIntegration({ ...newIntegration, name: e.target.value })
+  1425→                }
+  1426→                className="h-9 text-sm"
+  1427→                placeholder="My OpenSearch Cluster"
+  1428→              />
+  1429→            </div>
+  1430→            <div className="space-y-1.5">
+  1431→              <Label className="text-xs">Type</Label>
+  1432→              <Select
+  1433→                value={newIntegration.type}
+  1434→                onValueChange={(v) =>
+  1435→                  setNewIntegration({ ...newIntegration, type: v })
+  1436→                }
+  1437→              >
+  1438→                <SelectTrigger className="h-9 text-xs">
+  1439→                  <SelectValue />
+  1440→                </SelectTrigger>
+  1441→                <SelectContent>
+  1442→                  {Object.entries(integrationTypeConfig).map(([key, conf]) => (
+  1443→                    <SelectItem key={key} value={key}>
+  1444→                      <span className="flex items-center gap-1.5">{conf.label}</span>
+  1445→                    </SelectItem>
+  1446→                  ))}
+  1447→                </SelectContent>
+  1448→              </Select>
+  1449→            </div>
+  1450→            <div className="space-y-1.5">
+  1451→              <Label className="text-xs">Configuration (JSON)</Label>
+  1452→              <Textarea
+  1453→                value={newIntegration.config}
+  1454→                onChange={(e) =>
+  1455→                  setNewIntegration({ ...newIntegration, config: e.target.value })
+  1456→                }
+  1457→                className="min-h-[80px] font-mono text-xs"
+  1458→                placeholder='{"host": "localhost", "port": 9200}'
+  1459→              />
+  1460→            </div>
+  1461→            <div className="flex items-center gap-2">
+  1462→              <Switch
+  1463→                checked={newIntegration.enabled}
+  1464→                onCheckedChange={(v) =>
+  1465→                  setNewIntegration({ ...newIntegration, enabled: v })
+  1466→                }
+  1467→              />
+  1468→              <Label className="text-xs">Enable immediately</Label>
+  1469→            </div>
+  1470→          </div>
+  1471→          <DialogFooter className="gap-2">
+  1472→            <Button
+  1473→              variant="outline"
+  1474→              size="sm"
+  1475→              onClick={() => setAddIntegrationOpen(false)}
+  1476→            >
+  1477→              Cancel
+  1478→            </Button>
+  1479→            <Button
+  1480→              size="sm"
+  1481→              className="bg-emerald-600 hover:bg-emerald-700"
+  1482→              onClick={handleAddIntegration}
+  1483→              disabled={!newIntegration.name.trim()}
+  1484→            >
+  1485→              Add Integration
+  1486→            </Button>
+  1487→          </DialogFooter>
+  1488→        </DialogContent>
+  1489→      </Dialog>
+  1490→
+  1491→      {/* ===== Edit Integration Dialog ===== */}
+  1492→      <Dialog open={editIntegrationOpen} onOpenChange={setEditIntegrationOpen}>
+  1493→        <DialogContent className="bg-card border-border sm:max-w-md">
+  1494→          <DialogHeader>
+  1495→            <DialogTitle className="text-sm">Edit Integration</DialogTitle>
+  1496→            <DialogDescription className="text-xs">
+  1497→              Update configuration for{' '}
+  1498→              <span className="font-medium">{editingIntegration?.name}</span>
+  1499→            </DialogDescription>
+  1500→          </DialogHeader>
+  1501→          <div className="space-y-4">
+  1502→            <div className="space-y-1.5">
+  1503→              <Label className="text-xs">Configuration (JSON)</Label>
+  1504→              <Textarea
+  1505→                value={editConfig}
+  1506→                onChange={(e) => setEditConfig(e.target.value)}
+  1507→                className="min-h-[120px] font-mono text-xs"
+  1508→              />
+  1509→            </div>
+  1510→          </div>
+  1511→          <DialogFooter className="gap-2">
+  1512→            <Button
+  1513→              variant="outline"
+  1514→              size="sm"
+  1515→              onClick={() => setEditIntegrationOpen(false)}
+  1516→            >
+  1517→              Cancel
+  1518→            </Button>
+  1519→            <Button
+  1520→              size="sm"
+  1521→              className="bg-emerald-600 hover:bg-emerald-700"
+  1522→              onClick={handleEditIntegration}
+  1523→            >
+  1524→              Save Changes
+  1525→            </Button>
+  1526→          </DialogFooter>
+  1527→        </DialogContent>
+  1528→      </Dialog>
+  1529→
+  1530→      {/* ===== Add User Dialog ===== */}
+  1531→      <Dialog open={addUserOpen} onOpenChange={setAddUserOpen}>
+  1532→        <DialogContent className="bg-card border-border sm:max-w-md">
+  1533→          <DialogHeader>
+  1534→            <DialogTitle className="text-sm">Add User</DialogTitle>
+  1535→            <DialogDescription className="text-xs">
+  1536→              Create a new user account with specified role
+  1537→            </DialogDescription>
+  1538→          </DialogHeader>
+  1539→          <div className="space-y-4">
+  1540→            <div className="space-y-1.5">
+  1541→              <Label className="text-xs">Full Name *</Label>
+  1542→              <Input
+  1543→                value={newUser.name}
+  1544→                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+  1545→                className="h-9 text-sm"
+  1546→                placeholder="John Doe"
+  1547→              />
+  1548→            </div>
+  1549→            <div className="space-y-1.5">
+  1550→              <Label className="text-xs">Email *</Label>
+  1551→              <Input
+  1552→                type="email"
+  1553→                value={newUser.email}
+  1554→                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+  1555→                className="h-9 text-sm"
+  1556→                placeholder="john@siem.local"
+  1557→              />
+  1558→            </div>
+  1559→            <div className="space-y-1.5">
+  1560→              <Label className="text-xs">Role</Label>
+  1561→              <Select
+  1562→                value={newUser.role}
+  1563→                onValueChange={(v) => setNewUser({ ...newUser, role: v as UserRole })}
+  1564→              >
+  1565→                <SelectTrigger className="h-9 text-xs">
+  1566→                  <SelectValue />
+  1567→                </SelectTrigger>
+  1568→                <SelectContent>
+  1569→                  <SelectItem value="admin">
+  1570→                    <span className="flex items-center gap-1.5">
+  1571→                      <Shield className="h-3 w-3 text-red-400" />
+  1572→                      Admin — Full system access
+  1573→                    </span>
+  1574→                  </SelectItem>
+  1575→                  <SelectItem value="analyst">
+  1576→                    <span className="flex items-center gap-1.5">
+  1577→                      <Eye className="h-3 w-3 text-blue-400" />
+  1578→                      Analyst — Alert investigation
+  1579→                    </span>
+  1580→                  </SelectItem>
+  1581→                  <SelectItem value="responder">
+  1582→                    <span className="flex items-center gap-1.5">
+  1583→                      <Zap className="h-3 w-3 text-amber-400" />
+  1584→                      Responder — Incident response
+  1585→                    </span>
+  1586→                  </SelectItem>
+  1587→                  <SelectItem value="viewer">
+  1588→                    <span className="flex items-center gap-1.5">
+  1589→                      <FileText className="h-3 w-3 text-zinc-400" />
+  1590→                      Viewer — Read-only access
+  1591→                    </span>
+  1592→                  </SelectItem>
+  1593→                </SelectContent>
+  1594→              </Select>
+  1595→            </div>
+  1596→          </div>
+  1597→          <DialogFooter className="gap-2">
+  1598→            <Button variant="outline" size="sm" onClick={() => setAddUserOpen(false)}>
+  1599→              Cancel
+  1600→            </Button>
+  1601→            <Button
+  1602→              size="sm"
+  1603→              className="bg-emerald-600 hover:bg-emerald-700"
+  1604→              onClick={handleAddUser}
+  1605→              disabled={!newUser.name.trim() || !newUser.email.trim()}
+  1606→            >
+  1607→              <UserPlus className="h-3.5 w-3.5" />
+  1608→              Add User
+  1609→            </Button>
+  1610→          </DialogFooter>
+  1611→        </DialogContent>
+  1612→      </Dialog>
+  1613→    </motion.div>
+  1614→  )
+  1615→}
+  1616→

@@ -1,0 +1,617 @@
+  1000→                </div>
+  1001→              ) : users.length === 0 ? (
+  1002→                <div className="flex flex-col items-center justify-center py-12 text-center">
+  1003→                  <Users className="mb-3 h-10 w-10 text-muted-foreground/30" />
+  1004→                  <p className="text-sm font-medium text-muted-foreground">
+  1005→                    No users configured
+  1006→                  </p>
+  1007→                </div>
+  1008→              ) : (
+  1009→                <ScrollArea className="max-h-96">
+  1010→                  <Table>
+  1011→                    <TableHeader>
+  1012→                      <TableRow className="hover:bg-transparent">
+  1013→                        <TableHead className="text-[10px] font-medium">User</TableHead>
+  1014→                        <TableHead className="text-[10px] font-medium">Role</TableHead>
+  1015→                        <TableHead className="text-[10px] font-medium hidden sm:table-cell">
+  1016→                          Status
+  1017→                        </TableHead>
+  1018→                        <TableHead className="text-[10px] font-medium hidden md:table-cell">
+  1019→                          Last Login
+  1020→                        </TableHead>
+  1021→                        <TableHead className="text-[10px] font-medium text-right w-16">
+  1022→                          Actions
+  1023→                        </TableHead>
+  1024→                      </TableRow>
+  1025→                    </TableHeader>
+  1026→                    <TableBody>
+  1027→                      {users.map((user) => {
+  1028→                        const roleConf = roleConfig[user.role]
+  1029→                        return (
+  1030→                          <TableRow key={user.id} className="hover:bg-accent/30">
+  1031→                            <TableCell>
+  1032→                              <div className="flex items-center gap-2">
+  1033→                                <Avatar className="h-7 w-7">
+  1034→                                  <AvatarFallback
+  1035→                                    className={cn(
+  1036→                                      'text-[10px] font-medium bg-muted',
+  1037→                                      user.isActive ? 'text-foreground' : 'text-muted-foreground'
+  1038→                                    )}
+  1039→                                  >
+  1040→                                    {user.name
+  1041→                                      .split(' ')
+  1042→                                      .map((n) => n[0])
+  1043→                                      .join('')}
+  1044→                                  </AvatarFallback>
+  1045→                                </Avatar>
+  1046→                                <div>
+  1047→                                  <div className="text-xs font-medium">{user.name}</div>
+  1048→                                  <div className="text-[10px] text-muted-foreground">
+  1049→                                    {user.email}
+  1050→                                  </div>
+  1051→                                </div>
+  1052→                              </div>
+  1053→                            </TableCell>
+  1054→                            <TableCell>
+  1055→                              <Badge
+  1056→                                variant="outline"
+  1057→                                className={cn(
+  1058→                                  'text-[9px] gap-0.5 border',
+  1059→                                  roleConf.className
+  1060→                                )}
+  1061→                              >
+  1062→                                {roleConf.icon}
+  1063→                                {roleConf.label}
+  1064→                              </Badge>
+  1065→                            </TableCell>
+  1066→                            <TableCell className="hidden sm:table-cell">
+  1067→                              <Badge
+  1068→                                variant="outline"
+  1069→                                className={cn(
+  1070→                                  'text-[9px] border gap-1',
+  1071→                                  user.isActive
+  1072→                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+  1073→                                    : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+  1074→                                )}
+  1075→                              >
+  1076→                                <span className={cn(
+  1077→                                  'inline-block h-1.5 w-1.5 rounded-full',
+  1078→                                  user.isActive ? 'bg-emerald-400' : 'bg-rose-400'
+  1079→                                )} />
+  1080→                                {user.isActive ? 'Active' : 'Inactive'}
+  1081→                              </Badge>
+  1082→                            </TableCell>
+  1083→                            <TableCell className="hidden md:table-cell text-[10px] text-muted-foreground">
+  1084→                              {user.lastLoginAt
+  1085→                                ? format(new Date(user.lastLoginAt), 'MMM d, HH:mm')
+  1086→                                : 'Never'}
+  1087→                            </TableCell>
+  1088→                            <TableCell className="text-right">
+  1089→                              <Button
+  1090→                                variant="ghost"
+  1091→                                size="sm"
+  1092→                                className="h-6 text-[10px] text-muted-foreground hover:text-foreground"
+  1093→                              >
+  1094→                                <Pencil className="h-2.5 w-2.5" />
+  1095→                              </Button>
+  1096→                            </TableCell>
+  1097→                          </TableRow>
+  1098→                        )
+  1099→                      })}
+  1100→                    </TableBody>
+  1101→                  </Table>
+  1102→                </ScrollArea>
+  1103→              )}
+  1104→            </CardContent>
+  1105→          </Card>
+  1106→        </TabsContent>
+  1107→
+  1108→        {/* ============================== */}
+  1109→        {/* ===== Audit Log Tab ===== */}
+  1110→        {/* ============================== */}
+  1111→        <TabsContent value="audit" className="mt-4">
+  1112→          <Card className="border-border bg-card">
+  1113→            <CardHeader>
+  1114→              <CardTitle className="text-sm flex items-center gap-2">
+  1115→                <FileText className="h-4 w-4 text-muted-foreground" />
+  1116→                Audit Log
+  1117→              </CardTitle>
+  1118→              <CardDescription className="text-[10px]">
+  1119→                {auditPagination.total} total entries &middot; Page {auditPagination.page} of{' '}
+  1120→                {auditPagination.totalPages || 1}
+  1121→              </CardDescription>
+  1122→            </CardHeader>
+  1123→            <CardContent className="p-0">
+  1124→              {/* Filters */}
+  1125→              <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+  1126→                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+  1127→                  <Search className="h-3 w-3" />
+  1128→                  Filters:
+  1129→                </div>
+  1130→                <Input
+  1131→                  placeholder="Action..."
+  1132→                  value={auditFilters.action}
+  1133→                  onChange={(e) => handleAuditFilterChange('action', e.target.value)}
+  1134→                  className="h-7 w-28 text-[10px]"
+  1135→                />
+  1136→                <Select
+  1137→                  value={auditFilters.resource || '_all'}
+  1138→                  onValueChange={(v) =>
+  1139→                    handleAuditFilterChange('resource', v === '_all' ? '' : v)
+  1140→                  }
+  1141→                >
+  1142→                  <SelectTrigger className="h-7 w-28 text-[10px]">
+  1143→                    <SelectValue placeholder="Resource" />
+  1144→                  </SelectTrigger>
+  1145→                  <SelectContent>
+  1146→                    <SelectItem value="_all">All Resources</SelectItem>
+  1147→                    <SelectItem value="alert">Alert</SelectItem>
+  1148→                    <SelectItem value="incident">Incident</SelectItem>
+  1149→                    <SelectItem value="integration">Integration</SelectItem>
+  1150→                    <SelectItem value="compliance">Compliance</SelectItem>
+  1151→                    <SelectItem value="setting">Setting</SelectItem>
+  1152→                    <SelectItem value="rule">Rule</SelectItem>
+  1153→                  </SelectContent>
+  1154→                </Select>
+  1155→                <Input
+  1156→                  type="date"
+  1157→                  value={auditFilters.dateFrom}
+  1158→                  onChange={(e) => handleAuditFilterChange('dateFrom', e.target.value)}
+  1159→                  className="h-7 w-32 text-[10px]"
+  1160→                  placeholder="From"
+  1161→                />
+  1162→                <Input
+  1163→                  type="date"
+  1164→                  value={auditFilters.dateTo}
+  1165→                  onChange={(e) => handleAuditFilterChange('dateTo', e.target.value)}
+  1166→                  className="h-7 w-32 text-[10px]"
+  1167→                  placeholder="To"
+  1168→                />
+  1169→                <Button
+  1170→                  variant="ghost"
+  1171→                  size="sm"
+  1172→                  className="h-7 text-[10px]"
+  1173→                  onClick={() => {
+  1174→                    setAuditFilters({ action: '', resource: '', dateFrom: '', dateTo: '' })
+  1175→                    fetchAuditLogs(1, { action: '', resource: '', dateFrom: '', dateTo: '' })
+  1176→                  }}
+  1177→                >
+  1178→                  Clear
+  1179→                </Button>
+  1180→              </div>
+  1181→
+  1182→              {/* Log Table */}
+  1183→              {loading ? (
+  1184→                <div className="space-y-2 p-4">
+  1185→                  {[1, 2, 3, 4, 5].map((i) => (
+  1186→                    <Skeleton key={i} className="h-8 rounded" />
+  1187→                  ))}
+  1188→                </div>
+  1189→              ) : auditLogs.length === 0 ? (
+  1190→                <div className="flex flex-col items-center justify-center py-12 text-center">
+  1191→                  <FileText className="mb-3 h-10 w-10 text-muted-foreground/30" />
+  1192→                  <p className="text-sm font-medium text-muted-foreground">No audit logs</p>
+  1193→                  <p className="text-xs text-muted-foreground/70">
+  1194→                    Audit entries will appear here as users interact with the system
+  1195→                  </p>
+  1196→                </div>
+  1197→              ) : (
+  1198→                <ScrollArea className="max-h-96">
+  1199→                  <Table>
+  1200→                    <TableHeader>
+  1201→                      <TableRow className="hover:bg-transparent">
+  1202→                        <TableHead className="text-[10px] font-medium w-36">Action</TableHead>
+  1203→                        <TableHead className="text-[10px] font-medium w-20">Resource</TableHead>
+  1204→                        <TableHead className="text-[10px] font-medium hidden lg:table-cell w-24">
+  1205→                          Resource ID
+  1206→                        </TableHead>
+  1207→                        <TableHead className="text-[10px] font-medium w-20">User</TableHead>
+  1208→                        <TableHead className="text-[10px] font-medium hidden md:table-cell w-24">
+  1209→                          IP Address
+  1210→                        </TableHead>
+  1211→                        <TableHead className="text-[10px] font-medium w-28">Timestamp</TableHead>
+  1212→                      </TableRow>
+  1213→                    </TableHeader>
+  1214→                    <TableBody>
+  1215→                      {auditLogs.map((log) => (
+  1216→                        <TableRow key={log.id} className="hover:bg-accent/30">
+  1217→                          <TableCell>
+  1218→                            <Badge
+  1219→                              variant="outline"
+  1220→                              className="text-[9px] border-border bg-muted/30 font-mono"
+  1221→                            >
+  1222→                              {log.action}
+  1223→                            </Badge>
+  1224→                          </TableCell>
+  1225→                          <TableCell className="text-[10px] text-muted-foreground capitalize">
+  1226→                            {log.resource}
+  1227→                          </TableCell>
+  1228→                          <TableCell className="hidden lg:table-cell text-[10px] text-muted-foreground font-mono truncate max-w-24">
+  1229→                            {log.resourceId?.slice(0, 12) || '—'}
+  1230→                          </TableCell>
+  1231→                          <TableCell className="text-[10px] text-muted-foreground">
+  1232→                            {log.user?.name || '—'}
+  1233→                          </TableCell>
+  1234→                          <TableCell className="hidden md:table-cell text-[10px] text-muted-foreground font-mono">
+  1235→                            {log.ipAddress || '—'}
+  1236→                          </TableCell>
+  1237→                          <TableCell className="text-[10px] text-muted-foreground">
+  1238→                            {format(new Date(log.createdAt), 'MMM d, HH:mm:ss')}
+  1239→                          </TableCell>
+  1240→                        </TableRow>
+  1241→                      ))}
+  1242→                    </TableBody>
+  1243→                  </Table>
+  1244→                </ScrollArea>
+  1245→              )}
+  1246→
+  1247→              {/* Pagination */}
+  1248→              {auditPagination.totalPages > 1 && (
+  1249→                <div className="flex items-center justify-between border-t border-border px-4 py-2.5">
+  1250→                  <span className="text-[10px] text-muted-foreground">
+  1251→                    Showing {(auditPagination.page - 1) * auditPagination.pageSize + 1}–
+  1252→                    {Math.min(
+  1253→                      auditPagination.page * auditPagination.pageSize,
+  1254→                      auditPagination.total
+  1255→                    )}{' '}
+  1256→                    of {auditPagination.total}
+  1257→                  </span>
+  1258→                  <div className="flex items-center gap-1">
+  1259→                    <Button
+  1260→                      variant="outline"
+  1261→                      size="sm"
+  1262→                      className="h-7 w-7 p-0"
+  1263→                      disabled={auditPagination.page <= 1}
+  1264→                      onClick={() => handleAuditPageChange(auditPagination.page - 1)}
+  1265→                    >
+  1266→                      <ChevronLeft className="h-3 w-3" />
+  1267→                    </Button>
+  1268→                    {Array.from(
+  1269→                      { length: Math.min(auditPagination.totalPages, 5) },
+  1270→                      (_, i) => {
+  1271→                        const page = i + 1
+  1272→                        return (
+  1273→                          <Button
+  1274→                            key={page}
+  1275→                            variant={
+  1276→                              auditPagination.page === page ? 'default' : 'outline'
+  1277→                            }
+  1278→                            size="sm"
+  1279→                            className={cn(
+  1280→                              'h-7 w-7 p-0 text-[10px]',
+  1281→                              auditPagination.page === page &&
+  1282→                                'bg-emerald-600 hover:bg-emerald-700'
+  1283→                            )}
+  1284→                            onClick={() => handleAuditPageChange(page)}
+  1285→                          >
+  1286→                            {page}
+  1287→                          </Button>
+  1288→                        )
+  1289→                      }
+  1290→                    )}
+  1291→                    <Button
+  1292→                      variant="outline"
+  1293→                      size="sm"
+  1294→                      className="h-7 w-7 p-0"
+  1295→                      disabled={auditPagination.page >= auditPagination.totalPages}
+  1296→                      onClick={() => handleAuditPageChange(auditPagination.page + 1)}
+  1297→                    >
+  1298→                      <ChevronRight className="h-3 w-3" />
+  1299→                    </Button>
+  1300→                  </div>
+  1301→                </div>
+  1302→              )}
+  1303→            </CardContent>
+  1304→          </Card>
+  1305→        </TabsContent>
+  1306→
+  1307→        {/* ============================== */}
+  1308→        {/* ===== Notifications Tab ===== */}
+  1309→        {/* ============================== */}
+  1310→        <TabsContent value="notifications" className="mt-4">
+  1311→          <Card className="border-border bg-card">
+  1312→            <CardHeader>
+  1313→              <CardTitle className="text-sm flex items-center gap-2">
+  1314→                <Bell className="h-4 w-4 text-muted-foreground" />
+  1315→                Notification Preferences
+  1316→              </CardTitle>
+  1317→              <CardDescription className="text-[10px]">
+  1318→                Configure how and when you receive notifications
+  1319→              </CardDescription>
+  1320→            </CardHeader>
+  1321→            <CardContent>
+  1322→              {loading ? (
+  1323→                <div className="space-y-4">
+  1324→                  {[1, 2, 3, 4, 5].map((i) => (
+  1325→                    <Skeleton key={i} className="h-12 rounded" />
+  1326→                  ))}
+  1327→                </div>
+  1328→              ) : (
+  1329→                <div className="space-y-1">
+  1330→                  {/* Group by type */}
+  1331→                  {['alert', 'incident', 'compliance', 'system'].map((type) => {
+  1332→                    const prefs = notificationPrefs.filter((p) => p.type === type)
+  1333→                    if (prefs.length === 0) return null
+  1334→                    return (
+  1335→                      <div key={type} className="mb-4">
+  1336→                        <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+  1337→                          {type === 'alert' && 'Alert Notifications'}
+  1338→                          {type === 'incident' && 'Incident Notifications'}
+  1339→                          {type === 'compliance' && 'Compliance Notifications'}
+  1340→                          {type === 'system' && 'System Notifications'}
+  1341→                        </h4>
+  1342→                        <div className="space-y-1">
+  1343→                          {prefs.map((pref) => (
+  1344→                            <div
+  1345→                              key={pref.id}
+  1346→                              className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-muted/20 transition-colors"
+  1347→                            >
+  1348→                              <div className="flex items-center gap-3">
+  1349→                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/50">
+  1350→                                  {pref.icon}
+  1351→                                </div>
+  1352→                                <div>
+  1353→                                  <div className="text-xs font-medium">{pref.title}</div>
+  1354→                                  <div className="text-[10px] text-muted-foreground">
+  1355→                                    {pref.description}
+  1356→                                  </div>
+  1357→                                </div>
+  1358→                              </div>
+  1359→                              <Switch
+  1360→                                checked={pref.enabled}
+  1361→                                onCheckedChange={() => toggleNotificationPref(pref.id)}
+  1362→                              />
+  1363→                            </div>
+  1364→                          ))}
+  1365→                        </div>
+  1366→                      </div>
+  1367→                    )
+  1368→                  })}
+  1369→
+  1370→                  {/* Global Severity Threshold */}
+  1371→                  <div className="border-t border-border pt-4 mt-4">
+  1372→                    <h4 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+  1373→                      Severity Threshold
+  1374→                    </h4>
+  1375→                    <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-muted/20">
+  1376→                      <div className="flex items-center gap-3">
+  1377→                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/50">
+  1378→                          <AlertTriangle className="h-4 w-4 text-amber-400" />
+  1379→                        </div>
+  1380→                        <div>
+  1381→                          <div className="text-xs font-medium">
+  1382→                            Minimum Notification Severity
+  1383→                          </div>
+  1384→                          <div className="text-[10px] text-muted-foreground">
+  1385→                            Only receive notifications for alerts at or above this severity
+  1386→                          </div>
+  1387→                        </div>
+  1388→                      </div>
+  1389→                      <Select defaultValue="high">
+  1390→                        <SelectTrigger className="h-8 w-36 text-xs">
+  1391→                          <SelectValue />
+  1392→                        </SelectTrigger>
+  1393→                        <SelectContent>
+  1394→                          <SelectItem value="critical">Critical only</SelectItem>
+  1395→                          <SelectItem value="high">High and above</SelectItem>
+  1396→                          <SelectItem value="medium">Medium and above</SelectItem>
+  1397→                          <SelectItem value="low">All alerts</SelectItem>
+  1398→                        </SelectContent>
+  1399→                      </Select>
+  1400→                    </div>
+  1401→                  </div>
+  1402→                </div>
+  1403→              )}
+  1404→            </CardContent>
+  1405→          </Card>
+  1406→        </TabsContent>
+  1407→      </Tabs>
+  1408→
+  1409→      {/* ===== Add Integration Dialog ===== */}
+  1410→      <Dialog open={addIntegrationOpen} onOpenChange={setAddIntegrationOpen}>
+  1411→        <DialogContent className="bg-card border-border sm:max-w-md">
+  1412→          <DialogHeader>
+  1413→            <DialogTitle className="text-sm">Add Integration</DialogTitle>
+  1414→            <DialogDescription className="text-xs">
+  1415→              Configure a new external service connection
+  1416→            </DialogDescription>
+  1417→          </DialogHeader>
+  1418→          <div className="space-y-4">
+  1419→            <div className="space-y-1.5">
+  1420→              <Label className="text-xs">Name *</Label>
+  1421→              <Input
+  1422→                value={newIntegration.name}
+  1423→                onChange={(e) =>
+  1424→                  setNewIntegration({ ...newIntegration, name: e.target.value })
+  1425→                }
+  1426→                className="h-9 text-sm"
+  1427→                placeholder="My OpenSearch Cluster"
+  1428→              />
+  1429→            </div>
+  1430→            <div className="space-y-1.5">
+  1431→              <Label className="text-xs">Type</Label>
+  1432→              <Select
+  1433→                value={newIntegration.type}
+  1434→                onValueChange={(v) =>
+  1435→                  setNewIntegration({ ...newIntegration, type: v })
+  1436→                }
+  1437→              >
+  1438→                <SelectTrigger className="h-9 text-xs">
+  1439→                  <SelectValue />
+  1440→                </SelectTrigger>
+  1441→                <SelectContent>
+  1442→                  {Object.entries(integrationTypeConfig).map(([key, conf]) => (
+  1443→                    <SelectItem key={key} value={key}>
+  1444→                      <span className="flex items-center gap-1.5">{conf.label}</span>
+  1445→                    </SelectItem>
+  1446→                  ))}
+  1447→                </SelectContent>
+  1448→              </Select>
+  1449→            </div>
+  1450→            <div className="space-y-1.5">
+  1451→              <Label className="text-xs">Configuration (JSON)</Label>
+  1452→              <Textarea
+  1453→                value={newIntegration.config}
+  1454→                onChange={(e) =>
+  1455→                  setNewIntegration({ ...newIntegration, config: e.target.value })
+  1456→                }
+  1457→                className="min-h-[80px] font-mono text-xs"
+  1458→                placeholder='{"host": "localhost", "port": 9200}'
+  1459→              />
+  1460→            </div>
+  1461→            <div className="flex items-center gap-2">
+  1462→              <Switch
+  1463→                checked={newIntegration.enabled}
+  1464→                onCheckedChange={(v) =>
+  1465→                  setNewIntegration({ ...newIntegration, enabled: v })
+  1466→                }
+  1467→              />
+  1468→              <Label className="text-xs">Enable immediately</Label>
+  1469→            </div>
+  1470→          </div>
+  1471→          <DialogFooter className="gap-2">
+  1472→            <Button
+  1473→              variant="outline"
+  1474→              size="sm"
+  1475→              onClick={() => setAddIntegrationOpen(false)}
+  1476→            >
+  1477→              Cancel
+  1478→            </Button>
+  1479→            <Button
+  1480→              size="sm"
+  1481→              className="bg-emerald-600 hover:bg-emerald-700"
+  1482→              onClick={handleAddIntegration}
+  1483→              disabled={!newIntegration.name.trim()}
+  1484→            >
+  1485→              Add Integration
+  1486→            </Button>
+  1487→          </DialogFooter>
+  1488→        </DialogContent>
+  1489→      </Dialog>
+  1490→
+  1491→      {/* ===== Edit Integration Dialog ===== */}
+  1492→      <Dialog open={editIntegrationOpen} onOpenChange={setEditIntegrationOpen}>
+  1493→        <DialogContent className="bg-card border-border sm:max-w-md">
+  1494→          <DialogHeader>
+  1495→            <DialogTitle className="text-sm">Edit Integration</DialogTitle>
+  1496→            <DialogDescription className="text-xs">
+  1497→              Update configuration for{' '}
+  1498→              <span className="font-medium">{editingIntegration?.name}</span>
+  1499→            </DialogDescription>
+  1500→          </DialogHeader>
+  1501→          <div className="space-y-4">
+  1502→            <div className="space-y-1.5">
+  1503→              <Label className="text-xs">Configuration (JSON)</Label>
+  1504→              <Textarea
+  1505→                value={editConfig}
+  1506→                onChange={(e) => setEditConfig(e.target.value)}
+  1507→                className="min-h-[120px] font-mono text-xs"
+  1508→              />
+  1509→            </div>
+  1510→          </div>
+  1511→          <DialogFooter className="gap-2">
+  1512→            <Button
+  1513→              variant="outline"
+  1514→              size="sm"
+  1515→              onClick={() => setEditIntegrationOpen(false)}
+  1516→            >
+  1517→              Cancel
+  1518→            </Button>
+  1519→            <Button
+  1520→              size="sm"
+  1521→              className="bg-emerald-600 hover:bg-emerald-700"
+  1522→              onClick={handleEditIntegration}
+  1523→            >
+  1524→              Save Changes
+  1525→            </Button>
+  1526→          </DialogFooter>
+  1527→        </DialogContent>
+  1528→      </Dialog>
+  1529→
+  1530→      {/* ===== Add User Dialog ===== */}
+  1531→      <Dialog open={addUserOpen} onOpenChange={setAddUserOpen}>
+  1532→        <DialogContent className="bg-card border-border sm:max-w-md">
+  1533→          <DialogHeader>
+  1534→            <DialogTitle className="text-sm">Add User</DialogTitle>
+  1535→            <DialogDescription className="text-xs">
+  1536→              Create a new user account with specified role
+  1537→            </DialogDescription>
+  1538→          </DialogHeader>
+  1539→          <div className="space-y-4">
+  1540→            <div className="space-y-1.5">
+  1541→              <Label className="text-xs">Full Name *</Label>
+  1542→              <Input
+  1543→                value={newUser.name}
+  1544→                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+  1545→                className="h-9 text-sm"
+  1546→                placeholder="John Doe"
+  1547→              />
+  1548→            </div>
+  1549→            <div className="space-y-1.5">
+  1550→              <Label className="text-xs">Email *</Label>
+  1551→              <Input
+  1552→                type="email"
+  1553→                value={newUser.email}
+  1554→                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+  1555→                className="h-9 text-sm"
+  1556→                placeholder="john@siem.local"
+  1557→              />
+  1558→            </div>
+  1559→            <div className="space-y-1.5">
+  1560→              <Label className="text-xs">Role</Label>
+  1561→              <Select
+  1562→                value={newUser.role}
+  1563→                onValueChange={(v) => setNewUser({ ...newUser, role: v as UserRole })}
+  1564→              >
+  1565→                <SelectTrigger className="h-9 text-xs">
+  1566→                  <SelectValue />
+  1567→                </SelectTrigger>
+  1568→                <SelectContent>
+  1569→                  <SelectItem value="admin">
+  1570→                    <span className="flex items-center gap-1.5">
+  1571→                      <Shield className="h-3 w-3 text-red-400" />
+  1572→                      Admin — Full system access
+  1573→                    </span>
+  1574→                  </SelectItem>
+  1575→                  <SelectItem value="analyst">
+  1576→                    <span className="flex items-center gap-1.5">
+  1577→                      <Eye className="h-3 w-3 text-blue-400" />
+  1578→                      Analyst — Alert investigation
+  1579→                    </span>
+  1580→                  </SelectItem>
+  1581→                  <SelectItem value="responder">
+  1582→                    <span className="flex items-center gap-1.5">
+  1583→                      <Zap className="h-3 w-3 text-amber-400" />
+  1584→                      Responder — Incident response
+  1585→                    </span>
+  1586→                  </SelectItem>
+  1587→                  <SelectItem value="viewer">
+  1588→                    <span className="flex items-center gap-1.5">
+  1589→                      <FileText className="h-3 w-3 text-zinc-400" />
+  1590→                      Viewer — Read-only access
+  1591→                    </span>
+  1592→                  </SelectItem>
+  1593→                </SelectContent>
+  1594→              </Select>
+  1595→            </div>
+  1596→          </div>
+  1597→          <DialogFooter className="gap-2">
+  1598→            <Button variant="outline" size="sm" onClick={() => setAddUserOpen(false)}>
+  1599→              Cancel
+  1600→            </Button>
+  1601→            <Button
+  1602→              size="sm"
+  1603→              className="bg-emerald-600 hover:bg-emerald-700"
+  1604→              onClick={handleAddUser}
+  1605→              disabled={!newUser.name.trim() || !newUser.email.trim()}
+  1606→            >
+  1607→              <UserPlus className="h-3.5 w-3.5" />
+  1608→              Add User
+  1609→            </Button>
+  1610→          </DialogFooter>
+  1611→        </DialogContent>
+  1612→      </Dialog>
+  1613→    </motion.div>
+  1614→  )
+  1615→}
+  1616→

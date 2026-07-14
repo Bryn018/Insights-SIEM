@@ -1,0 +1,1390 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useEffect, useCallback } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import {
+     6→  Zap,
+     7→  Play,
+     8→  Plus,
+     9→  Clock,
+    10→  CheckCircle2,
+    11→  XCircle,
+    12→  Activity,
+    13→  Timer,
+    14→  ChevronDown,
+    15→  Copy,
+    16→  Pencil,
+    17→  History,
+    18→  Bell,
+    19→  GitBranch,
+    20→  Filter,
+    21→  UserCheck,
+    22→  PauseCircle,
+    23→  Cpu,
+    24→  Calendar,
+    25→  Search,
+    26→  Loader2,
+    27→} from 'lucide-react'
+    28→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    29→import { Button } from '@/components/ui/button'
+    30→import { Input } from '@/components/ui/input'
+    31→import { Textarea } from '@/components/ui/textarea'
+    32→import { Badge } from '@/components/ui/badge'
+    33→import { Label } from '@/components/ui/label'
+    34→import {
+    35→  Dialog,
+    36→  DialogContent,
+    37→  DialogHeader,
+    38→  DialogTitle,
+    39→  DialogDescription,
+    40→  DialogFooter,
+    41→} from '@/components/ui/dialog'
+    42→import {
+    43→  Select,
+    44→  SelectContent,
+    45→  SelectItem,
+    46→  SelectTrigger,
+    47→  SelectValue,
+    48→} from '@/components/ui/select'
+    49→import {
+    50→  Collapsible,
+    51→  CollapsibleContent,
+    52→  CollapsibleTrigger,
+    53→} from '@/components/ui/collapsible'
+    54→import { ScrollArea } from '@/components/ui/scroll-area'
+    55→import { Separator } from '@/components/ui/separator'
+    56→import { useSIEMStore } from '@/lib/store'
+    57→import type {
+    58→  SoarPlaybook,
+    59→  SoarStep,
+    60→  SoarStepType,
+    61→  SoarTriggerType,
+    62→  SoarPlaybookStatus,
+    63→} from '@/lib/store'
+    64→import { cn } from '@/lib/utils'
+    65→import { toast } from 'sonner'
+    66→import { formatDistanceToNow } from 'date-fns'
+    67→
+    68→// ===== Types =====
+    69→
+    70→interface ExecutionRecord {
+    71→  id: string
+    72→  playbookId: string
+    73→  playbookName: string
+    74→  timestamp: string
+    75→  status: 'success' | 'failure' | 'running'
+    76→  durationSec: number
+    77→  triggeredBy: string
+    78→  triggeredByType: 'manual' | 'scheduled' | 'alert'
+    79→}
+    80→
+    81→// ===== Step Type Visual Config =====
+    82→
+    83→const STEP_TYPE_CONFIG: Record<
+    84→  SoarStepType,
+    85→  { icon: React.ComponentType<{ className?: string }>; color: string; bg: string; border: string; label: string }
+    86→> = {
+    87→  trigger: { icon: Zap, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', label: 'Trigger' },
+    88→  condition: { icon: GitBranch, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', label: 'Condition' },
+    89→  action: { icon: Cpu, color: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/30', label: 'Action' },
+    90→  notification: { icon: Bell, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30', label: 'Notification' },
+    91→  wait: { icon: PauseCircle, color: 'text-zinc-400', bg: 'bg-zinc-500/10', border: 'border-zinc-500/30', label: 'Wait' },
+    92→  approval: { icon: UserCheck, color: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/30', label: 'Approval' },
+    93→}
+    94→
+    95→const TRIGGER_CONFIG: Record<SoarTriggerType, { icon: React.ComponentType<{ className?: string }>; label: string; color: string }> = {
+    96→  manual: { icon: Play, label: 'Manual', color: 'text-zinc-300 bg-zinc-700/40 border-zinc-600/50' },
+    97→  scheduled: { icon: Calendar, label: 'Scheduled', color: 'text-sky-300 bg-sky-500/10 border-sky-500/30' },
+    98→  'alert-based': { icon: Bell, label: 'Alert-Based', color: 'text-rose-300 bg-rose-500/10 border-rose-500/30' },
+    99→}
+   100→
+   101→const STATUS_CONFIG: Record<SoarPlaybookStatus, { label: string; color: string; dot: string }> = {
+   102→  active: { label: 'Active', color: 'text-emerald-400', dot: 'bg-emerald-400' },
+   103→  draft: { label: 'Draft', color: 'text-amber-400', dot: 'bg-amber-400' },
+   104→  disabled: { label: 'Disabled', color: 'text-zinc-500', dot: 'bg-zinc-600' },
+   105→}
+   106→
+   107→// ===== Mock Data =====
+   108→
+   109→const ISO_OFFSET = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
+   110→
+   111→function makeStep(
+   112→  id: string,
+   113→  name: string,
+   114→  type: SoarStepType,
+   115→  action: string,
+   116→  config: Record<string, unknown> = {}
+   117→): SoarStep {
+   118→  return { id, name, type, action, config }
+   119→}
+   120→
+   121→const INITIAL_PLAYBOOKS: SoarPlaybook[] = [
+   122→  {
+   123→    id: 'pb-phishing',
+   124→    name: 'Phishing Email Response',
+   125→    description: 'Automated response workflow for reported phishing emails. Triages the report, extracts IOCs, cross-references threat intel, and contains the threat.',
+   126→    trigger: 'alert-based',
+   127→    status: 'active',
+   128→    lastRun: ISO_OFFSET(42),
+   129→    runCount: 312,
+   130→    successCount: 298,
+   131→    failureCount: 14,
+   132→    avgDuration: 87,
+   133→    steps: [
+   134→      makeStep('s1', 'Triage Email', 'trigger', 'Parse email headers and assess risk score'),
+   135→      makeStep('s2', 'Extract IOCs', 'action', 'Pull URLs, attachments, sender domains, and hashes'),
+   136→      makeStep('s3', 'Check Threat Intel', 'condition', 'Query VirusTotal and internal IOC DB for known indicators'),
+   137→      makeStep('s4', 'Block Sender', 'action', 'Add sender domain to email gateway blocklist'),
+   138→      makeStep('s5', 'Quarantine Email', 'action', 'Move message to quarantine mailbox across all recipients'),
+   139→      makeStep('s6', 'Notify User', 'notification', 'Send awareness email to original reporter'),
+   140→      makeStep('s7', 'Create Incident', 'action', 'Open P3 incident in ITSM with linked IOCs'),
+   141→      makeStep('s8', 'Escalate', 'approval', 'If risk score > 80, escalate to SOC Tier 2 lead'),
+   142→    ],
+   143→  },
+   144→  {
+   145→    id: 'pb-bruteforce',
+   146→    name: 'Brute Force Lockout',
+   147→    description: 'Detects and responds to authentication brute-force attacks by enforcing lockouts, blocking source IPs, and alerting administrators.',
+   148→    trigger: 'alert-based',
+   149→    status: 'active',
+   150→    lastRun: ISO_OFFSET(15),
+   151→    runCount: 1042,
+   152→    successCount: 1031,
+   153→    failureCount: 11,
+   154→    avgDuration: 23,
+   155→    steps: [
+   156→      makeStep('s1', 'Detect Threshold', 'trigger', 'Trigger when 10+ failed auths from one IP in 60s'),
+   157→      makeStep('s2', 'Verify Source', 'condition', 'Geo-locate source IP and check threat reputation'),
+   158→      makeStep('s3', 'Disable Account', 'action', 'Lock targeted user account in Active Directory'),
+   159→      makeStep('s4', 'Block IP', 'action', 'Push block rule to perimeter firewall (24h TTL)'),
+   160→      makeStep('s5', 'Notify Admin', 'notification', 'Page on-call SOC admin via PagerDuty'),
+   161→    ],
+   162→  },
+   163→  {
+   164→    id: 'pb-malware',
+   165→    name: 'Malware Containment',
+   166→    description: 'End-to-end malware containment playbook: isolate the host, preserve forensic evidence, and update detection rules across the fleet.',
+   167→    trigger: 'alert-based',
+   168→    status: 'active',
+   169→    lastRun: ISO_OFFSET(180),
+   170→    runCount: 87,
+   171→    successCount: 79,
+   172→    failureCount: 8,
+   173→    avgDuration: 312,
+   174→    steps: [
+   175→      makeStep('s1', 'Isolate Host', 'action', 'Network-isolate endpoint via EDR agent'),
+   176→      makeStep('s2', 'Capture Memory', 'action', 'Trigger volatile memory capture for forensics'),
+   177→      makeStep('s3', 'Scan Endpoints', 'action', 'Sweep fleet for indicators of compromise'),
+   178→      makeStep('s4', 'Block Hashes', 'action', 'Add malicious file hashes to EDR blocklist'),
+   179→      makeStep('s5', 'Update Rules', 'action', 'Push YARA + Suricata rules to detection engines'),
+   180→      makeStep('s6', 'Create Ticket', 'action', 'Open Jira ticket for IR follow-up'),
+   181→      makeStep('s7', 'Notify SOC', 'notification', 'Broadcast containment summary to SOC channel'),
+   182→    ],
+   183→  },
+   184→  {
+   185→    id: 'pb-onboarding',
+   186→    name: 'User Onboarding Security',
+   187→    description: 'Scheduled daily playbook that validates identity for new hires, assigns least-privilege roles, and schedules security awareness training.',
+   188→    trigger: 'scheduled',
+   189→    status: 'active',
+   190→    lastRun: ISO_OFFSET(720),
+   191→    runCount: 156,
+   192→    successCount: 154,
+   193→    failureCount: 2,
+   194→    avgDuration: 41,
+   195→    steps: [
+   196→      makeStep('s1', 'Verify Identity', 'condition', 'Confirm HR record and manager approval exist'),
+   197→      makeStep('s2', 'Assign Role', 'action', 'Map department to least-privilege role template'),
+   198→      makeStep('s3', 'Set Permissions', 'action', 'Provision SSO groups and application access'),
+   199→      makeStep('s4', 'Schedule Training', 'action', 'Enroll user in security awareness platform'),
+   200→    ],
+   201→  },
+   202→  {
+   203→    id: 'pb-exfil',
+   204→    name: 'Data Exfiltration Response',
+   205→    description: 'Investigates potential data exfiltration events, preserves evidence, blocks egress channels, and escalates to legal and executive stakeholders.',
+   206→    trigger: 'alert-based',
+   207→    status: 'draft',
+   208→    lastRun: ISO_OFFSET(2880),
+   209→    runCount: 19,
+   210→    successCount: 14,
+   211→    failureCount: 5,
+   212→    avgDuration: 540,
+   213→    steps: [
+   214→      makeStep('s1', 'Confirm Detection', 'condition', 'Validate DLP alert against baseline traffic patterns'),
+   215→      makeStep('s2', 'Identify Data', 'action', 'Classify exfiltrated content (PII, IP, financial)'),
+   216→      makeStep('s3', 'Block Channel', 'action', 'Temporarily disable egress protocol or destination'),
+   217→      makeStep('s4', 'Preserve Evidence', 'action', 'Snapshot session logs and packet captures'),
+   218→      makeStep('s5', 'Notify Legal', 'notification', 'Send incident brief to legal counsel'),
+   219→      makeStep('s6', 'Escalate', 'approval', 'CISO approval required before executive notification'),
+   220→    ],
+   221→  },
+   222→  {
+   223→    id: 'pb-vulnscan',
+   224→    name: 'Scheduled Vulnerability Scan',
+   225→    description: 'Weekly vulnerability scan orchestration: triggers the scanner, parses results, and auto-creates remediation tickets for critical findings.',
+   226→    trigger: 'scheduled',
+   227→    status: 'disabled',
+   228→    lastRun: ISO_OFFSET(10080),
+   229→    runCount: 52,
+   230→    successCount: 50,
+   231→    failureCount: 2,
+   232→    avgDuration: 1820,
+   233→    steps: [
+   234→      makeStep('s1', 'Trigger Scan', 'trigger', 'Invoke Nessus scan against asset group'),
+   235→      makeStep('s2', 'Parse Results', 'action', 'Normalize findings and de-duplicate against prior scans'),
+   236→      makeStep('s3', 'Create Tickets', 'action', 'Auto-create Jira tickets for Critical/High CVEs'),
+   237→    ],
+   238→  },
+   239→]
+   240→
+   241→// Recent executions (mock)
+   242→const INITIAL_EXECUTIONS: ExecutionRecord[] = [
+   243→  { id: 'ex-1', playbookId: 'pb-bruteforce', playbookName: 'Brute Force Lockout', timestamp: ISO_OFFSET(15), status: 'success', durationSec: 21, triggeredBy: 'Alert: SSH brute-force 10.0.0.5', triggeredByType: 'alert' },
+   244→  { id: 'ex-2', playbookId: 'pb-phishing', playbookName: 'Phishing Email Response', timestamp: ISO_OFFSET(42), status: 'success', durationSec: 88, triggeredBy: 'analyst@insights.io', triggeredByType: 'manual' },
+   245→  { id: 'ex-3', playbookId: 'pb-malware', playbookName: 'Malware Containment', timestamp: ISO_OFFSET(180), status: 'success', durationSec: 305, triggeredBy: 'Alert: EDR malware hit dev-ws-12', triggeredByType: 'alert' },
+   246→  { id: 'ex-4', playbookId: 'pb-bruteforce', playbookName: 'Brute Force Lockout', timestamp: ISO_OFFSET(95), status: 'failure', durationSec: 6, triggeredBy: 'Alert: VPN auth burst', triggeredByType: 'alert' },
+   247→  { id: 'ex-5', playbookId: 'pb-onboarding', playbookName: 'User Onboarding Security', timestamp: ISO_OFFSET(720), status: 'success', durationSec: 39, triggeredBy: 'Daily 09:00 UTC schedule', triggeredByType: 'scheduled' },
+   248→  { id: 'ex-6', playbookId: 'pb-phishing', playbookName: 'Phishing Email Response', timestamp: ISO_OFFSET(240), status: 'success', durationSec: 82, triggeredBy: 'Alert: phishing-report mailbox', triggeredByType: 'alert' },
+   249→  { id: 'ex-7', playbookId: 'pb-malware', playbookName: 'Malware Containment', timestamp: ISO_OFFSET(360), status: 'failure', durationSec: 14, triggeredBy: 'analyst@insights.io', triggeredByType: 'manual' },
+   250→  { id: 'ex-8', playbookId: 'pb-vulnscan', playbookName: 'Scheduled Vulnerability Scan', timestamp: ISO_OFFSET(10080), status: 'success', durationSec: 1750, triggeredBy: 'Weekly Sun 02:00 UTC schedule', triggeredByType: 'scheduled' },
+   251→]
+   252→
+   253→// ===== Helpers =====
+   254→
+   255→function successRate(pb: SoarPlaybook): number {
+   256→  if (pb.runCount === 0) return 0
+   257→  return Math.round((pb.successCount / pb.runCount) * 100)
+   258→}
+   259→
+   260→function formatDuration(sec: number): string {
+   261→  if (sec < 60) return `${sec}s`
+   262→  const m = Math.floor(sec / 60)
+   263→  const s = sec % 60
+   264→  if (m < 60) return s === 0 ? `${m}m` : `${m}m ${s}s`
+   265→  const h = Math.floor(m / 60)
+   266→  const mm = m % 60
+   267→  return mm === 0 ? `${h}h` : `${h}h ${mm}m`
+   268→}
+   269→
+   270→function formatRelative(iso: string | null): string {
+   271→  if (!iso) return 'Never'
+   272→  try {
+   273→    return formatDistanceToNow(new Date(iso), { addSuffix: true })
+   274→  } catch {
+   275→    return '—'
+   276→  }
+   277→}
+   278→
+   279→// ===== Stat Card =====
+   280→
+   281→function StatCard({
+   282→  label,
+   283→  value,
+   284→  sublabel,
+   285→  icon: Icon,
+   286→  accent,
+   287→}: {
+   288→  label: string
+   289→  value: string
+   290→  sublabel?: string
+   291→  icon: React.ComponentType<{ className?: string }>
+   292→  accent: string
+   293→}) {
+   294→  return (
+   295→    <Card className="bg-zinc-900/60 border-zinc-800">
+   296→      <CardContent className="p-4">
+   297→        <div className="flex items-center justify-between gap-3">
+   298→          <div className="min-w-0">
+   299→            <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{label}</p>
+   300→            <p className="mt-1 text-2xl font-bold text-zinc-100 tabular-nums">{value}</p>
+   301→            {sublabel && <p className="mt-0.5 text-[11px] text-zinc-500">{sublabel}</p>}
+   302→          </div>
+   303→          <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-lg border', accent)}>
+   304→            <Icon className="size-5" />
+   305→          </div>
+   306→        </div>
+   307→      </CardContent>
+   308→    </Card>
+   309→  )
+   310→}
+   311→
+   312→// ===== Mini Step Flow (used on playbook card) =====
+   313→
+   314→function MiniStepFlow({ steps, isActive = false }: { steps: SoarStep[]; isActive?: boolean }) {
+   315→  const max = 8
+   316→  const visible = steps.slice(0, max)
+   317→  const overflow = steps.length - visible.length
+   318→
+   319→  return (
+   320→    <div className="flex items-center gap-0.5 overflow-hidden">
+   321→      {visible.map((step, i) => {
+   322→        const cfg = STEP_TYPE_CONFIG[step.type]
+   323→        const Icon = cfg.icon
+   324→        return (
+   325→          <div key={step.id} className="flex items-center gap-0.5 shrink-0">
+   326→            <div
+   327→              className={cn(
+   328→                'flex size-6 items-center justify-center rounded-md border transition-transform',
+   329→                cfg.bg, cfg.border,
+   330→                isActive && 'hover:scale-110'
+   331→              )}
+   332→              title={`${i + 1}. ${step.name} (${cfg.label})`}
+   333→            >
+   334→              <Icon className={cn('size-3', cfg.color)} />
+   335→            </div>
+   336→            {i < visible.length - 1 && (
+   337→              <span className="siem-step-connector" aria-hidden="true" />
+   338→            )}
+   339→          </div>
+   340→        )
+   341→      })}
+   342→      {overflow > 0 && (
+   343→        <span className="ml-1 text-[10px] font-medium text-zinc-500">+{overflow}</span>
+   344→      )}
+   345→    </div>
+   346→  )
+   347→}
+   348→
+   349→// ===== Playbook Card =====
+   350→
+   351→function PlaybookCard({
+   352→  playbook,
+   353→  onClick,
+   354→  onRun,
+   355→  index,
+   356→}: {
+   357→  playbook: SoarPlaybook
+   358→  onClick: () => void
+   359→  onRun: () => void
+   360→  index: number
+   361→}) {
+   362→  const triggerCfg = TRIGGER_CONFIG[playbook.trigger]
+   363→  const statusCfg = STATUS_CONFIG[playbook.status]
+   364→  const rate = successRate(playbook)
+   365→  const TriggerIcon = triggerCfg.icon
+   366→
+   367→  return (
+   368→    <motion.div
+   369→      initial={{ opacity: 0, y: 12 }}
+   370→      animate={{ opacity: 1, y: 0 }}
+   371→      transition={{ duration: 0.25, delay: Math.min(index * 0.04, 0.3) }}
+   372→      whileHover={{ y: -2 }}
+   373→    >
+   374→      <Card
+   375→        role="button"
+   376→        tabIndex={0}
+   377→        onClick={onClick}
+   378→        onKeyDown={(e) => {
+   379→          if (e.key === 'Enter' || e.key === ' ') {
+   380→            e.preventDefault()
+   381→            onClick()
+   382→          }
+   383→        }}
+   384→        className={cn(
+   385→          'group relative cursor-pointer bg-zinc-900/60 border-zinc-800 hover:border-emerald-500/40 hover:bg-zinc-900 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 overflow-hidden',
+   386→          playbook.status === 'active' && 'siem-pulse-glow'
+   387→        )}
+   388→      >
+   389→        <CardHeader className="pb-3">
+   390→          <div className="flex items-start justify-between gap-2">
+   391→            <div className="min-w-0 flex-1">
+   392→              <div className="flex items-center gap-2">
+   393→                <span className="relative flex size-2">
+   394→                  {playbook.status === 'active' && (
+   395→                    <span className={cn('absolute inline-flex h-full w-full rounded-full opacity-60', statusCfg.dot)} style={{ animation: 'ping 1.8s cubic-bezier(0,0,0.2,1) infinite' }} />
+   396→                  )}
+   397→                  <span className={cn('relative inline-flex size-2 rounded-full', statusCfg.dot)} />
+   398→                </span>
+   399→                <CardTitle className="text-sm font-semibold text-zinc-100 truncate">
+   400→                  {playbook.name}
+   401→                </CardTitle>
+   402→              </div>
+   403→              <p className="mt-1 line-clamp-2 text-xs text-zinc-500 leading-relaxed">
+   404→                {playbook.description}
+   405→              </p>
+   406→            </div>
+   407→          </div>
+   408→
+   409→          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+   410→            <Badge variant="outline" className={cn('gap-1 border text-[10px] font-medium', triggerCfg.color)}>
+   411→              <TriggerIcon className="size-3" />
+   412→              {triggerCfg.label}
+   413→            </Badge>
+   414→            <Badge variant="outline" className={cn('border text-[10px] font-medium',
+   415→              playbook.status === 'active' ? 'border-emerald-500/30 text-emerald-400' :
+   416→              playbook.status === 'draft' ? 'border-amber-500/30 text-amber-400' :
+   417→              'border-zinc-700 text-zinc-500'
+   418→            )}>
+   419→              {statusCfg.label}
+   420→            </Badge>
+   421→            <Badge variant="outline" className="border-zinc-700 text-[10px] text-zinc-400 font-medium">
+   422→              {playbook.steps.length} steps
+   423→            </Badge>
+   424→          </div>
+   425→        </CardHeader>
+   426→
+   427→        <CardContent className="pt-0">
+   428→          {/* Metrics */}
+   429→          <div className="grid grid-cols-3 gap-2 mb-3">
+   430→            <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-2">
+   431→              <p className="text-[9px] uppercase tracking-wider text-zinc-600">Runs</p>
+   432→              <p className="text-sm font-semibold text-zinc-200 tabular-nums">{playbook.runCount.toLocaleString()}</p>
+   433→            </div>
+   434→            <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-2">
+   435→              <p className="text-[9px] uppercase tracking-wider text-zinc-600">Success</p>
+   436→              <p className={cn(
+   437→                'text-sm font-semibold tabular-nums',
+   438→                rate >= 95 ? 'text-emerald-400' : rate >= 80 ? 'text-amber-400' : 'text-rose-400'
+   439→              )}>
+   440→                {rate}%
+   441→              </p>
+   442→            </div>
+   443→            <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-2">
+   444→              <p className="text-[9px] uppercase tracking-wider text-zinc-600">Avg</p>
+   445→              <p className="text-sm font-semibold text-zinc-200 tabular-nums">{formatDuration(playbook.avgDuration)}</p>
+   446→            </div>
+   447→          </div>
+   448→
+   449→          {/* Success rate progress bar */}
+   450→          <div className="mb-3">
+   451→            <div className="flex items-center justify-between mb-1">
+   452→              <span className="text-[9px] uppercase tracking-wider text-zinc-600">Success Rate</span>
+   453→              <span className={cn(
+   454→                'text-[9px] font-mono tabular-nums',
+   455→                rate >= 95 ? 'text-emerald-400' : rate >= 80 ? 'text-amber-400' : 'text-rose-400'
+   456→              )}>
+   457→                {playbook.successCount}/{playbook.runCount}
+   458→              </span>
+   459→            </div>
+   460→            <div
+   461→              className="siem-rate-bar"
+   462→              role="progressbar"
+   463→              aria-valuenow={rate}
+   464→              aria-valuemin={0}
+   465→              aria-valuemax={100}
+   466→              aria-label="Playbook success rate"
+   467→            >
+   468→              <span
+   469→                style={{
+   470→                  width: `${rate}%`,
+   471→                  backgroundImage: rate >= 95
+   472→                    ? 'linear-gradient(90deg, rgba(16, 185, 129, 0.5), rgba(16, 185, 129, 1))'
+   473→                    : rate >= 80
+   474→                    ? 'linear-gradient(90deg, rgba(245, 158, 11, 0.5), rgba(245, 158, 11, 1))'
+   475→                    : 'linear-gradient(90deg, rgba(239, 68, 68, 0.5), rgba(239, 68, 68, 1))',
+   476→                  boxShadow: rate >= 95
+   477→                    ? '0 0 8px rgba(16, 185, 129, 0.4)'
+   478→                    : rate >= 80
+   479→                    ? '0 0 8px rgba(245, 158, 11, 0.4)'
+   480→                    : '0 0 8px rgba(239, 68, 68, 0.4)',
+   481→                }}
+   482→              />
+   483→            </div>
+   484→          </div>
+   485→
+   486→          {/* Mini step flow */}
+   487→          <div className="mb-3">
+   488→            <p className="mb-1.5 text-[9px] uppercase tracking-wider text-zinc-600">Workflow</p>
+   489→            <MiniStepFlow steps={playbook.steps} isActive={playbook.status === 'active'} />
+   490→          </div>
+   491→
+   492→          {/* Footer */}
+   493→          <div className="flex items-center justify-between border-t border-zinc-800 pt-2.5">
+   494→            <div className="flex items-center gap-1.5 text-[10px] text-zinc-500">
+   495→              <Clock className="size-3" />
+   496→              <span>Last run: {formatRelative(playbook.lastRun)}</span>
+   497→            </div>
+   498→            <Button
+   499→              size="sm"
+   500→              variant="ghost"
+   501→              onClick={(e) => {
+   502→                e.stopPropagation()
+   503→                onRun()
+   504→              }}
+   505→              disabled={playbook.status === 'disabled'}
+   506→              className={cn(
+   507→                'h-7 px-2 text-[11px] gap-1',
+   508→                playbook.status === 'disabled'
+   509→                  ? 'text-zinc-600'
+   510→                  : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/20'
+   511→              )}
+   512→            >
+   513→              <Play className="size-3" />
+   514→              Run
+   515→            </Button>
+   516→          </div>
+   517→        </CardContent>
+   518→      </Card>
+   519→    </motion.div>
+   520→  )
+   521→}
+   522→
+   523→// ===== Vertical Stepper (used in detail dialog) =====
+   524→
+   525→function VerticalStepper({ steps }: { steps: SoarStep[] }) {
+   526→  return (
+   527→    <ol className="relative space-y-1">
+   528→      {steps.map((step, i) => {
+   529→        const cfg = STEP_TYPE_CONFIG[step.type]
+   530→        const Icon = cfg.icon
+   531→        const isLast = i === steps.length - 1
+   532→        return (
+   533→          <li key={step.id} className="relative flex gap-3">
+   534→            {/* Connector line */}
+   535→            {!isLast && (
+   536→              <span
+   537→                className="absolute left-[15px] top-8 bottom-0 w-px bg-zinc-700/60"
+   538→                aria-hidden="true"
+   539→              />
+   540→            )}
+   541→            {/* Step icon */}
+   542→            <div className={cn('relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border', cfg.bg, cfg.border)}>
+   543→              <Icon className={cn('size-4', cfg.color)} />
+   544→            </div>
+   545→            {/* Step body */}
+   546→            <div className="flex-1 pb-4 min-w-0">
+   547→              <div className="flex items-center gap-2 flex-wrap">
+   548→                <span className="text-[10px] font-mono text-zinc-600">#{i + 1}</span>
+   549→                <span className="text-sm font-medium text-zinc-100">{step.name}</span>
+   550→                <Badge variant="outline" className={cn('border text-[9px] font-medium', cfg.border, cfg.color)}>
+   551→                  {cfg.label}
+   552→                </Badge>
+   553→              </div>
+   554→              <p className="mt-0.5 text-xs text-zinc-500 leading-relaxed">{step.action}</p>
+   555→              {Object.keys(step.config).length > 0 && (
+   556→                <div className="mt-1.5 rounded-md border border-zinc-800 bg-zinc-950/50 px-2 py-1">
+   557→                  <p className="text-[9px] uppercase tracking-wider text-zinc-600 mb-0.5">Config</p>
+   558→                  <pre className="text-[10px] text-zinc-400 font-mono whitespace-pre-wrap break-all">
+   559→                    {JSON.stringify(step.config)}
+   560→                  </pre>
+   561→                </div>
+   562→              )}
+   563→            </div>
+   564→          </li>
+   565→        )
+   566→      })}
+   567→    </ol>
+   568→  )
+   569→}
+   570→
+   571→// ===== Playbook Detail Dialog =====
+   572→
+   573→function PlaybookDetailDialog({
+   574→  playbook,
+   575→  open,
+   576→  onOpenChange,
+   577→  onRun,
+   578→  onDuplicate,
+   579→}: {
+   580→  playbook: SoarPlaybook | null
+   581→  open: boolean
+   582→  onOpenChange: (v: boolean) => void
+   583→  onRun: (pb: SoarPlaybook) => void
+   584→  onDuplicate: (pb: SoarPlaybook) => void
+   585→}) {
+   586→  if (!playbook) return null
+   587→  const triggerCfg = TRIGGER_CONFIG[playbook.trigger]
+   588→  const statusCfg = STATUS_CONFIG[playbook.status]
+   589→  const rate = successRate(playbook)
+   590→  const TriggerIcon = triggerCfg.icon
+   591→
+   592→  return (
+   593→    <Dialog open={open} onOpenChange={onOpenChange}>
+   594→      <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto bg-zinc-950 border-zinc-800">
+   595→        <DialogHeader>
+   596→          <div className="flex items-start justify-between gap-3 pr-8">
+   597→            <div className="min-w-0">
+   598→              <div className="flex items-center gap-2 flex-wrap">
+   599→                <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+   600→                  <Zap className="size-4 text-emerald-400" />
+   601→                </div>
+   602→                <DialogTitle className="text-lg font-semibold text-zinc-100">
+   603→                  {playbook.name}
+   604→                </DialogTitle>
+   605→                <Badge variant="outline" className={cn('gap-1 border text-[10px] font-medium', triggerCfg.color)}>
+   606→                  <TriggerIcon className="size-3" />
+   607→                  {triggerCfg.label}
+   608→                </Badge>
+   609→                <Badge variant="outline" className={cn('border text-[10px] font-medium',
+   610→                  playbook.status === 'active' ? 'border-emerald-500/30 text-emerald-400' :
+   611→                  playbook.status === 'draft' ? 'border-amber-500/30 text-amber-400' :
+   612→                  'border-zinc-700 text-zinc-500'
+   613→                )}>
+   614→                  <span className={cn('size-1.5 rounded-full', statusCfg.dot)} />
+   615→                  {statusCfg.label}
+   616→                </Badge>
+   617→              </div>
+   618→              <DialogDescription className="mt-2 text-sm text-zinc-400 leading-relaxed">
+   619→                {playbook.description}
+   620→              </DialogDescription>
+   621→            </div>
+   622→          </div>
+   623→        </DialogHeader>
+   624→
+   625→        {/* Execution Metrics */}
+   626→        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+   627→          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   628→            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-zinc-500">
+   629→              <Clock className="size-3" /> Last Run
+   630→            </div>
+   631→            <p className="mt-1 text-sm font-medium text-zinc-200">{formatRelative(playbook.lastRun)}</p>
+   632→          </div>
+   633→          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   634→            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-zinc-500">
+   635→              <Timer className="size-3" /> Avg Duration
+   636→            </div>
+   637→            <p className="mt-1 text-sm font-medium text-zinc-200">{formatDuration(playbook.avgDuration)}</p>
+   638→          </div>
+   639→          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   640→            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-zinc-500">
+   641→              <CheckCircle2 className="size-3" /> Success Rate
+   642→            </div>
+   643→            <p className={cn(
+   644→              'mt-1 text-sm font-medium tabular-nums',
+   645→              rate >= 95 ? 'text-emerald-400' : rate >= 80 ? 'text-amber-400' : 'text-rose-400'
+   646→            )}>
+   647→              {rate}% ({playbook.successCount}/{playbook.runCount})
+   648→            </p>
+   649→          </div>
+   650→          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+   651→            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-zinc-500">
+   652→              <XCircle className="size-3" /> Failures
+   653→            </div>
+   654→            <p className="mt-1 text-sm font-medium text-rose-400 tabular-nums">{playbook.failureCount}</p>
+   655→          </div>
+   656→        </div>
+   657→
+   658→        <Separator className="bg-zinc-800" />
+   659→
+   660→        {/* Steps */}
+   661→        <div>
+   662→          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-emerald-400">
+   663→            Workflow Steps ({playbook.steps.length})
+   664→          </h3>
+   665→          <ScrollArea className="max-h-[40vh] pr-2">
+   666→            <VerticalStepper steps={playbook.steps} />
+   667→          </ScrollArea>
+   668→        </div>
+   669→
+   670→        <DialogFooter className="gap-2 sm:gap-2 border-t border-zinc-800 pt-4 relative z-10">
+   671→          <Button
+   672→            variant="outline"
+   673→            size="sm"
+   674→            onClick={() => onDuplicate(playbook)}
+   675→            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+   676→          >
+   677→            <Copy className="size-4" />
+   678→            Duplicate
+   679→          </Button>
+   680→          <Button
+   681→            variant="outline"
+   682→            size="sm"
+   683→            onClick={() => toast.info('Edit mode is not available in this demo')}
+   684→            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+   685→          >
+   686→            <Pencil className="size-4" />
+   687→            Edit
+   688→          </Button>
+   689→          <Button
+   690→            size="sm"
+   691→            onClick={() => onRun(playbook)}
+   692→            disabled={playbook.status === 'disabled'}
+   693→            className={cn(
+   694→              'gap-1.5 font-medium relative z-20',
+   695→              playbook.status === 'disabled'
+   696→                ? 'bg-zinc-800 text-zinc-600'
+   697→                : 'bg-emerald-600 text-white hover:bg-emerald-500'
+   698→            )}
+   699→          >
+   700→            <Zap className="size-4" />
+   701→            Run Now
+   702→          </Button>
+   703→        </DialogFooter>
+   704→      </DialogContent>
+   705→    </Dialog>
+   706→  )
+   707→}
+   708→
+   709→// ===== Create Playbook Dialog =====
+   710→
+   711→const STEP_TYPE_OPTIONS: SoarStepType[] = ['trigger', 'condition', 'action', 'notification', 'wait', 'approval']
+   712→
+   713→function CreatePlaybookDialog({
+   714→  open,
+   715→  onOpenChange,
+   716→  onCreate,
+   717→}: {
+   718→  open: boolean
+   719→  onOpenChange: (v: boolean) => void
+   720→  onCreate: (pb: SoarPlaybook) => void
+   721→}) {
+   722→  const [name, setName] = useState('')
+   723→  const [description, setDescription] = useState('')
+   724→  const [trigger, setTrigger] = useState<SoarTriggerType>('manual')
+   725→  const [stepRows, setStepRows] = useState<Array<{ name: string; type: SoarStepType; action: string }>>([
+   726→    { name: '', type: 'trigger', action: '' },
+   727→  ])
+   728→
+   729→  const reset = () => {
+   730→    setName('')
+   731→    setDescription('')
+   732→    setTrigger('manual')
+   733→    setStepRows([{ name: '', type: 'trigger', action: '' }])
+   734→  }
+   735→
+   736→  const handleClose = (v: boolean) => {
+   737→    if (!v) reset()
+   738→    onOpenChange(v)
+   739→  }
+   740→
+   741→  const handleAddStep = () => {
+   742→    setStepRows((r) => [...r, { name: '', type: 'action', action: '' }])
+   743→  }
+   744→
+   745→  const handleRemoveStep = (idx: number) => {
+   746→    setStepRows((r) => r.filter((_, i) => i !== idx))
+   747→  }
+   748→
+   749→  const handleStepChange = (idx: number, field: 'name' | 'type' | 'action', value: string) => {
+   750→    setStepRows((r) => r.map((row, i) => (i === idx ? { ...row, [field]: value } : row)))
+   751→  }
+   752→
+   753→  const handleCreate = () => {
+   754→    if (!name.trim()) {
+   755→      toast.error('Playbook name is required')
+   756→      return
+   757→    }
+   758→    const validSteps = stepRows.filter((s) => s.name.trim() || s.action.trim())
+   759→    if (validSteps.length === 0) {
+   760→      toast.error('At least one step is required')
+   761→      return
+   762→    }
+   763→    const pb: SoarPlaybook = {
+   764→      id: `pb-${Date.now().toString(36)}`,
+   765→      name: name.trim(),
+   766→      description: description.trim() || 'No description provided.',
+   767→      trigger,
+   768→      status: 'draft',
+   769→      lastRun: null,
+   770→      runCount: 0,
+   771→      successCount: 0,
+   772→      failureCount: 0,
+   773→      avgDuration: 0,
+   774→      steps: validSteps.map((s, i) => ({
+   775→        id: `s-${i + 1}-${Date.now().toString(36)}`,
+   776→        name: s.name.trim() || `Step ${i + 1}`,
+   777→        type: s.type,
+   778→        action: s.action.trim() || 'No action specified',
+   779→        config: {},
+   780→      })),
+   781→    }
+   782→    onCreate(pb)
+   783→    handleClose(false)
+   784→  }
+   785→
+   786→  return (
+   787→    <Dialog open={open} onOpenChange={handleClose}>
+   788→      <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto bg-zinc-950 border-zinc-800">
+   789→        <DialogHeader>
+   790→          <DialogTitle className="flex items-center gap-2 text-zinc-100">
+   791→            <Plus className="size-5 text-emerald-400" />
+   792→            Create New Playbook
+   793→          </DialogTitle>
+   794→          <DialogDescription className="text-zinc-400">
+   795→            Define a new automation playbook. New playbooks are created in <span className="text-amber-400 font-medium">Draft</span> status.
+   796→          </DialogDescription>
+   797→        </DialogHeader>
+   798→
+   799→        <div className="space-y-4 py-2">
+   800→          <div className="space-y-1.5">
+   801→            <Label htmlFor="pb-name" className="text-xs text-zinc-300">Name</Label>
+   802→            <Input
+   803→              id="pb-name"
+   804→              value={name}
+   805→              onChange={(e) => setName(e.target.value)}
+   806→              placeholder="e.g., Insider Threat Response"
+   807→              className="bg-zinc-900 border-zinc-700 text-zinc-100"
+   808→            />
+   809→          </div>
+   810→
+   811→          <div className="space-y-1.5">
+   812→            <Label htmlFor="pb-desc" className="text-xs text-zinc-300">Description</Label>
+   813→            <Textarea
+   814→              id="pb-desc"
+   815→              value={description}
+   816→              onChange={(e) => setDescription(e.target.value)}
+   817→              placeholder="Brief description of what this playbook does..."
+   818→              rows={2}
+   819→              className="bg-zinc-900 border-zinc-700 text-zinc-100 resize-none"
+   820→            />
+   821→          </div>
+   822→
+   823→          <div className="space-y-1.5">
+   824→            <Label className="text-xs text-zinc-300">Trigger Type</Label>
+   825→            <Select value={trigger} onValueChange={(v) => setTrigger(v as SoarTriggerType)}>
+   826→              <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-100">
+   827→                <SelectValue />
+   828→              </SelectTrigger>
+   829→              <SelectContent className="bg-zinc-900 border-zinc-700">
+   830→                <SelectItem value="manual">Manual</SelectItem>
+   831→                <SelectItem value="scheduled">Scheduled</SelectItem>
+   832→                <SelectItem value="alert-based">Alert-Based</SelectItem>
+   833→              </SelectContent>
+   834→            </Select>
+   835→          </div>
+   836→
+   837→          <Separator className="bg-zinc-800" />
+   838→
+   839→          <div className="space-y-2">
+   840→            <div className="flex items-center justify-between">
+   841→              <Label className="text-xs text-zinc-300">Initial Steps</Label>
+   842→              <Button
+   843→                variant="ghost"
+   844→                size="sm"
+   845→                onClick={handleAddStep}
+   846→                className="h-7 text-[11px] text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/20"
+   847→              >
+   848→                <Plus className="size-3.5" />
+   849→                Add Step
+   850→              </Button>
+   851→            </div>
+   852→            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+   853→              {stepRows.map((row, idx) => {
+   854→                const cfg = STEP_TYPE_CONFIG[row.type]
+   855→                const Icon = cfg.icon
+   856→                return (
+   857→                  <div key={idx} className="rounded-md border border-zinc-800 bg-zinc-900/50 p-2.5">
+   858→                    <div className="flex items-center gap-2 mb-2">
+   859→                      <span className="font-mono text-[10px] text-zinc-600">#{idx + 1}</span>
+   860→                      <Select
+   861→                        value={row.type}
+   862→                        onValueChange={(v) => handleStepChange(idx, 'type', v)}
+   863→                      >
+   864→                        <SelectTrigger className="h-7 w-36 bg-zinc-900 border-zinc-700 text-xs">
+   865→                          <div className="flex items-center gap-1.5">
+   866→                            <Icon className={cn('size-3', cfg.color)} />
+   867→                            <SelectValue />
+   868→                          </div>
+   869→                        </SelectTrigger>
+   870→                        <SelectContent className="bg-zinc-900 border-zinc-700">
+   871→                          {STEP_TYPE_OPTIONS.map((t) => {
+   872→                            const c = STEP_TYPE_CONFIG[t]
+   873→                            const I = c.icon
+   874→                            return (
+   875→                              <SelectItem key={t} value={t}>
+   876→                                <div className="flex items-center gap-1.5">
+   877→                                  <I className={cn('size-3', c.color)} />
+   878→                                  {c.label}
+   879→                                </div>
+   880→                              </SelectItem>
+   881→                            )
+   882→                          })}
+   883→                        </SelectContent>
+   884→                      </Select>
+   885→                      <div className="flex-1" />
+   886→                      {stepRows.length > 1 && (
+   887→                        <Button
+   888→                          variant="ghost"
+   889→                          size="icon"
+   890→                          className="size-7 text-zinc-500 hover:text-rose-400 hover:bg-rose-900/20"
+   891→                          onClick={() => handleRemoveStep(idx)}
+   892→                          aria-label="Remove step"
+   893→                        >
+   894→                          <XCircle className="size-3.5" />
+   895→                        </Button>
+   896→                      )}
+   897→                    </div>
+   898→                    <Input
+   899→                      value={row.name}
+   900→                      onChange={(e) => handleStepChange(idx, 'name', e.target.value)}
+   901→                      placeholder="Step name (e.g., Block IP)"
+   902→                      className="mb-1.5 h-8 bg-zinc-950 border-zinc-800 text-xs"
+   903→                    />
+   904→                    <Input
+   905→                      value={row.action}
+   906→                      onChange={(e) => handleStepChange(idx, 'action', e.target.value)}
+   907→                      placeholder="Action description"
+   908→                      className="h-8 bg-zinc-950 border-zinc-800 text-xs"
+   909→                    />
+   910→                  </div>
+   911→                )
+   912→              })}
+   913→            </div>
+   914→          </div>
+   915→        </div>
+   916→
+   917→        <DialogFooter className="gap-2 sm:gap-2 border-t border-zinc-800 pt-4">
+   918→          <Button
+   919→            variant="outline"
+   920→            onClick={() => handleClose(false)}
+   921→            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+   922→          >
+   923→            Cancel
+   924→          </Button>
+   925→          <Button
+   926→            onClick={handleCreate}
+   927→            className="bg-emerald-600 text-white hover:bg-emerald-500"
+   928→          >
+   929→            <Plus className="size-4" />
+   930→            Create Playbook
+   931→          </Button>
+   932→        </DialogFooter>
+   933→      </DialogContent>
+   934→    </Dialog>
+   935→  )
+   936→}
+   937→
+   938→// ===== Execution History Panel =====
+   939→
+   940→function ExecutionHistoryPanel({ executions }: { executions: ExecutionRecord[] }) {
+   941→  const [open, setOpen] = useState(true)
+   942→
+   943→  const statusIcon = (status: ExecutionRecord['status']) => {
+   944→    if (status === 'success') return <CheckCircle2 className="size-3.5 text-emerald-400" />
+   945→    if (status === 'failure') return <XCircle className="size-3.5 text-rose-400" />
+   946→    return <Loader2 className="size-3.5 animate-spin text-amber-400" />
+   947→  }
+   948→
+   949→  return (
+   950→    <Collapsible open={open} onOpenChange={setOpen}>
+   951→      <Card className="bg-zinc-900/60 border-zinc-800">
+   952→        <CollapsibleTrigger asChild>
+   953→          <CardHeader className="cursor-pointer py-3 hover:bg-zinc-800/30 transition-colors">
+   954→            <div className="flex items-center justify-between">
+   955→              <div className="flex items-center gap-2">
+   956→                <History className="size-4 text-emerald-400" />
+   957→                <CardTitle className="text-sm font-semibold text-zinc-100">
+   958→                  Execution History
+   959→                </CardTitle>
+   960→                <Badge variant="outline" className="border-zinc-700 text-[10px] text-zinc-400">
+   961→                  {executions.length} recent
+   962→                </Badge>
+   963→              </div>
+   964→              <ChevronDown className={cn('size-4 text-zinc-500 transition-transform', open && 'rotate-180')} />
+   965→            </div>
+   966→          </CardHeader>
+   967→        </CollapsibleTrigger>
+   968→        <CollapsibleContent>
+   969→          <CardContent className="pt-0">
+   970→            <div className="max-h-80 overflow-y-auto pr-1">
+   971→              <table className="w-full text-xs">
+   972→                <thead>
+   973→                  <tr className="text-left text-[10px] uppercase tracking-wider text-zinc-500 border-b border-zinc-800">
+   974→                    <th className="py-2 pr-3 font-medium">Status</th>
+   975→                    <th className="py-2 pr-3 font-medium">Playbook</th>
+   976→                    <th className="py-2 pr-3 font-medium">Timestamp</th>
+   977→                    <th className="py-2 pr-3 font-medium">Duration</th>
+   978→                    <th className="py-2 font-medium">Triggered By</th>
+   979→                  </tr>
+   980→                </thead>
+   981→                <tbody>
+   982→                  {executions.map((ex) => (
+   983→                    <tr
+   984→                      key={ex.id}
+   985→                      className="border-b border-zinc-800/60 last:border-0 hover:bg-zinc-800/30 transition-colors"
+   986→                    >
+   987→                      <td className="py-2 pr-3">
+   988→                        <div className="flex items-center gap-1.5">
+   989→                          {statusIcon(ex.status)}
+   990→                          <span className={cn(
+   991→                            'text-[10px] font-medium uppercase',
+   992→                            ex.status === 'success' ? 'text-emerald-400' :
+   993→                            ex.status === 'failure' ? 'text-rose-400' : 'text-amber-400'
+   994→                          )}>
+   995→                            {ex.status}
+   996→                          </span>
+   997→                        </div>
+   998→                      </td>
+   999→                      <td className="py-2 pr-3 text-zinc-200 truncate max-w-44">{ex.playbookName}</td>
+  1000→                      <td className="py-2 pr-3 text-zinc-400 whitespace-nowrap">{formatRelative(ex.timestamp)}</td>
+  1001→                      <td className="py-2 pr-3 text-zinc-300 tabular-nums whitespace-nowrap">{formatDuration(ex.durationSec)}</td>
+  1002→                      <td className="py-2 text-zinc-400 truncate max-w-56">
+  1003→                        <Badge variant="outline" className="mr-1.5 border-zinc-700 text-[9px] text-zinc-500">
+  1004→                          {ex.triggeredByType}
+  1005→                        </Badge>
+  1006→                        {ex.triggeredBy}
+  1007→                      </td>
+  1008→                    </tr>
+  1009→                  ))}
+  1010→                </tbody>
+  1011→              </table>
+  1012→            </div>
+  1013→          </CardContent>
+  1014→        </CollapsibleContent>
+  1015→      </Card>
+  1016→    </Collapsible>
+  1017→  )
+  1018→}
+  1019→
+  1020→// ===== Main View =====
+  1021→
+  1022→export function SoarView() {
+  1023→  const soar = useSIEMStore((s) => s.soar)
+  1024→  const setSoar = useSIEMStore((s) => s.setSoar)
+  1025→
+  1026→  const [selected, setSelected] = useState<SoarPlaybook | null>(null)
+  1027→  const [detailOpen, setDetailOpen] = useState(false)
+  1028→  const [createOpen, setCreateOpen] = useState(false)
+  1029→  const [search, setSearch] = useState('')
+  1030→  const [statusFilter, setStatusFilter] = useState<SoarPlaybookStatus | 'all'>('all')
+  1031→  const [triggerFilter, setTriggerFilter] = useState<SoarTriggerType | 'all'>('all')
+  1032→  const [executions, setExecutions] = useState<ExecutionRecord[]>(INITIAL_EXECUTIONS)
+  1033→  const [runningIds, setRunningIds] = useState<Set<string>>(new Set())
+  1034→
+  1035→  // Seed playbooks on first mount if store is empty
+  1036→  useEffect(() => {
+  1037→    if (soar.length === 0) {
+  1038→      setSoar(INITIAL_PLAYBOOKS)
+  1039→    }
+  1040→  }, [soar.length, setSoar])
+  1041→
+  1042→  // Filtered playbooks
+  1043→  const filtered = useMemo(() => {
+  1044→    return soar.filter((pb) => {
+  1045→      if (statusFilter !== 'all' && pb.status !== statusFilter) return false
+  1046→      if (triggerFilter !== 'all' && pb.trigger !== triggerFilter) return false
+  1047→      if (search.trim()) {
+  1048→        const q = search.toLowerCase()
+  1049→        if (
+  1050→          !pb.name.toLowerCase().includes(q) &&
+  1051→          !pb.description.toLowerCase().includes(q)
+  1052→        ) {
+  1053→          return false
+  1054→        }
+  1055→      }
+  1056→      return true
+  1057→    })
+  1058→  }, [soar, search, statusFilter, triggerFilter])
+  1059→
+  1060→  // Stats
+  1061→  const stats = useMemo(() => {
+  1062→    const active = soar.filter((p) => p.status === 'active').length
+  1063→    const runsToday = executions.filter((e) => {
+  1064→      const d = new Date(e.timestamp)
+  1065→      const now = new Date()
+  1066→      return d.toDateString() === now.toDateString()
+  1067→    }).length
+  1068→    const totalRuns = soar.reduce((acc, p) => acc + p.runCount, 0)
+  1069→    const totalSuccess = soar.reduce((acc, p) => acc + p.successCount, 0)
+  1070→    const avgRate = totalRuns > 0 ? Math.round((totalSuccess / totalRuns) * 100) : 0
+  1071→    const playbooksWithRuns = soar.filter((p) => p.avgDuration > 0)
+  1072→    const avgDur = playbooksWithRuns.length > 0
+  1073→      ? Math.round(playbooksWithRuns.reduce((a, p) => a + p.avgDuration, 0) / playbooksWithRuns.length)
+  1074→      : 0
+  1075→    return { active, runsToday, avgRate, avgDur }
+  1076→  }, [soar, executions])
+  1077→
+  1078→  const openDetail = useCallback((pb: SoarPlaybook) => {
+  1079→    setSelected(pb)
+  1080→    setDetailOpen(true)
+  1081→  }, [])
+  1082→
+  1083→  const runPlaybook = useCallback((pb: SoarPlaybook) => {
+  1084→    if (pb.status === 'disabled') {
+  1085→      toast.error(`Playbook "${pb.name}" is disabled`)
+  1086→      return
+  1087→    }
+  1088→    setRunningIds((s) => new Set(s).add(pb.id))
+  1089→    toast.success(`Triggered playbook: ${pb.name}`, {
+  1090→      description: 'Execution started — see history for results.',
+  1091→    })
+  1092→
+  1093→    // Simulate execution finishing after ~1.5s
+  1094→    setTimeout(() => {
+  1095→      const success = Math.random() > 0.15
+  1096→      const durationSec = Math.max(3, Math.round(pb.avgDuration * (0.7 + Math.random() * 0.6)))
+  1097→      const newExec: ExecutionRecord = {
+  1098→        id: `ex-${Date.now().toString(36)}`,
+  1099→        playbookId: pb.id,
+  1100→        playbookName: pb.name,
+  1101→        timestamp: new Date().toISOString(),
+  1102→        status: success ? 'success' : 'failure',
+  1103→        durationSec,
+  1104→        triggeredBy: 'analyst@insights.io',
+  1105→        triggeredByType: 'manual',
+  1106→      }
+  1107→      setExecutions((prev) => [newExec, ...prev].slice(0, 50))
+  1108→
+  1109→      // Update playbook metrics in store
+  1110→      setSoar((prev) =>
+  1111→        prev.map((p) =>
+  1112→          p.id === pb.id
+  1113→            ? {
+  1114→                ...p,
+  1115→                lastRun: newExec.timestamp,
+  1116→                runCount: p.runCount + 1,
+  1117→                successCount: success ? p.successCount + 1 : p.successCount,
+  1118→                failureCount: success ? p.failureCount : p.failureCount + 1,
+  1119→                avgDuration: Math.round((p.avgDuration * p.runCount + durationSec) / (p.runCount + 1)),
+  1120→              }
+  1121→            : p
+  1122→        )
+  1123→      )
+  1124→
+  1125→      setRunningIds((s) => {
+  1126→        const next = new Set(s)
+  1127→        next.delete(pb.id)
+  1128→        return next
+  1129→      })
+  1130→
+  1131→      // Sync detail dialog if open
+  1132→      setSelected((cur) =>
+  1133→        cur && cur.id === pb.id
+  1134→          ? {
+  1135→              ...cur,
+  1136→              lastRun: newExec.timestamp,
+  1137→              runCount: cur.runCount + 1,
+  1138→              successCount: success ? cur.successCount + 1 : cur.successCount,
+  1139→              failureCount: success ? cur.failureCount : cur.failureCount + 1,
+  1140→              avgDuration: Math.round((cur.avgDuration * cur.runCount + durationSec) / (cur.runCount + 1)),
+  1141→            }
+  1142→          : cur
+  1143→      )
+  1144→
+  1145→      if (success) {
+  1146→        toast.success(`Playbook "${pb.name}" completed`, {
+  1147→          description: `Finished in ${formatDuration(durationSec)}.`,
+  1148→        })
+  1149→      } else {
+  1150→        toast.error(`Playbook "${pb.name}" failed`, {
+  1151→          description: `Failed after ${formatDuration(durationSec)}.`,
+  1152→        })
+  1153→      }
+  1154→    }, 1500)
+  1155→  }, [setSoar])
+  1156→
+  1157→  const duplicatePlaybook = useCallback((pb: SoarPlaybook) => {
+  1158→    const copy: SoarPlaybook = {
+  1159→      ...pb,
+  1160→      id: `pb-${Date.now().toString(36)}`,
+  1161→      name: `${pb.name} (Copy)`,
+  1162→      status: 'draft',
+  1163→      lastRun: null,
+  1164→      runCount: 0,
+  1165→      successCount: 0,
+  1166→      failureCount: 0,
+  1167→      avgDuration: 0,
+  1168→      steps: pb.steps.map((s, i) => ({ ...s, id: `s-${i + 1}-${Date.now().toString(36)}` })),
+  1169→    }
+  1170→    setSoar((prev) => [copy, ...prev])
+  1171→    toast.success(`Duplicated playbook: ${pb.name}`, {
+  1172→      description: 'A draft copy has been added to the library.',
+  1173→    })
+  1174→    setDetailOpen(false)
+  1175→  }, [setSoar])
+  1176→
+  1177→  const createPlaybook = useCallback((pb: SoarPlaybook) => {
+  1178→    setSoar((prev) => [pb, ...prev])
+  1179→    toast.success(`Created playbook: ${pb.name}`, {
+  1180→      description: 'Saved as Draft — activate it from the card menu to enable runs.',
+  1181→    })
+  1182→    setCreateOpen(false)
+  1183→  }, [setSoar])
+  1184→
+  1185→  const toggleStatus = useCallback((pb: SoarPlaybook) => {
+  1186→    const next: SoarPlaybookStatus = pb.status === 'active' ? 'disabled' : 'active'
+  1187→    setSoar((prev) => prev.map((p) => (p.id === pb.id ? { ...p, status: next } : p)))
+  1188→    toast.info(`Playbook "${pb.name}" is now ${next}`)
+  1189→  }, [setSoar])
+  1190→
+  1191→  return (
+  1192→    <div className="space-y-4">
+  1193→      {/* Header */}
+  1194→      <motion.div
+  1195→        initial={{ opacity: 0, y: -8 }}
+  1196→        animate={{ opacity: 1, y: 0 }}
+  1197→        transition={{ duration: 0.25 }}
+  1198→        className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+  1199→      >
+  1200→        <div>
+  1201→          <div className="flex items-center gap-2">
+  1202→            <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+  1203→              <Zap className="size-5 text-emerald-400" />
+  1204→            </div>
+  1205→            <div>
+  1206→              <h1 className="text-xl font-bold text-zinc-100">SOAR Playbooks</h1>
+  1207→              <p className="text-xs text-zinc-500">
+  1208→                Security Orchestration, Automation, and Response — automate detection & response workflows
+  1209→              </p>
+  1210→            </div>
+  1211→          </div>
+  1212→        </div>
+  1213→        <div className="flex items-center gap-2">
+  1214→          <Button
+  1215→            variant="outline"
+  1216→            size="sm"
+  1217→            onClick={() => toast.info('Refreshing playbook metrics...')}
+  1218→            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+  1219→          >
+  1220→            <Activity className="size-4" />
+  1221→            Refresh
+  1222→          </Button>
+  1223→          <Button
+  1224→            size="sm"
+  1225→            onClick={() => setCreateOpen(true)}
+  1226→            className="bg-emerald-600 text-white hover:bg-emerald-500"
+  1227→          >
+  1228→            <Plus className="size-4" />
+  1229→            New Playbook
+  1230→          </Button>
+  1231→        </div>
+  1232→      </motion.div>
+  1233→
+  1234→      {/* Stats Cards */}
+  1235→      <motion.div
+  1236→        initial={{ opacity: 0, y: 8 }}
+  1237→        animate={{ opacity: 1, y: 0 }}
+  1238→        transition={{ duration: 0.25, delay: 0.05 }}
+  1239→        className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+  1240→      >
+  1241→        <StatCard
+  1242→          label="Total Active"
+  1243→          value={stats.active.toString()}
+  1244→          sublabel={`${soar.length} total playbooks`}
+  1245→          icon={Zap}
+  1246→          accent="bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+  1247→        />
+  1248→        <StatCard
+  1249→          label="Runs Today"
+  1250→          value={stats.runsToday.toString()}
+  1251→          sublabel="Across all playbooks"
+  1252→          icon={Activity}
+  1253→          accent="bg-sky-500/10 border-sky-500/30 text-sky-400"
+  1254→        />
+  1255→        <StatCard
+  1256→          label="Avg Success Rate"
+  1257→          value={`${stats.avgRate}%`}
+  1258→          sublabel="Lifetime across playbooks"
+  1259→          icon={CheckCircle2}
+  1260→          accent="bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+  1261→        />
+  1262→        <StatCard
+  1263→          label="Avg Duration"
+  1264→          value={formatDuration(stats.avgDur)}
+  1265→          sublabel="Per playbook execution"
+  1266→          icon={Timer}
+  1267→          accent="bg-purple-500/10 border-purple-500/30 text-purple-400"
+  1268→        />
+  1269→      </motion.div>
+  1270→
+  1271→      {/* Filter Bar */}
+  1272→      <div className="flex flex-wrap items-center gap-2">
+  1273→        <div className="relative flex-1 min-w-48 max-w-sm">
+  1274→          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-zinc-600" />
+  1275→          <Input
+  1276→            value={search}
+  1277→            onChange={(e) => setSearch(e.target.value)}
+  1278→            placeholder="Search playbooks..."
+  1279→            className="h-8 pl-8 bg-zinc-900 border-zinc-700 text-zinc-200 text-sm"
+  1280→          />
+  1281→        </div>
+  1282→        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as SoarPlaybookStatus | 'all')}>
+  1283→          <SelectTrigger className="h-8 w-32 bg-zinc-900 border-zinc-700 text-zinc-200 text-xs">
+  1284→            <SelectValue />
+  1285→          </SelectTrigger>
+  1286→          <SelectContent className="bg-zinc-900 border-zinc-700">
+  1287→            <SelectItem value="all">All Status</SelectItem>
+  1288→            <SelectItem value="active">Active</SelectItem>
+  1289→            <SelectItem value="draft">Draft</SelectItem>
+  1290→            <SelectItem value="disabled">Disabled</SelectItem>
+  1291→          </SelectContent>
+  1292→        </Select>
+  1293→        <Select value={triggerFilter} onValueChange={(v) => setTriggerFilter(v as SoarTriggerType | 'all')}>
+  1294→          <SelectTrigger className="h-8 w-36 bg-zinc-900 border-zinc-700 text-zinc-200 text-xs">
+  1295→            <SelectValue />
+  1296→          </SelectTrigger>
+  1297→          <SelectContent className="bg-zinc-900 border-zinc-700">
+  1298→            <SelectItem value="all">All Triggers</SelectItem>
+  1299→            <SelectItem value="manual">Manual</SelectItem>
+  1300→            <SelectItem value="scheduled">Scheduled</SelectItem>
+  1301→            <SelectItem value="alert-based">Alert-Based</SelectItem>
+  1302→          </SelectContent>
+  1303→        </Select>
+  1304→        <div className="ml-auto flex items-center gap-1.5 text-[10px] text-zinc-500">
+  1305→          <Filter className="size-3" />
+  1306→          <span>Showing {filtered.length} of {soar.length}</span>
+  1307→        </div>
+  1308→      </div>
+  1309→
+  1310→      {/* Playbook Grid */}
+  1311→      {filtered.length === 0 ? (
+  1312→        <Card className="bg-zinc-900/40 border-zinc-800 border-dashed">
+  1313→          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+  1314→            <div className="flex size-12 items-center justify-center rounded-full bg-zinc-800/60">
+  1315→              <Zap className="size-5 text-zinc-600" />
+  1316→            </div>
+  1317→            <p className="mt-3 text-sm font-medium text-zinc-300">No playbooks found</p>
+  1318→            <p className="mt-1 text-xs text-zinc-500">Try adjusting your filters or create a new playbook.</p>
+  1319→            <Button
+  1320→              size="sm"
+  1321→              variant="outline"
+  1322→              className="mt-4 border-emerald-600/40 text-emerald-400 hover:bg-emerald-900/20"
+  1323→              onClick={() => setCreateOpen(true)}
+  1324→            >
+  1325→              <Plus className="size-4" />
+  1326→              Create Playbook
+  1327→            </Button>
+  1328→          </CardContent>
+  1329→        </Card>
+  1330→      ) : (
+  1331→        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+  1332→          {filtered.map((pb, idx) => (
+  1333→            <div key={pb.id} className="relative">
+  1334→              <PlaybookCard
+  1335→                playbook={pb}
+  1336→                onClick={() => openDetail(pb)}
+  1337→                onRun={() => runPlaybook(pb)}
+  1338→                index={idx}
+  1339→              />
+  1340→              {runningIds.has(pb.id) && (
+  1341→                <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-zinc-950/70 backdrop-blur-sm">
+  1342→                  <div className="flex flex-col items-center gap-2">
+  1343→                    <Loader2 className="size-5 animate-spin text-emerald-400" />
+  1344→                    <span className="text-[11px] text-emerald-400 font-medium">Running...</span>
+  1345→                  </div>
+  1346→                </div>
+  1347→              )}
+  1348→              {/* Quick toggle */}
+  1349→              <Button
+  1350→                size="icon"
+  1351→                variant="ghost"
+  1352→                className="absolute right-2 top-2 size-6 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60"
+  1353→                onClick={(e) => {
+  1354→                  e.stopPropagation()
+  1355→                  toggleStatus(pb)
+  1356→                }}
+  1357→                title={pb.status === 'active' ? 'Disable' : 'Activate'}
+  1358→                aria-label={pb.status === 'active' ? 'Disable playbook' : 'Activate playbook'}
+  1359→              >
+  1360→                {pb.status === 'active' ? (
+  1361→                  <PauseCircle className="size-3.5" />
+  1362→                ) : (
+  1363→                  <Play className="size-3.5" />
+  1364→                )}
+  1365→              </Button>
+  1366→            </div>
+  1367→          ))}
+  1368→        </div>
+  1369→      )}
+  1370→
+  1371→      {/* Execution History */}
+  1372→      <ExecutionHistoryPanel executions={executions} />
+  1373→
+  1374→      {/* Dialogs */}
+  1375→      <PlaybookDetailDialog
+  1376→        playbook={selected}
+  1377→        open={detailOpen}
+  1378→        onOpenChange={setDetailOpen}
+  1379→        onRun={runPlaybook}
+  1380→        onDuplicate={duplicatePlaybook}
+  1381→      />
+  1382→      <CreatePlaybookDialog
+  1383→        open={createOpen}
+  1384→        onOpenChange={setCreateOpen}
+  1385→        onCreate={createPlaybook}
+  1386→      />
+  1387→    </div>
+  1388→  )
+  1389→}
+  1390→

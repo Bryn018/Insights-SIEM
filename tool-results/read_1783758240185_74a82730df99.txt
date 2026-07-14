@@ -1,0 +1,1704 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import {
+     6→  Settings as SettingsIcon,
+     7→  Users,
+     8→  Plug,
+     9→  FileText,
+    10→  ScrollText,
+    11→  Bell,
+    12→  RefreshCw,
+    13→  Plus,
+    14→  CheckCircle,
+    15→  XCircle,
+    16→  Save,
+    17→  Search,
+    18→  ChevronLeft,
+    19→  ChevronRight,
+    20→  Shield,
+    21→  Mail,
+    22→  MessageSquare,
+    23→  AlertTriangle,
+    24→  Activity,
+    25→  Wifi,
+    26→  WifiOff,
+    27→  Pencil,
+    28→  UserPlus,
+    29→  Eye,
+    30→  Clock,
+    31→  Zap,
+    32→  Globe,
+    33→  Database,
+    34→  HardDrive,
+    35→  Download,
+    36→  Cloud,
+    37→  Server,
+    38→  Flame,
+    39→  Bug,
+    40→  Lock,
+    41→  Unlock,
+    42→  ChevronDown,
+    43→  ArrowUpDown,
+    44→  Timer,
+    45→  CircleDot,
+    46→} from 'lucide-react'
+    47→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+    48→import { Button } from '@/components/ui/button'
+    49→import { Input } from '@/components/ui/input'
+    50→import { Badge } from '@/components/ui/badge'
+    51→import {
+    52→  Tabs,
+    53→  TabsContent,
+    54→  TabsList,
+    55→  TabsTrigger,
+    56→} from '@/components/ui/tabs'
+    57→import {
+    58→  Select,
+    59→  SelectContent,
+    60→  SelectItem,
+    61→  SelectTrigger,
+    62→  SelectValue,
+    63→} from '@/components/ui/select'
+    64→import {
+    65→  Dialog,
+    66→  DialogContent,
+    67→  DialogHeader,
+    68→  DialogTitle,
+    69→  DialogFooter,
+    70→  DialogDescription,
+    71→} from '@/components/ui/dialog'
+    72→import {
+    73→  Table,
+    74→  TableBody,
+    75→  TableCell,
+    76→  TableHead,
+    77→  TableHeader,
+    78→  TableRow,
+    79→} from '@/components/ui/table'
+    80→import { ScrollArea } from '@/components/ui/scroll-area'
+    81→import { Skeleton } from '@/components/ui/skeleton'
+    82→import { Switch } from '@/components/ui/switch'
+    83→import { Textarea } from '@/components/ui/textarea'
+    84→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    85→import { Label } from '@/components/ui/label'
+    86→import { useSIEMStore } from '@/lib/store'
+    87→import type { UserRole } from '@/lib/types'
+    88→import { cn } from '@/lib/utils'
+    89→import { toast } from 'sonner'
+    90→import { format, formatDistanceToNow } from 'date-fns'
+    91→
+    92→// ===== Types =====
+    93→
+    94→interface SettingsData {
+    95→  [key: string]: string
+    96→}
+    97→
+    98→interface UserData {
+    99→  id: string
+   100→  name: string
+   101→  email: string
+   102→  role: UserRole
+   103→  isActive: boolean
+   104→  status: 'Active' | 'Inactive' | 'Locked'
+   105→  lastLoginAt: string | null
+   106→  createdAt: string
+   107→  department?: string
+   108→  loginHistory?: { time: string; ip: string; success: boolean }[]
+   109→  assignedPlaybooks?: string[]
+   110→  recentActions?: string[]
+   111→}
+   112→
+   113→type AuditActionType = 'Create' | 'Update' | 'Delete' | 'Login' | 'Export'
+   114→
+   115→interface AuditLogEntry {
+   116→  id: string
+   117→  timestamp: string
+   118→  user: string
+   119→  action: AuditActionType
+   120→  resource: string
+   121→  details: string
+   122→  ipAddress: string
+   123→}
+   124→
+   125→type DataSourceStatus = 'Connected' | 'Disconnected' | 'Error'
+   126→type DataSourceType = 'SIEM' | 'EDR' | 'Firewall' | 'Cloud' | 'Threat Intel' | 'Log Collector'
+   127→
+   128→interface DataSource {
+   129→  id: string
+   130→  name: string
+   131→  type: DataSourceType
+   132→  status: DataSourceStatus
+   133→  lastSync: string
+   134→  eventsPerDay: number
+   135→  icon: React.ReactNode
+   136→  iconColor: string
+   137→}
+   138→
+   139→// ===== Role Badge Config =====
+   140→
+   141→const roleConfig: Record<UserRole, { label: string; className: string; avatarBg: string; icon: React.ReactNode }> = {
+   142→  admin: {
+   143→    label: 'Admin',
+   144→    className: 'bg-red-500/15 text-red-400 border-red-500/30',
+   145→    avatarBg: 'bg-red-500/20 text-red-300',
+   146→    icon: <Shield className="h-3 w-3" />,
+   147→  },
+   148→  analyst: {
+   149→    label: 'Analyst',
+   150→    className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+   151→    avatarBg: 'bg-emerald-500/20 text-emerald-300',
+   152→    icon: <Eye className="h-3 w-3" />,
+   153→  },
+   154→  responder: {
+   155→    label: 'Analyst',
+   156→    className: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+   157→    avatarBg: 'bg-amber-500/20 text-amber-300',
+   158→    icon: <Zap className="h-3 w-3" />,
+   159→  },
+   160→  viewer: {
+   161→    label: 'Viewer',
+   162→    className: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
+   163→    avatarBg: 'bg-zinc-500/20 text-zinc-300',
+   164→    icon: <FileText className="h-3 w-3" />,
+   165→  },
+   166→}
+   167→
+   168→// ===== Audit Action Color Config =====
+   169→
+   170→const auditActionConfig: Record<AuditActionType, { className: string }> = {
+   171→  Create: { className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
+   172→  Update: { className: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
+   173→  Delete: { className: 'bg-red-500/15 text-red-400 border-red-500/30' },
+   174→  Login: { className: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30' },
+   175→  Export: { className: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+   176→}
+   177→
+   178→// ===== Data Source Type Config =====
+   179→
+   180→const dsTypeConfig: Record<DataSourceType, { badgeClass: string }> = {
+   181→  SIEM: { badgeClass: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
+   182→  EDR: { badgeClass: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
+   183→  Firewall: { badgeClass: 'bg-orange-500/15 text-orange-400 border-orange-500/30' },
+   184→  Cloud: { badgeClass: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30' },
+   185→  'Threat Intel': { badgeClass: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
+   186→  'Log Collector': { badgeClass: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+   187→}
+   188→
+   189→// ===== Mock Users (8-10) =====
+   190→
+   191→const mockUsers: UserData[] = [
+   192→  {
+   193→    id: 'usr-1', name: 'Marcus Chen', email: 'mchen@siem.local', role: 'admin', isActive: true, status: 'Active',
+   194→    lastLoginAt: new Date(Date.now() - 1800000).toISOString(), createdAt: '2024-01-15T10:00:00Z',
+   195→    department: 'Security Operations',
+   196→    loginHistory: [
+   197→      { time: new Date(Date.now() - 1800000).toISOString(), ip: '10.0.1.42', success: true },
+   198→      { time: new Date(Date.now() - 86400000).toISOString(), ip: '10.0.1.42', success: true },
+   199→      { time: new Date(Date.now() - 172800000).toISOString(), ip: '10.0.1.42', success: false },
+   200→    ],
+   201→    assignedPlaybooks: ['Phishing Response', 'Malware Containment', 'Privilege Escalation'],
+   202→    recentActions: ['Updated detection rule R-1024', 'Escalated incident INC-0042', 'Exported compliance report'],
+   203→  },
+   204→  {
+   205→    id: 'usr-2', name: 'Sarah Kim', email: 'skim@siem.local', role: 'analyst', isActive: true, status: 'Active',
+   206→    lastLoginAt: new Date(Date.now() - 7200000).toISOString(), createdAt: '2024-02-20T14:30:00Z',
+   207→    department: 'Threat Intelligence',
+   208→    loginHistory: [
+   209→      { time: new Date(Date.now() - 7200000).toISOString(), ip: '10.0.2.18', success: true },
+   210→      { time: new Date(Date.now() - 43200000).toISOString(), ip: '10.0.2.18', success: true },
+   211→    ],
+   212→    assignedPlaybooks: ['Phishing Response', 'Data Exfiltration Investigation'],
+   213→    recentActions: ['Acknowledged alert ALT-1587', 'Updated threat indicator IOCs', 'Closed incident INC-0039'],
+   214→  },
+   215→  {
+   216→    id: 'usr-3', name: 'David Okafor', email: 'dokafor@siem.local', role: 'analyst', isActive: true, status: 'Active',
+   217→    lastLoginAt: new Date(Date.now() - 3600000).toISOString(), createdAt: '2024-03-10T09:15:00Z',
+   218→    department: 'Security Operations',
+   219→    loginHistory: [
+   220→      { time: new Date(Date.now() - 3600000).toISOString(), ip: '10.0.1.55', success: true },
+   221→    ],
+   222→    assignedPlaybooks: ['Brute Force Response', 'Malware Containment'],
+   223→    recentActions: ['Created new detection rule', 'Assigned to INC-0045', 'Updated asset inventory'],
+   224→  },
+   225→  {
+   226→    id: 'usr-4', name: 'Elena Petrova', email: 'epetrova@siem.local', role: 'responder', isActive: true, status: 'Active',
+   227→    lastLoginAt: new Date(Date.now() - 28800000).toISOString(), createdAt: '2024-04-05T16:45:00Z',
+   228→    department: 'Incident Response',
+   229→    loginHistory: [
+   230→      { time: new Date(Date.now() - 28800000).toISOString(), ip: '10.0.3.12', success: true },
+   231→      { time: new Date(Date.now() - 86400000).toISOString(), ip: '10.0.3.12', success: true },
+   232→    ],
+   233→    assignedPlaybooks: ['Ransomware Response', 'Data Breach Notification'],
+   234→    recentActions: ['Contained incident INC-0041', 'Added forensic notes', 'Updated containment playbook'],
+   235→  },
+   236→  {
+   237→    id: 'usr-5', name: 'James Whitfield', email: 'jwhitfield@siem.local', role: 'viewer', isActive: true, status: 'Active',
+   238→    lastLoginAt: new Date(Date.now() - 86400000).toISOString(), createdAt: '2024-05-12T11:20:00Z',
+   239→    department: 'Executive',
+   240→    loginHistory: [
+   241→      { time: new Date(Date.now() - 86400000).toISOString(), ip: '10.0.4.5', success: true },
+   242→    ],
+   243→    assignedPlaybooks: [],
+   244→    recentActions: ['Viewed compliance dashboard', 'Exported monthly report'],
+   245→  },
+   246→  {
+   247→    id: 'usr-6', name: 'Priya Sharma', email: 'psharma@siem.local', role: 'analyst', isActive: false, status: 'Inactive',
+   248→    lastLoginAt: new Date(Date.now() - 604800000).toISOString(), createdAt: '2024-02-01T08:00:00Z',
+   249→    department: 'Threat Intelligence',
+   250→    loginHistory: [
+   251→      { time: new Date(Date.now() - 604800000).toISOString(), ip: '10.0.2.22', success: true },
+   252→    ],
+   253→    assignedPlaybooks: ['Phishing Response'],
+   254→    recentActions: ['Last active 7 days ago'],
+   255→  },
+   256→  {
+   257→    id: 'usr-7', name: 'Alex Morrison', email: 'amorrison@siem.local', role: 'admin', isActive: true, status: 'Active',
+   258→    lastLoginAt: new Date(Date.now() - 600000).toISOString(), createdAt: '2024-01-10T07:30:00Z',
+   259→    department: 'IT Security',
+   260→    loginHistory: [
+   261→      { time: new Date(Date.now() - 600000).toISOString(), ip: '10.0.1.10', success: true },
+   262→      { time: new Date(Date.now() - 43200000).toISOString(), ip: '10.0.1.10', success: true },
+   263→      { time: new Date(Date.now() - 86400000).toISOString(), ip: '10.0.1.10', success: true },
+   264→    ],
+   265→    assignedPlaybooks: ['System Configuration', 'Access Review', 'Backup Verification'],
+   266→    recentActions: ['Modified system settings', 'Added new integration', 'Reviewed audit logs'],
+   267→  },
+   268→  {
+   269→    id: 'usr-8', name: 'Tom Nguyen', email: 'tnguyen@siem.local', role: 'viewer', isActive: false, status: 'Locked',
+   270→    lastLoginAt: new Date(Date.now() - 2592000000).toISOString(), createdAt: '2024-06-15T13:00:00Z',
+   271→    department: 'Compliance',
+   272→    loginHistory: [
+   273→      { time: new Date(Date.now() - 2592000000).toISOString(), ip: '10.0.4.15', success: false },
+   274→      { time: new Date(Date.now() - 2592000000 + 60000).toISOString(), ip: '10.0.4.15', success: false },
+   275→      { time: new Date(Date.now() - 2592000000 + 120000).toISOString(), ip: '10.0.4.15', success: false },
+   276→    ],
+   277→    assignedPlaybooks: [],
+   278→    recentActions: ['Account locked after 3 failed login attempts'],
+   279→  },
+   280→  {
+   281→    id: 'usr-9', name: 'Maria Santos', email: 'msantos@siem.local', role: 'responder', isActive: true, status: 'Active',
+   282→    lastLoginAt: new Date(Date.now() - 14400000).toISOString(), createdAt: '2024-03-22T10:45:00Z',
+   283→    department: 'Incident Response',
+   284→    loginHistory: [
+   285→      { time: new Date(Date.now() - 14400000).toISOString(), ip: '10.0.3.8', success: true },
+   286→    ],
+   287→    assignedPlaybooks: ['DDoS Mitigation', 'Insider Threat Response'],
+   288→    recentActions: ['Resolved incident INC-0038', 'Updated response playbook', 'Escalated to management'],
+   289→  },
+   290→  {
+   291→    id: 'usr-10', name: 'Robert Zhang', email: 'rzhang@siem.local', role: 'analyst', isActive: true, status: 'Active',
+   292→    lastLoginAt: new Date(Date.now() - 5400000).toISOString(), createdAt: '2024-07-01T09:00:00Z',
+   293→    department: 'Security Operations',
+   294→    loginHistory: [
+   295→      { time: new Date(Date.now() - 5400000).toISOString(), ip: '10.0.1.60', success: true },
+   296→    ],
+   297→    assignedPlaybooks: ['Lateral Movement Detection', 'Phishing Response'],
+   298→    recentActions: ['Created custom correlation rule', 'Updated asset criticality', 'Reviewed false positives'],
+   299→  },
+   300→]
+   301→
+   302→// ===== Mock Audit Logs (15-20) =====
+   303→
+   304→const mockAuditLogs: AuditLogEntry[] = [
+   305→  { id: 'al-1', timestamp: new Date(Date.now() - 300000).toISOString(), user: 'Marcus Chen', action: 'Update', resource: 'Detection Rule R-1024', details: 'Modified threshold from 5 to 10 events', ipAddress: '10.0.1.42' },
+   306→  { id: 'al-2', timestamp: new Date(Date.now() - 900000).toISOString(), user: 'Sarah Kim', action: 'Create', resource: 'Threat Indicator IOC-5521', details: 'Added new malicious IP indicator', ipAddress: '10.0.2.18' },
+   307→  { id: 'al-3', timestamp: new Date(Date.now() - 1800000).toISOString(), user: 'Alex Morrison', action: 'Login', resource: 'System Console', details: 'Successful authentication via SSO', ipAddress: '10.0.1.10' },
+   308→  { id: 'al-4', timestamp: new Date(Date.now() - 2700000).toISOString(), user: 'David Okafor', action: 'Create', resource: 'Detection Rule R-1028', details: 'Created new brute force detection rule', ipAddress: '10.0.1.55' },
+   309→  { id: 'al-5', timestamp: new Date(Date.now() - 3600000).toISOString(), user: 'Elena Petrova', action: 'Update', resource: 'Incident INC-0041', details: 'Changed status from Investigating to Contained', ipAddress: '10.0.3.12' },
+   310→  { id: 'al-6', timestamp: new Date(Date.now() - 5400000).toISOString(), user: 'James Whitfield', action: 'Export', resource: 'Compliance Report Q4', details: 'Exported SOC 2 Type II compliance report', ipAddress: '10.0.4.5' },
+   311→  { id: 'al-7', timestamp: new Date(Date.now() - 7200000).toISOString(), user: 'Robert Zhang', action: 'Create', resource: 'Correlation Rule CR-205', details: 'Created lateral movement correlation rule', ipAddress: '10.0.1.60' },
+   312→  { id: 'al-8', timestamp: new Date(Date.now() - 10800000).toISOString(), user: 'Marcus Chen', action: 'Delete', resource: 'Suppression Rule SR-44', details: 'Removed expired suppression rule', ipAddress: '10.0.1.42' },
+   313→  { id: 'al-9', timestamp: new Date(Date.now() - 14400000).toISOString(), user: 'Maria Santos', action: 'Update', resource: 'Incident INC-0038', details: 'Changed status from Contained to Resolved', ipAddress: '10.0.3.8' },
+   314→  { id: 'al-10', timestamp: new Date(Date.now() - 18000000).toISOString(), user: 'Sarah Kim', action: 'Update', resource: 'Alert ALT-1587', details: 'Acknowledged and assigned to David Okafor', ipAddress: '10.0.2.18' },
+   315→  { id: 'al-11', timestamp: new Date(Date.now() - 21600000).toISOString(), user: 'Alex Morrison', action: 'Create', resource: 'Integration CrowdStrike', details: 'Added CrowdStrike EDR integration', ipAddress: '10.0.1.10' },
+   316→  { id: 'al-12', timestamp: new Date(Date.now() - 25200000).toISOString(), user: 'Tom Nguyen', action: 'Login', resource: 'System Console', details: 'Failed authentication attempt (3rd)', ipAddress: '10.0.4.15' },
+   317→  { id: 'al-13', timestamp: new Date(Date.now() - 28800000).toISOString(), user: 'Elena Petrova', action: 'Update', resource: 'Playbook PB-Ransomware', details: 'Updated containment steps for ransomware playbook', ipAddress: '10.0.3.12' },
+   318→  { id: 'al-14', timestamp: new Date(Date.now() - 36000000).toISOString(), user: 'David Okafor', action: 'Export', resource: 'Alert Report Weekly', details: 'Exported weekly alert summary to CSV', ipAddress: '10.0.1.55' },
+   319→  { id: 'al-15', timestamp: new Date(Date.now() - 43200000).toISOString(), user: 'Marcus Chen', action: 'Update', resource: 'System Setting retention', details: 'Changed alert retention from 60 to 90 days', ipAddress: '10.0.1.42' },
+   320→  { id: 'al-16', timestamp: new Date(Date.now() - 50400000).toISOString(), user: 'Alex Morrison', action: 'Delete', resource: 'Integration Old-SIEM', details: 'Removed deprecated SIEM integration', ipAddress: '10.0.1.10' },
+   321→  { id: 'al-17', timestamp: new Date(Date.now() - 57600000).toISOString(), user: 'Robert Zhang', action: 'Create', resource: 'Asset AST-WEB-014', details: 'Added new web server asset to inventory', ipAddress: '10.0.1.60' },
+   322→  { id: 'al-18', timestamp: new Date(Date.now() - 64800000).toISOString(), user: 'James Whitfield', action: 'Login', resource: 'System Console', details: 'Successful authentication via SSO', ipAddress: '10.0.4.5' },
+   323→  { id: 'al-19', timestamp: new Date(Date.now() - 86400000).toISOString(), user: 'Sarah Kim', action: 'Update', resource: 'Compliance Control CC-7.1', details: 'Updated evidence for access control requirement', ipAddress: '10.0.2.18' },
+   324→  { id: 'al-20', timestamp: new Date(Date.now() - 100800000).toISOString(), user: 'Maria Santos', action: 'Export', resource: 'Incident Timeline INC-0038', details: 'Exported incident timeline for post-mortem', ipAddress: '10.0.3.8' },
+   325→]
+   326→
+   327→// ===== Mock Data Sources (6-8) =====
+   328→
+   329→const mockDataSources: DataSource[] = [
+   330→  { id: 'ds-1', name: 'OpenSearch Cluster', type: 'SIEM', status: 'Connected', lastSync: new Date(Date.now() - 60000).toISOString(), eventsPerDay: 2450000, icon: <Search className="h-5 w-5" />, iconColor: 'text-blue-400' },
+   331→  { id: 'ds-2', name: 'Suricata IDS', type: 'Firewall', status: 'Connected', lastSync: new Date(Date.now() - 120000).toISOString(), eventsPerDay: 185000, icon: <Flame className="h-5 w-5" />, iconColor: 'text-orange-400' },
+   332→  { id: 'ds-3', name: 'CrowdStrike Falcon', type: 'EDR', status: 'Connected', lastSync: new Date(Date.now() - 300000).toISOString(), eventsPerDay: 520000, icon: <Shield className="h-5 w-5" />, iconColor: 'text-red-400' },
+   333→  { id: 'ds-4', name: 'AWS CloudTrail', type: 'Cloud', status: 'Connected', lastSync: new Date(Date.now() - 180000).toISOString(), eventsPerDay: 890000, icon: <Cloud className="h-5 w-5" />, iconColor: 'text-cyan-400' },
+   334→  { id: 'ds-5', name: 'Azure Sentinel', type: 'Cloud', status: 'Error', lastSync: new Date(Date.now() - 7200000).toISOString(), eventsPerDay: 0, icon: <Cloud className="h-5 w-5" />, iconColor: 'text-blue-400' },
+   335→  { id: 'ds-6', name: 'MISP Threat Intel', type: 'Threat Intel', status: 'Connected', lastSync: new Date(Date.now() - 3600000).toISOString(), eventsPerDay: 12500, icon: <Bug className="h-5 w-5" />, iconColor: 'text-purple-400' },
+   336→  { id: 'ds-7', name: 'VirusTotal', type: 'Threat Intel', status: 'Connected', lastSync: new Date(Date.now() - 600000).toISOString(), eventsPerDay: 3200, icon: <Globe className="h-5 w-5" />, iconColor: 'text-emerald-400' },
+   337→  { id: 'ds-8', name: 'Fluent Bit', type: 'Log Collector', status: 'Disconnected', lastSync: new Date(Date.now() - 86400000).toISOString(), eventsPerDay: 0, icon: <Server className="h-5 w-5" />, iconColor: 'text-amber-400' },
+   338→]
+   339→
+   340→// ===== Helper: Parse JSON setting value =====
+   341→
+   342→function parseSettingValue(value: string | null | undefined, fallback: string = ''): string {
+   343→  if (!value) return fallback
+   344→  try {
+   345→    const parsed = JSON.parse(value)
+   346→    if (typeof parsed === 'object' && parsed !== null && 'value' in parsed) {
+   347→      return String((parsed as { value: unknown }).value)
+   348→    }
+   349→    return String(parsed)
+   350→  } catch {
+   351→    return value
+   352→  }
+   353→}
+   354→
+   355→// ===== Helper: Format Events/Day =====
+   356→
+   357→function formatEventsPerDay(count: number): string {
+   358→  if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`
+   359→  if (count >= 1000) return `${(count / 1000).toFixed(0)}K`
+   360→  return count.toString()
+   361→}
+   362→
+   363→// ===== Main Settings View =====
+   364→
+   365→export function SettingsView() {
+   366→  const { settings, setSettings } = useSIEMStore()
+   367→
+   368→  // Data states
+   369→  const [settingsData, setSettingsData] = useState<SettingsData>({})
+   370→  const [users, setUsers] = useState<UserData[]>(mockUsers)
+   371→  const [auditLogs] = useState<AuditLogEntry[]>(mockAuditLogs)
+   372→  const [dataSources, setDataSources] = useState<DataSource[]>(mockDataSources)
+   373→  const [saving, setSaving] = useState(false)
+   374→  const [savedFlash, setSavedFlash] = useState(false)
+   375→  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+   376→  const [loading] = useState(false)
+   377→
+   378→  // User management states
+   379→  const [userSearch, setUserSearch] = useState('')
+   380→  const [userRoleFilter, setUserRoleFilter] = useState<string>('all')
+   381→  const [userStatusFilter, setUserStatusFilter] = useState<string>('all')
+   382→  const [addUserOpen, setAddUserOpen] = useState(false)
+   383→  const [userDetailOpen, setUserDetailOpen] = useState(false)
+   384→  const [selectedUser, setSelectedUser] = useState<UserData | null>(null)
+   385→
+   386→  // New user form
+   387→  const [newUser, setNewUser] = useState({
+   388→    name: '',
+   389→    email: '',
+   390→    role: 'viewer' as UserRole,
+   391→    message: '',
+   392→  })
+   393→
+   394→  // Audit log states
+   395→  const [auditSearch, setAuditSearch] = useState('')
+   396→  const [auditDateRange, setAuditDateRange] = useState<string>('7d')
+   397→  const [auditActionFilter, setAuditActionFilter] = useState<string>('all')
+   398→
+   399→  // Data source states
+   400→  const [testingSourceId, setTestingSourceId] = useState<string | null>(null)
+   401→  const [addSourceOpen, setAddSourceOpen] = useState(false)
+   402→
+   403→  // ===== Get setting helper =====
+   404→  const getSetting = (key: string, fallback: string = ''): string =>
+   405→    parseSettingValue(settingsData[key], fallback)
+   406→
+   407→  const setSetting = (key: string, value: string) =>
+   408→    setSettingsData((prev) => ({ ...prev, [key]: JSON.stringify({ value }) }))
+   409→
+   410→  // ===== Filtered Users =====
+   411→  const filteredUsers = useMemo(() => {
+   412→    return users.filter((u) => {
+   413→      const matchesSearch = !userSearch ||
+   414→        u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
+   415→        u.email.toLowerCase().includes(userSearch.toLowerCase())
+   416→      const matchesRole = userRoleFilter === 'all' || u.role === userRoleFilter
+   417→      const matchesStatus = userStatusFilter === 'all' || u.status === userStatusFilter
+   418→      return matchesSearch && matchesRole && matchesStatus
+   419→    })
+   420→  }, [users, userSearch, userRoleFilter, userStatusFilter])
+   421→
+   422→  // ===== Filtered Audit Logs =====
+   423→  const filteredAuditLogs = useMemo(() => {
+   424→    const now = Date.now()
+   425→    let dateCutoff = 0
+   426→    if (auditDateRange === '24h') dateCutoff = now - 86400000
+   427→    else if (auditDateRange === '7d') dateCutoff = now - 604800000
+   428→    else if (auditDateRange === '30d') dateCutoff = now - 2592000000
+   429→
+   430→    return auditLogs.filter((log) => {
+   431→      const logTime = new Date(log.timestamp).getTime()
+   432→      const matchesDate = dateCutoff === 0 || logTime >= dateCutoff
+   433→      const matchesSearch = !auditSearch ||
+   434→        log.user.toLowerCase().includes(auditSearch.toLowerCase()) ||
+   435→        log.resource.toLowerCase().includes(auditSearch.toLowerCase())
+   436→      const matchesAction = auditActionFilter === 'all' || log.action === auditActionFilter
+   437→      return matchesDate && matchesSearch && matchesAction
+   438→    })
+   439→  }, [auditLogs, auditSearch, auditDateRange, auditActionFilter])
+   440→
+   441→  // ===== Handlers =====
+   442→
+   443→  const handleSaveSettings = async () => {
+   444→    setSaving(true)
+   445→    try {
+   446→      const entries = Object.entries(settingsData).map(([key, value]) => ({ key, value }))
+   447→      const res = await fetch('/api/settings', {
+   448→        method: 'PATCH',
+   449→        headers: { 'Content-Type': 'application/json' },
+   450→        body: JSON.stringify({ settings: entries }),
+   451→      })
+   452→      if (res.ok) {
+   453→        toast.success('Settings saved successfully')
+   454→        setLastSavedAt(new Date())
+   455→        setSavedFlash(true)
+   456→        setTimeout(() => setSavedFlash(false), 900)
+   457→      } else {
+   458→        toast.error('Failed to save settings')
+   459→      }
+   460→    } catch {
+   461→      toast.error('Failed to save settings')
+   462→    } finally {
+   463→      setSaving(false)
+   464→    }
+   465→  }
+   466→
+   467→  const handleAddUser = () => {
+   468→    if (!newUser.name.trim() || !newUser.email.trim()) {
+   469→      toast.error('Name and email are required')
+   470→      return
+   471→    }
+   472→    const user: UserData = {
+   473→      id: `usr-${Date.now()}`,
+   474→      name: newUser.name,
+   475→      email: newUser.email,
+   476→      role: newUser.role,
+   477→      isActive: true,
+   478→      status: 'Active',
+   479→      lastLoginAt: null,
+   480→      createdAt: new Date().toISOString(),
+   481→      department: 'New Hire',
+   482→      loginHistory: [],
+   483→      assignedPlaybooks: [],
+   484→      recentActions: ['Account created'],
+   485→    }
+   486→    setUsers((prev) => [...prev, user])
+   487→    toast.success(`Invitation sent to ${newUser.name}`)
+   488→    setAddUserOpen(false)
+   489→    setNewUser({ name: '', email: '', role: 'viewer', message: '' })
+   490→  }
+   491→
+   492→  const handleUserClick = (user: UserData) => {
+   493→    setSelectedUser(user)
+   494→    setUserDetailOpen(true)
+   495→  }
+   496→
+   497→  const handleTestDataSource = async (dsId: string) => {
+   498→    setTestingSourceId(dsId)
+   499→    // Simulate a connection test
+   500→    await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1500))
+   501→    const ds = dataSources.find((d) => d.id === dsId)
+   502→    if (ds) {
+   503→      const success = Math.random() > 0.25
+   504→      if (success) {
+   505→        toast.success(`${ds.name}: Connection test successful`)
+   506→        setDataSources((prev) =>
+   507→          prev.map((d) => d.id === dsId ? { ...d, status: 'Connected' as DataSourceStatus, lastSync: new Date().toISOString() } : d)
+   508→        )
+   509→      } else {
+   510→        toast.error(`${ds.name}: Connection test failed — timeout`)
+   511→        setDataSources((prev) =>
+   512→          prev.map((d) => d.id === dsId ? { ...d, status: 'Error' as DataSourceStatus } : d)
+   513→        )
+   514→      }
+   515→    }
+   516→    setTestingSourceId(null)
+   517→  }
+   518→
+   519→  const handleExportAuditLog = () => {
+   520→    toast.success('Audit log exported successfully', {
+   521→      description: `${filteredAuditLogs.length} entries exported as CSV`,
+   522→    })
+   523→  }
+   524→
+   525→  return (
+   526→    <motion.div
+   527→      initial={{ opacity: 0, y: 10 }}
+   528→      animate={{ opacity: 1, y: 0 }}
+   529→      transition={{ duration: 0.3 }}
+   530→      className="space-y-4 p-4"
+   531→    >
+   532→      {/* ===== Header ===== */}
+   533→      <div>
+   534→        <h2 className="text-lg font-bold tracking-tight">Settings</h2>
+   535→        <p className="text-xs text-muted-foreground">
+   536→          Configure system settings, integrations, users, and notifications
+   537→        </p>
+   538→      </div>
+   539→
+   540→      {/* ===== Tabs ===== */}
+   541→      <Tabs
+   542→        value={settings.activeTab}
+   543→        onValueChange={(v) => setSettings({ activeTab: v })}
+   544→      >
+   545→        <TabsList className="bg-muted/50 w-full justify-start overflow-x-auto">
+   546→          <TabsTrigger value="general" className={cn('text-xs gap-1.5 shrink-0', settings.activeTab === 'general' && 'siem-tab-active')}>
+   547→            <SettingsIcon className="h-3.5 w-3.5" />
+   548→            General
+   549→          </TabsTrigger>
+   550→          <TabsTrigger value="users" className={cn('text-xs gap-1.5 shrink-0', settings.activeTab === 'users' && 'siem-tab-active')}>
+   551→            <Users className="h-3.5 w-3.5" />
+   552→            Users
+   553→          </TabsTrigger>
+   554→          <TabsTrigger value="datasources" className={cn('text-xs gap-1.5 shrink-0', settings.activeTab === 'datasources' && 'siem-tab-active')}>
+   555→            <Database className="h-3.5 w-3.5" />
+   556→            Data Sources
+   557→          </TabsTrigger>
+   558→          <TabsTrigger value="audit" className={cn('text-xs gap-1.5 shrink-0', settings.activeTab === 'audit' && 'siem-tab-active')}>
+   559→            <ScrollText className="h-3.5 w-3.5" />
+   560→            Audit Log
+   561→          </TabsTrigger>
+   562→          <TabsTrigger value="integrations" className={cn('text-xs gap-1.5 shrink-0', settings.activeTab === 'integrations' && 'siem-tab-active')}>
+   563→            <Plug className="h-3.5 w-3.5" />
+   564→            Integrations
+   565→          </TabsTrigger>
+   566→          <TabsTrigger value="notifications" className={cn('text-xs gap-1.5 shrink-0', settings.activeTab === 'notifications' && 'siem-tab-active')}>
+   567→            <Bell className="h-3.5 w-3.5" />
+   568→            Notifications
+   569→          </TabsTrigger>
+   570→        </TabsList>
+   571→
+   572→        {/* ============================== */}
+   573→        {/* ===== General Tab ===== */}
+   574→        {/* ============================== */}
+   575→        <TabsContent value="general" className="mt-4">
+   576→          <Card className="border-border bg-card">
+   577→            <CardHeader>
+   578→              <CardTitle className="text-sm flex items-center gap-2">
+   579→                <SettingsIcon className="h-4 w-4 text-muted-foreground" />
+   580→                General Settings
+   581→              </CardTitle>
+   582→              <CardDescription className="text-[10px]">
+   583→                System configuration and data retention policies
+   584→              </CardDescription>
+   585→            </CardHeader>
+   586→            <CardContent>
+   587→              <div className="space-y-6">
+   588→                {/* System Info Section */}
+   589→                <div>
+   590→                  <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   591→                    System Information
+   592→                  </h4>
+   593→                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   594→                    <div className="space-y-1.5">
+   595→                      <Label className="text-xs">System Name</Label>
+   596→                      <Input
+   597→                        value={getSetting('general.systemName', 'Insights SIEM')}
+   598→                        onChange={(e) => setSetting('general.systemName', e.target.value)}
+   599→                        className="h-9 text-sm"
+   600→                        placeholder="Insights SIEM"
+   601→                      />
+   602→                    </div>
+   603→                    <div className="space-y-1.5">
+   604→                      <Label className="text-xs">Timezone</Label>
+   605→                      <Select
+   606→                        value={getSetting('general.timezone', 'UTC')}
+   607→                        onValueChange={(v) => setSetting('general.timezone', v)}
+   608→                      >
+   609→                        <SelectTrigger className="h-9 text-xs">
+   610→                          <SelectValue />
+   611→                        </SelectTrigger>
+   612→                        <SelectContent>
+   613→                          <SelectItem value="UTC">UTC</SelectItem>
+   614→                          <SelectItem value="US/Eastern">US/Eastern (EST)</SelectItem>
+   615→                          <SelectItem value="US/Pacific">US/Pacific (PST)</SelectItem>
+   616→                          <SelectItem value="US/Central">US/Central (CST)</SelectItem>
+   617→                          <SelectItem value="Europe/London">Europe/London (GMT)</SelectItem>
+   618→                          <SelectItem value="Europe/Berlin">Europe/Berlin (CET)</SelectItem>
+   619→                          <SelectItem value="Asia/Shanghai">Asia/Shanghai (CST)</SelectItem>
+   620→                          <SelectItem value="Asia/Tokyo">Asia/Tokyo (JST)</SelectItem>
+   621→                        </SelectContent>
+   622→                      </Select>
+   623→                    </div>
+   624→                  </div>
+   625→                </div>
+   626→
+   627→                {/* Data Retention Section */}
+   628→                <div>
+   629→                  <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+   630→                    <Database className="h-3 w-3" />
+   631→                    Data Retention
+   632→                  </h4>
+   633→                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   634→                    <div className="space-y-1.5">
+   635→                      <Label className="text-xs">Alert Retention (days)</Label>
+   636→                      <Input
+   637→                        type="number"
+   638→                        value={getSetting('alerts.retentionDays', '90')}
+   639→                        onChange={(e) => setSetting('alerts.retentionDays', e.target.value)}
+   640→                        className="h-9 text-sm"
+   641→                        min={1}
+   642→                        max={3650}
+   643→                      />
+   644→                      <p className="text-[10px] text-muted-foreground">
+   645→                        Alerts older than this will be automatically purged
+   646→                      </p>
+   647→                    </div>
+   648→                    <div className="space-y-1.5">
+   649→                      <Label className="text-xs">Incident Retention (days)</Label>
+   650→                      <Input
+   651→                        type="number"
+   652→                        value={getSetting('incidents.retentionDays', '365')}
+   653→                        onChange={(e) => setSetting('incidents.retentionDays', e.target.value)}
+   654→                        className="h-9 text-sm"
+   655→                        min={1}
+   656→                        max={3650}
+   657→                      />
+   658→                      <p className="text-[10px] text-muted-foreground">
+   659→                        Incidents older than this will be archived
+   660→                      </p>
+   661→                    </div>
+   662→                    <div className="space-y-1.5">
+   663→                      <Label className="text-xs">Log Retention (days)</Label>
+   664→                      <Input
+   665→                        type="number"
+   666→                        value={getSetting('logs.retentionDays', '30')}
+   667→                        onChange={(e) => setSetting('logs.retentionDays', e.target.value)}
+   668→                        className="h-9 text-sm"
+   669→                        min={1}
+   670→                        max={365}
+   671→                      />
+   672→                    </div>
+   673→                    <div className="space-y-1.5">
+   674→                      <Label className="text-xs">Audit Log Retention (days)</Label>
+   675→                      <Input
+   676→                        type="number"
+   677→                        value={getSetting('audit.retentionDays', '730')}
+   678→                        onChange={(e) => setSetting('audit.retentionDays', e.target.value)}
+   679→                        className="h-9 text-sm"
+   680→                        min={30}
+   681→                        max={3650}
+   682→                      />
+   683→                    </div>
+   684→                  </div>
+   685→                </div>
+   686→
+   687→                {/* Alert Settings Section */}
+   688→                <div>
+   689→                  <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+   690→                    <HardDrive className="h-3 w-3" />
+   691→                    Alert Configuration
+   692→                  </h4>
+   693→                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   694→                    <div className="space-y-1.5">
+   695→                      <Label className="text-xs">Default Severity Threshold</Label>
+   696→                      <Select
+   697→                        value={getSetting('alerts.defaultSeverity', 'medium')}
+   698→                        onValueChange={(v) => setSetting('alerts.defaultSeverity', v)}
+   699→                      >
+   700→                        <SelectTrigger className="h-9 text-xs">
+   701→                          <SelectValue />
+   702→                        </SelectTrigger>
+   703→                        <SelectContent>
+   704→                          <SelectItem value="critical">Critical only</SelectItem>
+   705→                          <SelectItem value="high">High and above</SelectItem>
+   706→                          <SelectItem value="medium">Medium and above</SelectItem>
+   707→                          <SelectItem value="low">Low and above</SelectItem>
+   708→                        </SelectContent>
+   709→                      </Select>
+   710→                    </div>
+   711→                    <div className="space-y-1.5">
+   712→                      <Label className="text-xs">Dashboard Refresh Interval (sec)</Label>
+   713→                      <Input
+   714→                        type="number"
+   715→                        value={getSetting('dashboard.refreshInterval', '30')}
+   716→                        onChange={(e) => setSetting('dashboard.refreshInterval', e.target.value)}
+   717→                        className="h-9 text-sm"
+   718→                        min={5}
+   719→                        max={300}
+   720→                      />
+   721→                    </div>
+   722→                  </div>
+   723→                </div>
+   724→
+   725→                {/* Save Button */}
+   726→                <div className="flex items-center gap-3 border-t border-border pt-4 flex-wrap">
+   727→                  <Button
+   728→                    size="sm"
+   729→                    className={cn(
+   730→                      'gap-1.5 bg-emerald-600 hover:bg-emerald-700',
+   731→                      savedFlash && 'siem-save-success'
+   732→                    )}
+   733→                    onClick={handleSaveSettings}
+   734→                    disabled={saving}
+   735→                  >
+   736→                    {savedFlash ? (
+   737→                      <CheckCircle className="h-3.5 w-3.5" />
+   738→                    ) : (
+   739→                      <Save className="h-3.5 w-3.5" />
+   740→                    )}
+   741→                    {saving ? 'Saving...' : savedFlash ? 'Saved' : 'Save Settings'}
+   742→                  </Button>
+   743→                  <span className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+   744→                    {lastSavedAt ? (
+   745→                      <>
+   746→                        <Clock className="h-3 w-3" />
+   747→                        Last saved: {format(lastSavedAt, 'yyyy-MM-dd HH:mm:ss')}
+   748→                      </>
+   749→                    ) : (
+   750→                      'Changes will take effect immediately'
+   751→                    )}
+   752→                  </span>
+   753→                </div>
+   754→              </div>
+   755→            </CardContent>
+   756→          </Card>
+   757→        </TabsContent>
+   758→
+   759→        {/* ============================== */}
+   760→        {/* ===== User Management Tab ===== */}
+   761→        {/* ============================== */}
+   762→        <TabsContent value="users" className="mt-4">
+   763→          <Card className="border-border bg-card">
+   764→            <CardHeader>
+   765→              <div className="flex flex-row items-center justify-between">
+   766→                <div>
+   767→                  <CardTitle className="text-sm flex items-center gap-2">
+   768→                    <Users className="h-4 w-4 text-muted-foreground" />
+   769→                    User Management
+   770→                  </CardTitle>
+   771→                  <CardDescription className="text-[10px]">
+   772→                    {users.length} users &middot; {users.filter((u) => u.status === 'Active').length} active &middot; {users.filter((u) => u.status === 'Locked').length} locked
+   773→                  </CardDescription>
+   774→                </div>
+   775→                <Button
+   776→                  size="sm"
+   777→                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+   778→                  onClick={() => setAddUserOpen(true)}
+   779→                >
+   780→                  <UserPlus className="h-3.5 w-3.5" />
+   781→                  Invite User
+   782→                </Button>
+   783→              </div>
+   784→            </CardHeader>
+   785→            <CardContent className="p-0">
+   786→              {/* Search & Filters */}
+   787→              <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+   788→                <div className="relative flex-1 min-w-[180px]">
+   789→                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+   790→                  <Input
+   791→                    placeholder="Search by name or email..."
+   792→                    value={userSearch}
+   793→                    onChange={(e) => setUserSearch(e.target.value)}
+   794→                    className="h-7 pl-7 text-[10px]"
+   795→                  />
+   796→                </div>
+   797→                <Select value={userRoleFilter} onValueChange={setUserRoleFilter}>
+   798→                  <SelectTrigger className="h-7 w-28 text-[10px]">
+   799→                    <SelectValue placeholder="Role" />
+   800→                  </SelectTrigger>
+   801→                  <SelectContent>
+   802→                    <SelectItem value="all">All Roles</SelectItem>
+   803→                    <SelectItem value="admin">Admin</SelectItem>
+   804→                    <SelectItem value="analyst">Analyst</SelectItem>
+   805→                    <SelectItem value="responder">Responder</SelectItem>
+   806→                    <SelectItem value="viewer">Viewer</SelectItem>
+   807→                  </SelectContent>
+   808→                </Select>
+   809→                <Select value={userStatusFilter} onValueChange={setUserStatusFilter}>
+   810→                  <SelectTrigger className="h-7 w-28 text-[10px]">
+   811→                    <SelectValue placeholder="Status" />
+   812→                  </SelectTrigger>
+   813→                  <SelectContent>
+   814→                    <SelectItem value="all">All Status</SelectItem>
+   815→                    <SelectItem value="Active">Active</SelectItem>
+   816→                    <SelectItem value="Inactive">Inactive</SelectItem>
+   817→                    <SelectItem value="Locked">Locked</SelectItem>
+   818→                  </SelectContent>
+   819→                </Select>
+   820→                {(userSearch || userRoleFilter !== 'all' || userStatusFilter !== 'all') && (
+   821→                  <Button
+   822→                    variant="ghost"
+   823→                    size="sm"
+   824→                    className="h-7 text-[10px]"
+   825→                    onClick={() => { setUserSearch(''); setUserRoleFilter('all'); setUserStatusFilter('all') }}
+   826→                  >
+   827→                    Clear
+   828→                  </Button>
+   829→                )}
+   830→              </div>
+   831→
+   832→              {/* User Table */}
+   833→              <div className="max-h-96 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+   834→                <Table>
+   835→                  <TableHeader>
+   836→                    <TableRow className="hover:bg-transparent">
+   837→                      <TableHead className="text-[10px] font-medium">User</TableHead>
+   838→                      <TableHead className="text-[10px] font-medium">Role</TableHead>
+   839→                      <TableHead className="text-[10px] font-medium hidden sm:table-cell">
+   840→                        Status
+   841→                      </TableHead>
+   842→                      <TableHead className="text-[10px] font-medium hidden md:table-cell">
+   843→                        Last Active
+   844→                      </TableHead>
+   845→                      <TableHead className="text-[10px] font-medium text-right w-20">
+   846→                        Actions
+   847→                      </TableHead>
+   848→                    </TableRow>
+   849→                  </TableHeader>
+   850→                  <TableBody>
+   851→                    {filteredUsers.length === 0 ? (
+   852→                      <TableRow>
+   853→                        <TableCell colSpan={5} className="text-center py-8 text-xs text-muted-foreground">
+   854→                          No users match the current filters
+   855→                        </TableCell>
+   856→                      </TableRow>
+   857→                    ) : (
+   858→                      filteredUsers.map((user) => {
+   859→                        const roleConf = roleConfig[user.role]
+   860→                        return (
+   861→                          <TableRow
+   862→                            key={user.id}
+   863→                            className="hover:bg-accent/30 cursor-pointer"
+   864→                            onClick={() => handleUserClick(user)}
+   865→                          >
+   866→                            <TableCell>
+   867→                              <div className="flex items-center gap-2.5">
+   868→                                <Avatar className="h-8 w-8">
+   869→                                  <AvatarFallback
+   870→                                    className={cn(
+   871→                                      'text-[10px] font-semibold',
+   872→                                      roleConf.avatarBg
+   873→                                    )}
+   874→                                  >
+   875→                                    {user.name.split(' ').map((n) => n[0]).join('')}
+   876→                                  </AvatarFallback>
+   877→                                </Avatar>
+   878→                                <div>
+   879→                                  <div className="text-xs font-medium">{user.name}</div>
+   880→                                  <div className="text-[10px] text-muted-foreground">
+   881→                                    {user.email}
+   882→                                  </div>
+   883→                                </div>
+   884→                              </div>
+   885→                            </TableCell>
+   886→                            <TableCell>
+   887→                              <Badge
+   888→                                variant="outline"
+   889→                                className={cn('text-[9px] gap-0.5 border', roleConf.className)}
+   890→                              >
+   891→                                {roleConf.icon}
+   892→                                {roleConf.label}
+   893→                              </Badge>
+   894→                            </TableCell>
+   895→                            <TableCell className="hidden sm:table-cell">
+   896→                              <Badge
+   897→                                variant="outline"
+   898→                                className={cn(
+   899→                                  'text-[9px] border gap-1',
+   900→                                  user.status === 'Active'
+   901→                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+   902→                                    : user.status === 'Locked'
+   903→                                      ? 'bg-red-500/15 text-red-400 border-red-500/30'
+   904→                                      : 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30'
+   905→                                )}
+   906→                              >
+   907→                                <span className={cn(
+   908→                                  'inline-block h-1.5 w-1.5 rounded-full',
+   909→                                  user.status === 'Active' ? 'bg-emerald-400' : user.status === 'Locked' ? 'bg-red-400' : 'bg-zinc-400'
+   910→                                )} />
+   911→                                {user.status}
+   912→                              </Badge>
+   913→                            </TableCell>
+   914→                            <TableCell className="hidden md:table-cell text-[10px] text-muted-foreground">
+   915→                              {user.lastLoginAt
+   916→                                ? formatDistanceToNow(new Date(user.lastLoginAt), { addSuffix: true })
+   917→                                : 'Never'}
+   918→                            </TableCell>
+   919→                            <TableCell className="text-right">
+   920→                              <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+   921→                                <Button
+   922→                                  variant="ghost"
+   923→                                  size="sm"
+   924→                                  className="h-6 text-[10px] text-muted-foreground hover:text-foreground"
+   925→                                  onClick={() => handleUserClick(user)}
+   926→                                >
+   927→                                  <Eye className="h-2.5 w-2.5" />
+   928→                                </Button>
+   929→                                <Button
+   930→                                  variant="ghost"
+   931→                                  size="sm"
+   932→                                  className="h-6 text-[10px] text-muted-foreground hover:text-foreground"
+   933→                                >
+   934→                                  <Pencil className="h-2.5 w-2.5" />
+   935→                                </Button>
+   936→                              </div>
+   937→                            </TableCell>
+   938→                          </TableRow>
+   939→                        )
+   940→                      })
+   941→                    )}
+   942→                  </TableBody>
+   943→                </Table>
+   944→              </div>
+   945→
+   946→              {/* Summary bar */}
+   947→              <div className="border-t border-border px-4 py-2 flex items-center justify-between">
+   948→                <span className="text-[10px] text-muted-foreground">
+   949→                  Showing {filteredUsers.length} of {users.length} users
+   950→                </span>
+   951→                <span className="text-[10px] text-muted-foreground">
+   952→                  Admins: {users.filter(u => u.role === 'admin').length} &middot; Analysts: {users.filter(u => u.role === 'analyst').length} &middot; Responders: {users.filter(u => u.role === 'responder').length} &middot; Viewers: {users.filter(u => u.role === 'viewer').length}
+   953→                </span>
+   954→              </div>
+   955→            </CardContent>
+   956→          </Card>
+   957→        </TabsContent>
+   958→
+   959→        {/* ============================== */}
+   960→        {/* ===== Data Sources Tab ===== */}
+   961→        {/* ============================== */}
+   962→        <TabsContent value="datasources" className="mt-4">
+   963→          <Card className="border-border bg-card">
+   964→            <CardHeader>
+   965→              <div className="flex flex-row items-center justify-between">
+   966→                <div>
+   967→                  <CardTitle className="text-sm flex items-center gap-2">
+   968→                    <Database className="h-4 w-4 text-muted-foreground" />
+   969→                    Data Sources
+   970→                  </CardTitle>
+   971→                  <CardDescription className="text-[10px]">
+   972→                    {dataSources.length} sources &middot; {dataSources.filter(d => d.status === 'Connected').length} connected &middot; {formatEventsPerDay(dataSources.reduce((acc, d) => acc + d.eventsPerDay, 0))} events/day total
+   973→                  </CardDescription>
+   974→                </div>
+   975→                <Button
+   976→                  size="sm"
+   977→                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+   978→                  onClick={() => setAddSourceOpen(true)}
+   979→                >
+   980→                  <Plus className="h-3.5 w-3.5" />
+   981→                  Add Source
+   982→                </Button>
+   983→              </div>
+   984→            </CardHeader>
+   985→            <CardContent>
+   986→              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+   987→                {dataSources.map((ds) => {
+   988→                  const typeConf = dsTypeConfig[ds.type]
+   989→                  return (
+   990→                    <motion.div
+   991→                      key={ds.id}
+   992→                      initial={{ opacity: 0, y: 5 }}
+   993→                      animate={{ opacity: 1, y: 0 }}
+   994→                      transition={{ duration: 0.2, delay: dataSources.indexOf(ds) * 0.03 }}
+   995→                      className={cn(
+   996→                        'rounded-lg border p-4 transition-colors',
+   997→                        ds.status === 'Connected'
+   998→                          ? 'border-border bg-muted/20 hover:bg-muted/30'
+   999→                          : ds.status === 'Error'
+  1000→                            ? 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10'
+  1001→                            : 'border-border/50 bg-muted/10 opacity-70'
+  1002→                      )}
+  1003→                    >
+  1004→                      <div className="flex items-start justify-between">
+  1005→                        <div className="flex items-center gap-3">
+  1006→                          {/* Status dot */}
+  1007→                          <div className="relative">
+  1008→                            <div className={cn(
+  1009→                              'flex h-10 w-10 items-center justify-center rounded-lg bg-muted/50',
+  1010→                              ds.iconColor
+  1011→                            )}>
+  1012→                              {ds.icon}
+  1013→                            </div>
+  1014→                            <span className={cn(
+  1015→                              'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card',
+  1016→                              ds.status === 'Connected' ? 'bg-emerald-400' : ds.status === 'Error' ? 'bg-red-400' : 'bg-zinc-400'
+  1017→                            )} />
+  1018→                          </div>
+  1019→                          <div>
+  1020→                            <div className="flex items-center gap-2">
+  1021→                              <span className="text-sm font-medium">{ds.name}</span>
+  1022→                              <Badge
+  1023→                                variant="outline"
+  1024→                                className={cn('text-[9px] border', typeConf.badgeClass)}
+  1025→                              >
+  1026→                                {ds.type}
+  1027→                              </Badge>
+  1028→                            </div>
+  1029→                            <div className="flex items-center gap-3 mt-1">
+  1030→                              <Badge
+  1031→                                variant="outline"
+  1032→                                className={cn(
+  1033→                                  'text-[9px] border gap-1',
+  1034→                                  ds.status === 'Connected'
+  1035→                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+  1036→                                    : ds.status === 'Error'
+  1037→                                      ? 'bg-red-500/15 text-red-400 border-red-500/30'
+  1038→                                      : 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30'
+  1039→                                )}
+  1040→                              >
+  1041→                                <span className={cn(
+  1042→                                  'inline-block h-1.5 w-1.5 rounded-full',
+  1043→                                  ds.status === 'Connected' ? 'bg-emerald-400' : ds.status === 'Error' ? 'bg-red-400' : 'bg-zinc-400'
+  1044→                                )} />
+  1045→                                {ds.status}
+  1046→                              </Badge>
+  1047→                              <span className="text-[9px] text-muted-foreground flex items-center gap-1">
+  1048→                                <Clock className="h-2.5 w-2.5" />
+  1049→                                Last sync: {formatDistanceToNow(new Date(ds.lastSync), { addSuffix: true })}
+  1050→                              </span>
+  1051→                            </div>
+  1052→                          </div>
+  1053→                        </div>
+  1054→                      </div>
+  1055→
+  1056→                      {/* Stats row */}
+  1057→                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/50">
+  1058→                        <div className="flex items-center gap-4">
+  1059→                          <div className="text-center">
+  1060→                            <div className="text-xs font-semibold">{formatEventsPerDay(ds.eventsPerDay)}</div>
+  1061→                            <div className="text-[9px] text-muted-foreground">events/day</div>
+  1062→                          </div>
+  1063→                        </div>
+  1064→                        <div className="flex items-center gap-2">
+  1065→                          <Button
+  1066→                            variant="outline"
+  1067→                            size="sm"
+  1068→                            className="h-7 gap-1 text-[10px]"
+  1069→                            onClick={() => handleTestDataSource(ds.id)}
+  1070→                            disabled={testingSourceId === ds.id}
+  1071→                          >
+  1072→                            {testingSourceId === ds.id ? (
+  1073→                              <RefreshCw className="h-3 w-3 animate-spin" />
+  1074→                            ) : (
+  1075→                              <Wifi className="h-3 w-3" />
+  1076→                            )}
+  1077→                            Test
+  1078→                          </Button>
+  1079→                          <Button
+  1080→                            variant="ghost"
+  1081→                            size="sm"
+  1082→                            className="h-7 gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+  1083→                          >
+  1084→                            <Pencil className="h-3 w-3" />
+  1085→                            Configure
+  1086→                          </Button>
+  1087→                        </div>
+  1088→                      </div>
+  1089→                    </motion.div>
+  1090→                  )
+  1091→                })}
+  1092→              </div>
+  1093→            </CardContent>
+  1094→          </Card>
+  1095→        </TabsContent>
+  1096→
+  1097→        {/* ============================== */}
+  1098→        {/* ===== Audit Log Tab ===== */}
+  1099→        {/* ============================== */}
+  1100→        <TabsContent value="audit" className="mt-4">
+  1101→          <Card className="border-border bg-card">
+  1102→            <CardHeader>
+  1103→              <div className="flex flex-row items-center justify-between">
+  1104→                <div>
+  1105→                  <CardTitle className="text-sm flex items-center gap-2">
+  1106→                    <FileText className="h-4 w-4 text-muted-foreground" />
+  1107→                    Audit Log
+  1108→                  </CardTitle>
+  1109→                  <CardDescription className="text-[10px]">
+  1110→                    {filteredAuditLogs.length} entries &middot; {auditLogs.length} total
+  1111→                  </CardDescription>
+  1112→                </div>
+  1113→                <Button
+  1114→                  variant="outline"
+  1115→                  size="sm"
+  1116→                  className="gap-1.5 text-[10px]"
+  1117→                  onClick={handleExportAuditLog}
+  1118→                >
+  1119→                  <Download className="h-3 w-3" />
+  1120→                  Export
+  1121→                </Button>
+  1122→              </div>
+  1123→            </CardHeader>
+  1124→            <CardContent className="p-0">
+  1125→              {/* Filters */}
+  1126→              <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+  1127→                <div className="relative flex-1 min-w-[160px]">
+  1128→                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+  1129→                  <Input
+  1130→                    placeholder="Search by user or resource..."
+  1131→                    value={auditSearch}
+  1132→                    onChange={(e) => setAuditSearch(e.target.value)}
+  1133→                    className="h-7 pl-7 text-[10px]"
+  1134→                  />
+  1135→                </div>
+  1136→                <Select value={auditDateRange} onValueChange={setAuditDateRange}>
+  1137→                  <SelectTrigger className="h-7 w-28 text-[10px]">
+  1138→                    <SelectValue placeholder="Date range" />
+  1139→                  </SelectTrigger>
+  1140→                  <SelectContent>
+  1141→                    <SelectItem value="24h">Last 24h</SelectItem>
+  1142→                    <SelectItem value="7d">Last 7d</SelectItem>
+  1143→                    <SelectItem value="30d">Last 30d</SelectItem>
+  1144→                  </SelectContent>
+  1145→                </Select>
+  1146→
+  1147→                {/* Action type filter buttons */}
+  1148→                <div className="flex items-center gap-1">
+  1149→                  <Button
+  1150→                    variant={auditActionFilter === 'all' ? 'default' : 'outline'}
+  1151→                    size="sm"
+  1152→                    className={cn(
+  1153→                      'h-7 text-[9px] px-2',
+  1154→                      auditActionFilter === 'all' && 'bg-emerald-600 hover:bg-emerald-700'
+  1155→                    )}
+  1156→                    onClick={() => setAuditActionFilter('all')}
+  1157→                  >
+  1158→                    All
+  1159→                  </Button>
+  1160→                  {(['Create', 'Update', 'Delete', 'Login', 'Export'] as AuditActionType[]).map((action) => {
+  1161→                    const conf = auditActionConfig[action]
+  1162→                    return (
+  1163→                      <Button
+  1164→                        key={action}
+  1165→                        variant={auditActionFilter === action ? 'default' : 'outline'}
+  1166→                        size="sm"
+  1167→                        className={cn(
+  1168→                          'h-7 text-[9px] px-2',
+  1169→                          auditActionFilter === action && 'bg-emerald-600 hover:bg-emerald-700'
+  1170→                        )}
+  1171→                        onClick={() => setAuditActionFilter(action === auditActionFilter ? 'all' : action)}
+  1172→                      >
+  1173→                        {action}
+  1174→                      </Button>
+  1175→                    )
+  1176→                  })}
+  1177→                </div>
+  1178→
+  1179→                {(auditSearch || auditDateRange !== '7d' || auditActionFilter !== 'all') && (
+  1180→                  <Button
+  1181→                    variant="ghost"
+  1182→                    size="sm"
+  1183→                    className="h-7 text-[10px]"
+  1184→                    onClick={() => { setAuditSearch(''); setAuditDateRange('7d'); setAuditActionFilter('all') }}
+  1185→                  >
+  1186→                    Clear
+  1187→                  </Button>
+  1188→                )}
+  1189→              </div>
+  1190→
+  1191→              {/* Audit Log Table */}
+  1192→              <div className="max-h-96 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+  1193→                <Table>
+  1194→                  <TableHeader>
+  1195→                    <TableRow className="hover:bg-transparent">
+  1196→                      <TableHead className="text-[10px] font-medium w-28">Timestamp</TableHead>
+  1197→                      <TableHead className="text-[10px] font-medium w-24">User</TableHead>
+  1198→                      <TableHead className="text-[10px] font-medium w-20">Action</TableHead>
+  1199→                      <TableHead className="text-[10px] font-medium">Resource</TableHead>
+  1200→                      <TableHead className="text-[10px] font-medium hidden lg:table-cell">Details</TableHead>
+  1201→                      <TableHead className="text-[10px] font-medium hidden md:table-cell w-24">IP Address</TableHead>
+  1202→                    </TableRow>
+  1203→                  </TableHeader>
+  1204→                  <TableBody>
+  1205→                    {filteredAuditLogs.length === 0 ? (
+  1206→                      <TableRow>
+  1207→                        <TableCell colSpan={6} className="text-center py-8 text-xs text-muted-foreground">
+  1208→                          No audit log entries match the current filters
+  1209→                        </TableCell>
+  1210→                      </TableRow>
+  1211→                    ) : (
+  1212→                      filteredAuditLogs.map((log) => {
+  1213→                        const actionConf = auditActionConfig[log.action]
+  1214→                        return (
+  1215→                          <TableRow key={log.id} className="hover:bg-accent/30">
+  1216→                            <TableCell className="text-[10px] text-muted-foreground font-mono">
+  1217→                              {format(new Date(log.timestamp), 'MMM d, HH:mm:ss')}
+  1218→                            </TableCell>
+  1219→                            <TableCell className="text-[10px] text-muted-foreground">
+  1220→                              {log.user}
+  1221→                            </TableCell>
+  1222→                            <TableCell>
+  1223→                              <Badge
+  1224→                                variant="outline"
+  1225→                                className={cn('text-[9px] border', actionConf.className)}
+  1226→                              >
+  1227→                                {log.action}
+  1228→                              </Badge>
+  1229→                            </TableCell>
+  1230→                            <TableCell className="text-[10px] font-medium">
+  1231→                              {log.resource}
+  1232→                            </TableCell>
+  1233→                            <TableCell className="hidden lg:table-cell text-[10px] text-muted-foreground max-w-48 truncate">
+  1234→                              {log.details}
+  1235→                            </TableCell>
+  1236→                            <TableCell className="hidden md:table-cell text-[10px] text-muted-foreground font-mono">
+  1237→                              {log.ipAddress}
+  1238→                            </TableCell>
+  1239→                          </TableRow>
+  1240→                        )
+  1241→                      })
+  1242→                    )}
+  1243→                  </TableBody>
+  1244→                </Table>
+  1245→              </div>
+  1246→
+  1247→              {/* Summary bar */}
+  1248→              <div className="border-t border-border px-4 py-2 flex items-center justify-between">
+  1249→                <span className="text-[10px] text-muted-foreground">
+  1250→                  Showing {filteredAuditLogs.length} of {auditLogs.length} entries
+  1251→                </span>
+  1252→                <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+  1253→                  <span className="flex items-center gap-1"><CircleDot className="h-2 w-2 text-emerald-400" /> Create: {auditLogs.filter(l => l.action === 'Create').length}</span>
+  1254→                  <span className="flex items-center gap-1"><CircleDot className="h-2 w-2 text-blue-400" /> Update: {auditLogs.filter(l => l.action === 'Update').length}</span>
+  1255→                  <span className="flex items-center gap-1"><CircleDot className="h-2 w-2 text-red-400" /> Delete: {auditLogs.filter(l => l.action === 'Delete').length}</span>
+  1256→                  <span className="flex items-center gap-1"><CircleDot className="h-2 w-2 text-cyan-400" /> Login: {auditLogs.filter(l => l.action === 'Login').length}</span>
+  1257→                  <span className="flex items-center gap-1"><CircleDot className="h-2 w-2 text-amber-400" /> Export: {auditLogs.filter(l => l.action === 'Export').length}</span>
+  1258→                </div>
+  1259→              </div>
+  1260→            </CardContent>
+  1261→          </Card>
+  1262→        </TabsContent>
+  1263→
+  1264→        {/* ============================== */}
+  1265→        {/* ===== Integrations Tab ===== */}
+  1266→        {/* ============================== */}
+  1267→        <TabsContent value="integrations" className="mt-4">
+  1268→          <Card className="border-border bg-card">
+  1269→            <CardHeader>
+  1270→              <CardTitle className="text-sm flex items-center gap-2">
+  1271→                <Plug className="h-4 w-4 text-muted-foreground" />
+  1272→                Integrations
+  1273→              </CardTitle>
+  1274→              <CardDescription className="text-[10px]">
+  1275→                Manage external service connections
+  1276→              </CardDescription>
+  1277→            </CardHeader>
+  1278→            <CardContent>
+  1279→              <div className="flex flex-col items-center justify-center py-12 text-center">
+  1280→                <Plug className="mb-3 h-10 w-10 text-muted-foreground/30" />
+  1281→                <p className="text-sm font-medium text-muted-foreground">
+  1282→                  Integrations are now managed via Data Sources
+  1283→                </p>
+  1284→                <p className="text-xs text-muted-foreground/70">
+  1285→                  Switch to the Data Sources tab to manage connections
+  1286→                </p>
+  1287→                <Button
+  1288→                  variant="outline"
+  1289→                  size="sm"
+  1290→                  className="mt-3 gap-1.5 text-xs"
+  1291→                  onClick={() => setSettings({ activeTab: 'datasources' })}
+  1292→                >
+  1293→                  <Database className="h-3 w-3" />
+  1294→                  Go to Data Sources
+  1295→                </Button>
+  1296→              </div>
+  1297→            </CardContent>
+  1298→          </Card>
+  1299→        </TabsContent>
+  1300→
+  1301→        {/* ============================== */}
+  1302→        {/* ===== Notifications Tab ===== */}
+  1303→        {/* ============================== */}
+  1304→        <TabsContent value="notifications" className="mt-4">
+  1305→          <Card className="border-border bg-card">
+  1306→            <CardHeader>
+  1307→              <CardTitle className="text-sm flex items-center gap-2">
+  1308→                <Bell className="h-4 w-4 text-muted-foreground" />
+  1309→                Notification Preferences
+  1310→              </CardTitle>
+  1311→              <CardDescription className="text-[10px]">
+  1312→                Configure how and when you receive notifications
+  1313→              </CardDescription>
+  1314→            </CardHeader>
+  1315→            <CardContent>
+  1316→              <div className="space-y-4">
+  1317→                {[
+  1318→                  { id: 'alert_critical', title: 'Critical Alert Notifications', desc: 'Receive immediate notifications for critical severity alerts', icon: <AlertTriangle className="h-4 w-4 text-red-400" />, enabled: true },
+  1319→                  { id: 'alert_high', title: 'High Alert Notifications', desc: 'Receive notifications for high severity alerts', icon: <AlertTriangle className="h-4 w-4 text-amber-400" />, enabled: true },
+  1320→                  { id: 'incident_assigned', title: 'Incident Assignment', desc: 'Notify when you are assigned to an incident', icon: <Users className="h-4 w-4 text-blue-400" />, enabled: true },
+  1321→                  { id: 'incident_status', title: 'Incident Status Changes', desc: 'Notify when incident status changes', icon: <Activity className="h-4 w-4 text-emerald-400" />, enabled: false },
+  1322→                  { id: 'compliance_drift', title: 'Compliance Drift Alerts', desc: 'Alert when compliance score drops below threshold', icon: <Shield className="h-4 w-4 text-purple-400" />, enabled: true },
+  1323→                  { id: 'system_health', title: 'System Health Warnings', desc: 'Notify about system health issues and outages', icon: <Activity className="h-4 w-4 text-orange-400" />, enabled: true },
+  1324→                  { id: 'rule_triggered', title: 'Detection Rule Triggers', desc: 'Notify when a detection rule is triggered', icon: <Zap className="h-4 w-4 text-yellow-400" />, enabled: false },
+  1325→                  { id: 'email_digest', title: 'Daily Email Digest', desc: 'Receive a daily summary email of important events', icon: <Mail className="h-4 w-4 text-cyan-400" />, enabled: false },
+  1326→                ].map((pref) => (
+  1327→                  <div
+  1328→                    key={pref.id}
+  1329→                    className="flex items-center justify-between rounded-lg px-3 py-2.5 hover:bg-muted/20 transition-colors"
+  1330→                  >
+  1331→                    <div className="flex items-center gap-3">
+  1332→                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/50">
+  1333→                        {pref.icon}
+  1334→                      </div>
+  1335→                      <div>
+  1336→                        <div className="text-xs font-medium">{pref.title}</div>
+  1337→                        <div className="text-[10px] text-muted-foreground">{pref.desc}</div>
+  1338→                      </div>
+  1339→                    </div>
+  1340→                    <Switch
+  1341→                      defaultChecked={pref.enabled}
+  1342→                      onCheckedChange={() => toast.success('Notification preference updated')}
+  1343→                    />
+  1344→                  </div>
+  1345→                ))}
+  1346→
+  1347→                {/* Global Severity Threshold */}
+  1348→                <div className="border-t border-border pt-4">
+  1349→                  <h4 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+  1350→                    Severity Threshold
+  1351→                  </h4>
+  1352→                  <div className="flex items-center justify-between rounded-lg px-3 py-2.5 bg-muted/20">
+  1353→                    <div className="flex items-center gap-3">
+  1354→                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/50">
+  1355→                        <AlertTriangle className="h-4 w-4 text-amber-400" />
+  1356→                      </div>
+  1357→                      <div>
+  1358→                        <div className="text-xs font-medium">Minimum Notification Severity</div>
+  1359→                        <div className="text-[10px] text-muted-foreground">
+  1360→                          Only receive notifications for alerts at or above this severity
+  1361→                        </div>
+  1362→                      </div>
+  1363→                    </div>
+  1364→                    <Select defaultValue="high">
+  1365→                      <SelectTrigger className="h-8 w-36 text-xs">
+  1366→                        <SelectValue />
+  1367→                      </SelectTrigger>
+  1368→                      <SelectContent>
+  1369→                        <SelectItem value="critical">Critical only</SelectItem>
+  1370→                        <SelectItem value="high">High and above</SelectItem>
+  1371→                        <SelectItem value="medium">Medium and above</SelectItem>
+  1372→                        <SelectItem value="low">All alerts</SelectItem>
+  1373→                      </SelectContent>
+  1374→                    </Select>
+  1375→                  </div>
+  1376→                </div>
+  1377→              </div>
+  1378→            </CardContent>
+  1379→          </Card>
+  1380→        </TabsContent>
+  1381→      </Tabs>
+  1382→
+  1383→      {/* ===== Invite User Dialog ===== */}
+  1384→      <Dialog open={addUserOpen} onOpenChange={setAddUserOpen}>
+  1385→        <DialogContent className="bg-card border-border sm:max-w-md">
+  1386→          <DialogHeader>
+  1387→            <DialogTitle className="text-sm flex items-center gap-2">
+  1388→              <UserPlus className="h-4 w-4 text-emerald-400" />
+  1389→              Invite User
+  1390→            </DialogTitle>
+  1391→            <DialogDescription className="text-xs">
+  1392→              Send an invitation to a new team member
+  1393→            </DialogDescription>
+  1394→          </DialogHeader>
+  1395→          <div className="space-y-4">
+  1396→            <div className="space-y-1.5">
+  1397→              <Label className="text-xs">Full Name *</Label>
+  1398→              <Input
+  1399→                value={newUser.name}
+  1400→                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+  1401→                className="h-9 text-sm"
+  1402→                placeholder="John Doe"
+  1403→              />
+  1404→            </div>
+  1405→            <div className="space-y-1.5">
+  1406→              <Label className="text-xs">Email *</Label>
+  1407→              <Input
+  1408→                type="email"
+  1409→                value={newUser.email}
+  1410→                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+  1411→                className="h-9 text-sm"
+  1412→                placeholder="john@siem.local"
+  1413→              />
+  1414→            </div>
+  1415→            <div className="space-y-1.5">
+  1416→              <Label className="text-xs">Role</Label>
+  1417→              <Select
+  1418→                value={newUser.role}
+  1419→                onValueChange={(v) => setNewUser({ ...newUser, role: v as UserRole })}
+  1420→              >
+  1421→                <SelectTrigger className="h-9 text-xs">
+  1422→                  <SelectValue />
+  1423→                </SelectTrigger>
+  1424→                <SelectContent>
+  1425→                  <SelectItem value="admin">
+  1426→                    <span className="flex items-center gap-1.5">
+  1427→                      <Shield className="h-3 w-3 text-red-400" />
+  1428→                      Admin — Full system access
+  1429→                    </span>
+  1430→                  </SelectItem>
+  1431→                  <SelectItem value="analyst">
+  1432→                    <span className="flex items-center gap-1.5">
+  1433→                      <Eye className="h-3 w-3 text-emerald-400" />
+  1434→                      Analyst — Alert investigation
+  1435→                    </span>
+  1436→                  </SelectItem>
+  1437→                  <SelectItem value="responder">
+  1438→                    <span className="flex items-center gap-1.5">
+  1439→                      <Zap className="h-3 w-3 text-amber-400" />
+  1440→                      Responder — Incident response
+  1441→                    </span>
+  1442→                  </SelectItem>
+  1443→                  <SelectItem value="viewer">
+  1444→                    <span className="flex items-center gap-1.5">
+  1445→                      <FileText className="h-3 w-3 text-zinc-400" />
+  1446→                      Viewer — Read-only access
+  1447→                    </span>
+  1448→                  </SelectItem>
+  1449→                </SelectContent>
+  1450→              </Select>
+  1451→            </div>
+  1452→            <div className="space-y-1.5">
+  1453→              <Label className="text-xs">Invitation Message (optional)</Label>
+  1454→              <Textarea
+  1455→                value={newUser.message}
+  1456→                onChange={(e) => setNewUser({ ...newUser, message: e.target.value })}
+  1457→                className="min-h-[60px] text-xs"
+  1458→                placeholder="Welcome to the SOC team! You'll be working on threat analysis..."
+  1459→              />
+  1460→            </div>
+  1461→          </div>
+  1462→          <DialogFooter className="gap-2">
+  1463→            <Button variant="outline" size="sm" onClick={() => setAddUserOpen(false)}>
+  1464→              Cancel
+  1465→            </Button>
+  1466→            <Button
+  1467→              size="sm"
+  1468→              className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+  1469→              onClick={handleAddUser}
+  1470→              disabled={!newUser.name.trim() || !newUser.email.trim()}
+  1471→            >
+  1472→              <Mail className="h-3.5 w-3.5" />
+  1473→              Send Invitation
+  1474→            </Button>
+  1475→          </DialogFooter>
+  1476→        </DialogContent>
+  1477→      </Dialog>
+  1478→
+  1479→      {/* ===== User Detail Dialog ===== */}
+  1480→      <Dialog open={userDetailOpen} onOpenChange={setUserDetailOpen}>
+  1481→        <DialogContent className="bg-card border-border sm:max-w-lg">
+  1482→          <DialogHeader>
+  1483→            <DialogTitle className="text-sm flex items-center gap-3">
+  1484→              {selectedUser && (
+  1485→                <>
+  1486→                  <Avatar className="h-8 w-8">
+  1487→                    <AvatarFallback className={cn('text-[10px] font-semibold', roleConfig[selectedUser.role].avatarBg)}>
+  1488→                      {selectedUser.name.split(' ').map((n) => n[0]).join('')}
+  1489→                    </AvatarFallback>
+  1490→                  </Avatar>
+  1491→                  {selectedUser.name}
+  1492→                  <Badge
+  1493→                    variant="outline"
+  1494→                    className={cn('text-[9px] gap-0.5 border', roleConfig[selectedUser.role].className)}
+  1495→                  >
+  1496→                    {roleConfig[selectedUser.role].icon}
+  1497→                    {roleConfig[selectedUser.role].label}
+  1498→                  </Badge>
+  1499→                </>
+  1500→              )}
+  1501→            </DialogTitle>
+  1502→            <DialogDescription className="text-xs">
+  1503→              {selectedUser?.email} &middot; {selectedUser?.department}
+  1504→            </DialogDescription>
+  1505→          </DialogHeader>
+  1506→          {selectedUser && (
+  1507→            <div className="space-y-4">
+  1508→              {/* Status & Info Row */}
+  1509→              <div className="grid grid-cols-3 gap-3">
+  1510→                <div className="rounded-lg bg-muted/20 p-3 text-center">
+  1511→                  <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Status</div>
+  1512→                  <Badge
+  1513→                    variant="outline"
+  1514→                    className={cn(
+  1515→                      'text-[9px] border gap-1 mt-1',
+  1516→                      selectedUser.status === 'Active'
+  1517→                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+  1518→                        : selectedUser.status === 'Locked'
+  1519→                          ? 'bg-red-500/15 text-red-400 border-red-500/30'
+  1520→                          : 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30'
+  1521→                    )}
+  1522→                  >
+  1523→                    {selectedUser.status}
+  1524→                  </Badge>
+  1525→                </div>
+  1526→                <div className="rounded-lg bg-muted/20 p-3 text-center">
+  1527→                  <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Last Active</div>
+  1528→                  <div className="text-xs mt-1">
+  1529→                    {selectedUser.lastLoginAt
+  1530→                      ? formatDistanceToNow(new Date(selectedUser.lastLoginAt), { addSuffix: true })
+  1531→                      : 'Never'}
+  1532→                  </div>
+  1533→                </div>
+  1534→                <div className="rounded-lg bg-muted/20 p-3 text-center">
+  1535→                  <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Joined</div>
+  1536→                  <div className="text-xs mt-1">
+  1537→                    {format(new Date(selectedUser.createdAt), 'MMM d, yyyy')}
+  1538→                  </div>
+  1539→                </div>
+  1540→              </div>
+  1541→
+  1542→              {/* Login History */}
+  1543→              <div>
+  1544→                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+  1545→                  <Clock className="h-3 w-3" />
+  1546→                  Recent Login History
+  1547→                </h4>
+  1548→                <div className="space-y-1 max-h-24 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+  1549→                  {(selectedUser.loginHistory?.length ?? 0) > 0 ? (
+  1550→                    selectedUser.loginHistory?.map((entry, i) => (
+  1551→                      <div key={i} className="flex items-center justify-between text-[10px] py-1 px-2 rounded bg-muted/10">
+  1552→                        <span className="flex items-center gap-1.5">
+  1553→                          {entry.success ? (
+  1554→                            <CheckCircle className="h-2.5 w-2.5 text-emerald-400" />
+  1555→                          ) : (
+  1556→                            <XCircle className="h-2.5 w-2.5 text-red-400" />
+  1557→                          )}
+  1558→                          <span className="font-mono">{entry.ip}</span>
+  1559→                        </span>
+  1560→                        <span className="text-muted-foreground">
+  1561→                          {formatDistanceToNow(new Date(entry.time), { addSuffix: true })}
+  1562→                        </span>
+  1563→                      </div>
+  1564→                    ))
+  1565→                  ) : (
+  1566→                    <span className="text-[10px] text-muted-foreground">No login history</span>
+  1567→                  )}
+  1568→                </div>
+  1569→              </div>
+  1570→
+  1571→              {/* Assigned Playbooks */}
+  1572→              <div>
+  1573→                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+  1574→                  <Zap className="h-3 w-3" />
+  1575→                  Assigned Playbooks
+  1576→                </h4>
+  1577→                <div className="flex flex-wrap gap-1.5">
+  1578→                  {(selectedUser.assignedPlaybooks?.length ?? 0) > 0 ? (
+  1579→                    selectedUser.assignedPlaybooks?.map((pb) => (
+  1580→                      <Badge key={pb} variant="outline" className="text-[9px] border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+  1581→                        {pb}
+  1582→                      </Badge>
+  1583→                    ))
+  1584→                  ) : (
+  1585→                    <span className="text-[10px] text-muted-foreground">No playbooks assigned</span>
+  1586→                  )}
+  1587→                </div>
+  1588→              </div>
+  1589→
+  1590→              {/* Recent Actions */}
+  1591→              <div>
+  1592→                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+  1593→                  <Activity className="h-3 w-3" />
+  1594→                  Recent Actions
+  1595→                </h4>
+  1596→                <div className="space-y-1">
+  1597→                  {selectedUser.recentActions?.map((action, i) => (
+  1598→                    <div key={i} className="text-[10px] py-1 px-2 rounded bg-muted/10 flex items-center gap-1.5">
+  1599→                      <span className="h-1 w-1 rounded-full bg-emerald-400" />
+  1600→                      {action}
+  1601→                    </div>
+  1602→                  ))}
+  1603→                </div>
+  1604→              </div>
+  1605→            </div>
+  1606→          )}
+  1607→          <DialogFooter className="gap-2">
+  1608→            <Button variant="outline" size="sm" onClick={() => setUserDetailOpen(false)}>
+  1609→              Close
+  1610→            </Button>
+  1611→            <Button
+  1612→              size="sm"
+  1613→              className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+  1614→              onClick={() => {
+  1615→                if (selectedUser) {
+  1616→                  if (selectedUser.status === 'Locked') {
+  1617→                    setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, status: 'Active' as const, isActive: true } : u))
+  1618→                    toast.success(`Account unlocked for ${selectedUser.name}`)
+  1619→                    setSelectedUser({ ...selectedUser, status: 'Active', isActive: true })
+  1620→                  } else if (selectedUser.status === 'Active') {
+  1621→                    setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, status: 'Inactive' as const, isActive: false } : u))
+  1622→                    toast.success(`Account deactivated for ${selectedUser.name}`)
+  1623→                    setSelectedUser({ ...selectedUser, status: 'Inactive', isActive: false })
+  1624→                  } else {
+  1625→                    setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, status: 'Active' as const, isActive: true } : u))
+  1626→                    toast.success(`Account reactivated for ${selectedUser.name}`)
+  1627→                    setSelectedUser({ ...selectedUser, status: 'Active', isActive: true })
+  1628→                  }
+  1629→                }
+  1630→              }}
+  1631→            >
+  1632→              {selectedUser?.status === 'Locked' ? (
+  1633→                <><Unlock className="h-3.5 w-3.5" /> Unlock Account</>
+  1634→              ) : selectedUser?.status === 'Active' ? (
+  1635→                <><Lock className="h-3.5 w-3.5" /> Deactivate</>
+  1636→              ) : (
+  1637→                <><Unlock className="h-3.5 w-3.5" /> Reactivate</>
+  1638→              )}
+  1639→            </Button>
+  1640→          </DialogFooter>
+  1641→        </DialogContent>
+  1642→      </Dialog>
+  1643→
+  1644→      {/* ===== Add Data Source Dialog ===== */}
+  1645→      <Dialog open={addSourceOpen} onOpenChange={setAddSourceOpen}>
+  1646→        <DialogContent className="bg-card border-border sm:max-w-md">
+  1647→          <DialogHeader>
+  1648→            <DialogTitle className="text-sm flex items-center gap-2">
+  1649→              <Plus className="h-4 w-4 text-emerald-400" />
+  1650→              Add Data Source
+  1651→            </DialogTitle>
+  1652→            <DialogDescription className="text-xs">
+  1653→              Connect a new data source to the SIEM platform
+  1654→            </DialogDescription>
+  1655→          </DialogHeader>
+  1656→          <div className="space-y-4">
+  1657→            <div className="space-y-1.5">
+  1658→              <Label className="text-xs">Source Name *</Label>
+  1659→              <Input className="h-9 text-sm" placeholder="My OpenSearch Cluster" />
+  1660→            </div>
+  1661→            <div className="space-y-1.5">
+  1662→              <Label className="text-xs">Type</Label>
+  1663→              <Select defaultValue="SIEM">
+  1664→                <SelectTrigger className="h-9 text-xs">
+  1665→                  <SelectValue />
+  1666→                </SelectTrigger>
+  1667→                <SelectContent>
+  1668→                  {Object.entries(dsTypeConfig).map(([key]) => (
+  1669→                    <SelectItem key={key} value={key}>{key}</SelectItem>
+  1670→                  ))}
+  1671→                </SelectContent>
+  1672→              </Select>
+  1673→            </div>
+  1674→            <div className="space-y-1.5">
+  1675→              <Label className="text-xs">Connection URL *</Label>
+  1676→              <Input className="h-9 text-sm font-mono" placeholder="https://opensearch:9200" />
+  1677→            </div>
+  1678→            <div className="space-y-1.5">
+  1679→              <Label className="text-xs">API Key</Label>
+  1680→              <Input className="h-9 text-sm font-mono" type="password" placeholder="••••••••" />
+  1681→            </div>
+  1682→          </div>
+  1683→          <DialogFooter className="gap-2">
+  1684→            <Button variant="outline" size="sm" onClick={() => setAddSourceOpen(false)}>
+  1685→              Cancel
+  1686→            </Button>
+  1687→            <Button
+  1688→              size="sm"
+  1689→              className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+  1690→              onClick={() => {
+  1691→                setAddSourceOpen(false)
+  1692→                toast.success('Data source added — testing connection...')
+  1693→              }}
+  1694→            >
+  1695→              <Plug className="h-3.5 w-3.5" />
+  1696→              Add & Test
+  1697→            </Button>
+  1698→          </DialogFooter>
+  1699→        </DialogContent>
+  1700→      </Dialog>
+  1701→    </motion.div>
+  1702→  )
+  1703→}
+  1704→

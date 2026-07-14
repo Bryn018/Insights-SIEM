@@ -1,0 +1,1741 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useCallback } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import {
+     6→  FileText,
+     7→  Download,
+     8→  Clock,
+     9→  Filter,
+    10→  Eye,
+    11→  Trash2,
+    12→  Plus,
+    13→  Mail,
+    14→  Repeat,
+    15→  CheckCircle2,
+    16→  XCircle,
+    17→  Loader2,
+    18→  ChevronRight,
+    19→  Sparkles,
+    20→  TrendingUp,
+    21→  AlertTriangle,
+    22→  Shield,
+    23→  ClipboardCheck,
+    24→  BarChart3,
+    25→  FileBarChart,
+    26→  FileType,
+    27→  History,
+    28→  Wand2,
+    29→  Send,
+    30→  Copy,
+    31→  Printer,
+    32→  RefreshCw,
+    33→  Archive,
+    34→  Zap,
+    35→  Users,
+    36→} from 'lucide-react'
+    37→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    38→import { Button } from '@/components/ui/button'
+    39→import { Badge } from '@/components/ui/badge'
+    40→import { Progress } from '@/components/ui/progress'
+    41→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    42→import {
+    43→  Select,
+    44→  SelectContent,
+    45→  SelectItem,
+    46→  SelectTrigger,
+    47→  SelectValue,
+    48→} from '@/components/ui/select'
+    49→import {
+    50→  Dialog,
+    51→  DialogContent,
+    52→  DialogHeader,
+    53→  DialogTitle,
+    54→  DialogDescription,
+    55→  DialogFooter,
+    56→} from '@/components/ui/dialog'
+    57→import {
+    58→  DropdownMenu,
+    59→  DropdownMenuContent,
+    60→  DropdownMenuItem,
+    61→  DropdownMenuTrigger,
+    62→  DropdownMenuSeparator,
+    63→  DropdownMenuLabel,
+    64→} from '@/components/ui/dropdown-menu'
+    65→import { useSIEMStore } from '@/lib/store'
+    66→import type { ReportFormat, ReportSchedule } from '@/lib/store'
+    67→import { cn } from '@/lib/utils'
+    68→import { toast } from 'sonner'
+    69→
+    70→// ===== Types =====
+    71→
+    72→type ReportType =
+    73→  | 'daily-summary'
+    74→  | 'weekly-threat'
+    75→  | 'compliance-audit'
+    76→  | 'incident-postmortem'
+    77→  | 'executive-brief'
+    78→
+    79→type ReportSection =
+    80→  | 'executive-summary'
+    81→  | 'alert-analysis'
+    82→  | 'incident-summary'
+    83→  | 'compliance-status'
+    84→  | 'threat-intelligence'
+    85→  | 'recommendations'
+    86→
+    87→interface ReportTemplate {
+    88→  id: string
+    89→  name: string
+    90→  description: string
+    91→  type: ReportType
+    92→  defaultFormat: ReportFormat
+    93→  defaultSchedule: ReportSchedule
+    94→  sections: ReportSection[]
+    95→  icon: string
+    96→  accentColor: string
+    97→  lastGenerated: string | null
+    98→  totalGenerated: number
+    99→}
+   100→
+   101→interface ScheduledReport {
+   102→  id: string
+   103→  templateId: string
+   104→  name: string
+   105→  schedule: ReportSchedule
+   106→  nextRun: string
+   107→  recipients: string[]
+   108→  format: ReportFormat
+   109→  enabled: boolean
+   110→  lastRun: string | null
+   111→  lastStatus: 'completed' | 'failed' | 'running' | null
+   112→}
+   113→
+   114→interface HistoryItem {
+   115→  id: string
+   116→  title: string
+   117→  type: ReportType
+   118→  format: ReportFormat
+   119→  size: string
+   120→  generatedAt: string
+   121→  generatedBy: string
+   122→  status: 'completed' | 'failed' | 'generating'
+   123→  duration: number // seconds
+   124→  sections: ReportSection[]
+   125→}
+   126→
+   127→// ===== Constants =====
+   128→
+   129→const REPORT_TYPES: Record<ReportType, { label: string; icon: string; description: string }> = {
+   130→  'daily-summary': {
+   131→    label: 'Daily Security Summary',
+   132→    icon: '📋',
+   133→    description: 'Day-over-day security posture overview with key metrics and incident highlights',
+   134→  },
+   135→  'weekly-threat': {
+   136→    label: 'Weekly Threat Report',
+   137→    icon: '🛡️',
+   138→    description: '7-day threat landscape analysis including IOCs, attack trends, and actor activity',
+   139→  },
+   140→  'compliance-audit': {
+   141→    label: 'Compliance Audit Report',
+   142→    icon: '✅',
+   143→    description: 'Framework compliance status with control-by-control assessment and remediation plan',
+   144→  },
+   145→  'incident-postmortem': {
+   146→    label: 'Incident Post-Mortem',
+   147→    icon: '🔍',
+   148→    description: 'Detailed timeline and root cause analysis for resolved security incidents',
+   149→  },
+   150→  'executive-brief': {
+   151→    label: 'Executive Security Brief',
+   152→    icon: '📊',
+   153→    description: 'C-suite ready summary with risk rating, KPIs, and strategic recommendations',
+   154→  },
+   155→}
+   156→
+   157→const SECTION_OPTIONS: Record<ReportSection, { label: string; description: string; icon: typeof FileText }> = {
+   158→  'executive-summary': { label: 'Executive Summary', description: 'High-level overview of security posture', icon: FileText },
+   159→  'alert-analysis': { label: 'Alert Analysis', description: 'Detailed breakdown of alerts by severity, source, and category', icon: BarChart3 },
+   160→  'incident-summary': { label: 'Incident Summary', description: 'Active and resolved incidents with timeline', icon: Shield },
+   161→  'compliance-status': { label: 'Compliance Status', description: 'Framework compliance scores and control status', icon: ClipboardCheck },
+   162→  'threat-intelligence': { label: 'Threat Intelligence', description: 'IOC feeds, geographic threats, and attack patterns', icon: AlertTriangle },
+   163→  'recommendations': { label: 'Recommendations', description: 'Actionable security improvement suggestions', icon: TrendingUp },
+   164→}
+   165→
+   166→const FORMAT_OPTIONS: Record<ReportFormat, { label: string; ext: string; icon: typeof FileText; color: string }> = {
+   167→  pdf: { label: 'PDF', ext: '.pdf', icon: FileText, color: 'text-red-400' },
+   168→  html: { label: 'HTML', ext: '.html', icon: FileType, color: 'text-orange-400' },
+   169→  csv: { label: 'CSV', ext: '.csv', icon: FileBarChart, color: 'text-emerald-400' },
+   170→  json: { label: 'JSON', ext: '.json', icon: FileBarChart, color: 'text-blue-400' },
+   171→}
+   172→
+   173→const DATE_RANGES = [
+   174→  { value: '24h', label: 'Last 24 Hours' },
+   175→  { value: '7d', label: 'Last 7 Days' },
+   176→  { value: '30d', label: 'Last 30 Days' },
+   177→  { value: '90d', label: 'Last 90 Days' },
+   178→]
+   179→
+   180→const TEMPLATES: ReportTemplate[] = [
+   181→  {
+   182→    id: 'tpl-001',
+   183→    name: 'Daily SOC Brief',
+   184→    description: 'Morning brief for SOC team — overnight activity, top alerts, active incidents',
+   185→    type: 'daily-summary',
+   186→    defaultFormat: 'pdf',
+   187→    defaultSchedule: 'daily',
+   188→    sections: ['executive-summary', 'alert-analysis', 'incident-summary', 'recommendations'],
+   189→    icon: '📋',
+   190→    accentColor: 'emerald',
+   191→    lastGenerated: '2026-07-10T08:00:00Z',
+   192→    totalGenerated: 47,
+   193→  },
+   194→  {
+   195→    id: 'tpl-002',
+   196→    name: 'Weekly Threat Landscape',
+   197→    description: 'Comprehensive weekly threat intelligence report for security leadership',
+   198→    type: 'weekly-threat',
+   199→    defaultFormat: 'pdf',
+   200→    defaultSchedule: 'weekly',
+   201→    sections: ['executive-summary', 'alert-analysis', 'threat-intelligence', 'recommendations'],
+   202→    icon: '🛡️',
+   203→    accentColor: 'orange',
+   204→    lastGenerated: '2026-07-07T09:00:00Z',
+   205→    totalGenerated: 12,
+   206→  },
+   207→  {
+   208→    id: 'tpl-003',
+   209→    name: 'Monthly Compliance Audit',
+   210→    description: 'Monthly compliance audit for SOC2, PCI-DSS, HIPAA, and NIST frameworks',
+   211→    type: 'compliance-audit',
+   212→    defaultFormat: 'pdf',
+   213→    defaultSchedule: 'monthly',
+   214→    sections: ['executive-summary', 'compliance-status', 'recommendations'],
+   215→    icon: '✅',
+   216→    accentColor: 'emerald',
+   217→    lastGenerated: '2026-07-01T10:00:00Z',
+   218→    totalGenerated: 6,
+   219→  },
+   220→  {
+   221→    id: 'tpl-004',
+   222→    name: 'Executive Monthly Brief',
+   223→    description: 'C-suite monthly security brief with risk rating and strategic KPIs',
+   224→    type: 'executive-brief',
+   225→    defaultFormat: 'pdf',
+   226→    defaultSchedule: 'monthly',
+   227→    sections: ['executive-summary', 'alert-analysis', 'compliance-status', 'recommendations'],
+   228→    icon: '📊',
+   229→    accentColor: 'cyan',
+   230→    lastGenerated: '2026-07-01T07:00:00Z',
+   231→    totalGenerated: 6,
+   232→  },
+   233→  {
+   234→    id: 'tpl-005',
+   235→    name: 'Major Incident Post-Mortem',
+   236→    description: 'Post-incident analysis template for severity P1/P2 incidents',
+   237→    type: 'incident-postmortem',
+   238→    defaultFormat: 'pdf',
+   239→    defaultSchedule: 'on-demand',
+   240→    sections: ['executive-summary', 'incident-summary', 'recommendations'],
+   241→    icon: '🔍',
+   242→    accentColor: 'red',
+   243→    lastGenerated: '2026-06-28T14:00:00Z',
+   244→    totalGenerated: 3,
+   245→  },
+   246→  {
+   247→    id: 'tpl-006',
+   248→    name: 'Quarterly Board Report',
+   249→    description: 'Quarterly security posture report for board of directors',
+   250→    type: 'executive-brief',
+   251→    defaultFormat: 'pdf',
+   252→    defaultSchedule: 'quarterly',
+   253→    sections: ['executive-summary', 'alert-analysis', 'incident-summary', 'compliance-status', 'recommendations'],
+   254→    icon: '📊',
+   255→    accentColor: 'cyan',
+   256→    lastGenerated: '2026-06-30T17:00:00Z',
+   257→    totalGenerated: 2,
+   258→  },
+   259→]
+   260→
+   261→const SCHEDULED_REPORTS: ScheduledReport[] = [
+   262→  {
+   263→    id: 'sch-001',
+   264→    templateId: 'tpl-001',
+   265→    name: 'Daily SOC Brief — Morning',
+   266→    schedule: 'daily',
+   267→    nextRun: '2026-07-11T08:00:00Z',
+   268→    recipients: ['soc-team@company.com', 'security-leads@company.com'],
+   269→    format: 'pdf',
+   270→    enabled: true,
+   271→    lastRun: '2026-07-10T08:00:00Z',
+   272→    lastStatus: 'completed',
+   273→  },
+   274→  {
+   275→    id: 'sch-002',
+   276→    templateId: 'tpl-002',
+   277→    name: 'Weekly Threat Landscape — Monday',
+   278→    schedule: 'weekly',
+   279→    nextRun: '2026-07-14T09:00:00Z',
+   280→    recipients: ['security-leads@company.com', 'ciso@company.com'],
+   281→    format: 'pdf',
+   282→    enabled: true,
+   283→    lastRun: '2026-07-07T09:00:00Z',
+   284→    lastStatus: 'completed',
+   285→  },
+   286→  {
+   287→    id: 'sch-003',
+   288→    templateId: 'tpl-003',
+   289→    name: 'Monthly Compliance Audit',
+   290→    schedule: 'monthly',
+   291→    nextRun: '2026-08-01T10:00:00Z',
+   292→    recipients: ['compliance@company.com', 'audit@company.com', 'ciso@company.com'],
+   293→    format: 'pdf',
+   294→    enabled: true,
+   295→    lastRun: '2026-07-01T10:00:00Z',
+   296→    lastStatus: 'completed',
+   297→  },
+   298→  {
+   299→    id: 'sch-004',
+   300→    templateId: 'tpl-004',
+   301→    name: 'Executive Monthly Brief',
+   302→    schedule: 'monthly',
+   303→    nextRun: '2026-08-01T07:00:00Z',
+   304→    recipients: ['exec-team@company.com', 'board@company.com'],
+   305→    format: 'pdf',
+   306→    enabled: true,
+   307→    lastRun: '2026-07-01T07:00:00Z',
+   308→    lastStatus: 'completed',
+   309→  },
+   310→  {
+   311→    id: 'sch-005',
+   312→    templateId: 'tpl-006',
+   313→    name: 'Quarterly Board Report',
+   314→    schedule: 'quarterly',
+   315→    nextRun: '2026-09-30T17:00:00Z',
+   316→    recipients: ['board@company.com', 'ciso@company.com', 'ceo@company.com'],
+   317→    format: 'pdf',
+   318→    enabled: false,
+   319→    lastRun: '2026-06-30T17:00:00Z',
+   320→    lastStatus: 'completed',
+   321→  },
+   322→]
+   323→
+   324→const HISTORY: HistoryItem[] = [
+   325→  {
+   326→    id: 'rpt-2026-07-10-001',
+   327→    title: 'Daily SOC Brief — Jul 10',
+   328→    type: 'daily-summary',
+   329→    format: 'pdf',
+   330→    size: '2.4 MB',
+   331→    generatedAt: '2026-07-10T08:00:12Z',
+   332→    generatedBy: 'system-scheduler',
+   333→    status: 'completed',
+   334→    duration: 12,
+   335→    sections: ['executive-summary', 'alert-analysis', 'incident-summary', 'recommendations'],
+   336→  },
+   337→  {
+   338→    id: 'rpt-2026-07-09-001',
+   339→    title: 'Daily SOC Brief — Jul 9',
+   340→    type: 'daily-summary',
+   341→    format: 'pdf',
+   342→    size: '2.1 MB',
+   343→    generatedAt: '2026-07-09T08:00:09Z',
+   344→    generatedBy: 'system-scheduler',
+   345→    status: 'completed',
+   346→    duration: 11,
+   347→    sections: ['executive-summary', 'alert-analysis', 'incident-summary', 'recommendations'],
+   348→  },
+   349→  {
+   350→    id: 'rpt-2026-07-07-001',
+   351→    title: 'Weekly Threat Landscape — W28',
+   352→    type: 'weekly-threat',
+   353→    format: 'pdf',
+   354→    size: '5.7 MB',
+   355→    generatedAt: '2026-07-07T09:00:24Z',
+   356→    generatedBy: 'system-scheduler',
+   357→    status: 'completed',
+   358→    duration: 24,
+   359→    sections: ['executive-summary', 'alert-analysis', 'threat-intelligence', 'recommendations'],
+   360→  },
+   361→  {
+   362→    id: 'rpt-2026-07-05-001',
+   363→    title: 'Ad-hoc Incident Report — INC-2026-014',
+   364→    type: 'incident-postmortem',
+   365→    format: 'pdf',
+   366→    size: '3.2 MB',
+   367→    generatedAt: '2026-07-05T14:23:08Z',
+   368→    generatedBy: 'j.smith',
+   369→    status: 'completed',
+   370→    duration: 18,
+   371→    sections: ['executive-summary', 'incident-summary', 'recommendations'],
+   372→  },
+   373→  {
+   374→    id: 'rpt-2026-07-04-001',
+   375→    title: 'Daily SOC Brief — Jul 4',
+   376→    type: 'daily-summary',
+   377→    format: 'pdf',
+   378→    size: '1.9 MB',
+   379→    generatedAt: '2026-07-04T08:00:11Z',
+   380→    generatedBy: 'system-scheduler',
+   381→    status: 'completed',
+   382→    duration: 11,
+   383→    sections: ['executive-summary', 'alert-analysis', 'incident-summary'],
+   384→  },
+   385→  {
+   386→    id: 'rpt-2026-07-03-001',
+   387→    title: 'Compliance Snapshot — Jul 3',
+   388→    type: 'compliance-audit',
+   389→    format: 'csv',
+   390→    size: '412 KB',
+   391→    generatedAt: '2026-07-03T11:42:51Z',
+   392→    generatedBy: 'm.chen',
+   393→    status: 'completed',
+   394→    duration: 4,
+   395→    sections: ['compliance-status'],
+   396→  },
+   397→  {
+   398→    id: 'rpt-2026-07-02-001',
+   399→    title: 'Daily SOC Brief — Jul 2',
+   400→    type: 'daily-summary',
+   401→    format: 'pdf',
+   402→    size: '2.0 MB',
+   403→    generatedAt: '2026-07-02T08:00:14Z',
+   404→    generatedBy: 'system-scheduler',
+   405→    status: 'failed',
+   406→    duration: 3,
+   407→    sections: ['executive-summary'],
+   408→  },
+   409→  {
+   410→    id: 'rpt-2026-07-01-001',
+   411→    title: 'Executive Monthly Brief — July',
+   412→    type: 'executive-brief',
+   413→    format: 'pdf',
+   414→    size: '8.3 MB',
+   415→    generatedAt: '2026-07-01T07:00:32Z',
+   416→    generatedBy: 'system-scheduler',
+   417→    status: 'completed',
+   418→    duration: 32,
+   419→    sections: ['executive-summary', 'alert-analysis', 'compliance-status', 'recommendations'],
+   420→  },
+   421→]
+   422→
+   423→const RECENT_TREND = [
+   424→  { date: 'Jul 4', reports: 1, scheduled: 1 },
+   425→  { date: 'Jul 5', reports: 2, scheduled: 1 },
+   426→  { date: 'Jul 6', reports: 1, scheduled: 1 },
+   427→  { date: 'Jul 7', reports: 2, scheduled: 2 },
+   428→  { date: 'Jul 8', reports: 1, scheduled: 1 },
+   429→  { date: 'Jul 9', reports: 1, scheduled: 1 },
+   430→  { date: 'Jul 10', reports: 2, scheduled: 2 },
+   431→]
+   432→
+   433→const RECIPIENT_SUGGESTIONS = [
+   434→  'soc-team@company.com',
+   435→  'security-leads@company.com',
+   436→  'ciso@company.com',
+   437→  'compliance@company.com',
+   438→  'audit@company.com',
+   439→  'exec-team@company.com',
+   440→  'board@company.com',
+   441→]
+   442→
+   443→// ===== Animation Variants =====
+   444→
+   445→const container = {
+   446→  hidden: { opacity: 0 },
+   447→  show: { opacity: 1, transition: { staggerChildren: 0.05 } },
+   448→}
+   449→const item = {
+   450→  hidden: { opacity: 0, y: 12 },
+   451→  show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' as const } },
+   452→}
+   453→
+   454→// ===== Helpers =====
+   455→
+   456→function timeAgo(dateStr: string): string {
+   457→  const diff = Date.now() - new Date(dateStr).getTime()
+   458→  if (diff < 60_000) return 'just now'
+   459→  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+   460→  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+   461→  return `${Math.floor(diff / 86_400_000)}d ago`
+   462→}
+   463→
+   464→function timeUntil(dateStr: string): string {
+   465→  const diff = new Date(dateStr).getTime() - Date.now()
+   466→  if (diff < 0) return 'overdue'
+   467→  if (diff < 3_600_000) return `in ${Math.floor(diff / 60_000)}m`
+   468→  if (diff < 86_400_000) return `in ${Math.floor(diff / 3_600_000)}h`
+   469→  return `in ${Math.floor(diff / 86_400_000)}d`
+   470→}
+   471→
+   472→function formatDate(dateStr: string): string {
+   473→  return new Date(dateStr).toLocaleString('en-US', {
+   474→    month: 'short',
+   475→    day: 'numeric',
+   476→    hour: '2-digit',
+   477→    minute: '2-digit',
+   478→  })
+   479→}
+   480→
+   481→// ===== Sub-Components =====
+   482→
+   483→function StatCard({
+   484→  label,
+   485→  value,
+   486→  sublabel,
+   487→  icon: Icon,
+   488→  trend,
+   489→  accent = 'emerald',
+   490→}: {
+   491→  label: string
+   492→  value: string | number
+   493→  sublabel?: string
+   494→  icon: typeof FileText
+   495→  trend?: { value: string; direction: 'up' | 'down' | 'neutral' }
+   496→  accent?: 'emerald' | 'orange' | 'red' | 'cyan' | 'zinc'
+   497→}) {
+   498→  const accentMap: Record<string, { text: string; bg: string; border: string; edge: string }> = {
+   499→    emerald: { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', edge: '#10b981' },
+   500→    orange: { text: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20', edge: '#f97316' },
+   501→    red: { text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', edge: '#ef4444' },
+   502→    cyan: { text: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20', edge: '#06b6d4' },
+   503→    zinc: { text: 'text-zinc-300', bg: 'bg-zinc-500/10', border: 'border-zinc-500/20', edge: '#71717a' },
+   504→  }
+   505→  const a = accentMap[accent] || accentMap.emerald
+   506→  return (
+   507→    <motion.div variants={item}>
+   508→      <Card className="siem-stat-card relative overflow-hidden border-zinc-800 bg-zinc-900/50 backdrop-blur">
+   509→        <CardContent className="p-4">
+   510→          <div className="flex items-start justify-between">
+   511→            <div className="space-y-1">
+   512→              <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{label}</p>
+   513→              <p className="text-2xl font-bold text-zinc-100">{value}</p>
+   514→              {sublabel && <p className="text-xs text-zinc-500">{sublabel}</p>}
+   515→              {trend && (
+   516→                <div className="flex items-center gap-1 text-xs">
+   517→                  {trend.direction === 'up' && <TrendingUp className="size-3 text-emerald-400" />}
+   518→                  {trend.direction === 'down' && <TrendingUp className="size-3 rotate-180 text-red-400" />}
+   519→                  {trend.direction === 'neutral' && <span className="size-1 rounded-full bg-zinc-500" />}
+   520→                  <span
+   521→                    className={cn(
+   522→                      'font-medium',
+   523→                      trend.direction === 'up' && 'text-emerald-400',
+   524→                      trend.direction === 'down' && 'text-red-400',
+   525→                      trend.direction === 'neutral' && 'text-zinc-500'
+   526→                    )}
+   527→                  >
+   528→                    {trend.value}
+   529→                  </span>
+   530→                </div>
+   531→              )}
+   532→            </div>
+   533→            <div className={cn('rounded-lg border p-2', a.text, a.bg, a.border)}>
+   534→              <Icon className="size-4" />
+   535→            </div>
+   536→          </div>
+   537→        </CardContent>
+   538→      </Card>
+   539→    </motion.div>
+   540→  )
+   541→}
+   542→
+   543→function StatusBadge({ status }: { status: HistoryItem['status'] }) {
+   544→  const map = {
+   545→    completed: { label: 'Completed', className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', icon: CheckCircle2 },
+   546→    failed: { label: 'Failed', className: 'bg-red-500/10 text-red-400 border-red-500/20', icon: XCircle },
+   547→    generating: { label: 'Generating', className: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20', icon: Loader2 },
+   548→  }
+   549→  const config = map[status]
+   550→  const Icon = config.icon
+   551→  return (
+   552→    <Badge variant="outline" className={cn('gap-1 border', config.className)}>
+   553→      <Icon className={cn('size-3', status === 'generating' && 'animate-spin')} />
+   554→      {config.label}
+   555→    </Badge>
+   556→  )
+   557→}
+   558→
+   559→function ScheduleBadge({ schedule }: { schedule: ReportSchedule }) {
+   560→  const map: Record<ReportSchedule, { label: string; className: string }> = {
+   561→    daily: { label: 'Daily', className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+   562→    weekly: { label: 'Weekly', className: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
+   563→    monthly: { label: 'Monthly', className: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
+   564→    quarterly: { label: 'Quarterly', className: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
+   565→    'on-demand': { label: 'On-Demand', className: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20' },
+   566→  }
+   567→  const config = map[schedule]
+   568→  return (
+   569→    <Badge variant="outline" className={cn('border', config.className)}>
+   570→      <Repeat className="mr-1 size-2.5" />
+   571→      {config.label}
+   572→    </Badge>
+   573→  )
+   574→}
+   575→
+   576→function FormatBadge({ format }: { format: ReportFormat }) {
+   577→  const config = FORMAT_OPTIONS[format]
+   578→  const Icon = config.icon
+   579→  return (
+   580→    <Badge variant="outline" className="siem-format-badge gap-1 border-zinc-700 bg-zinc-800/50 text-zinc-300">
+   581→      <Icon className={cn('size-3', config.color)} />
+   582→      {config.label}
+   583→    </Badge>
+   584→  )
+   585→}
+   586→
+   587→// ===== Main View =====
+   588→
+   589→export function ReportsView() {
+   590→  const reports = useSIEMStore((s) => s.reports)
+   591→  const setReports = useSIEMStore((s) => s.setReports)
+   592→  const setActiveView = useSIEMStore((s) => s.setActiveView)
+   593→
+   594→  // Generator state
+   595→  const [selectedType, setSelectedType] = useState<ReportType>('daily-summary')
+   596→  const [dateRange, setDateRange] = useState('7d')
+   597→  const [selectedSections, setSelectedSections] = useState<ReportSection[]>([
+   598→    'executive-summary',
+   599→    'alert-analysis',
+   600→    'incident-summary',
+   601→  ])
+   602→  const [format, setFormat] = useState<ReportFormat>('pdf')
+   603→  const [generating, setGenerating] = useState(false)
+   604→  const [progress, setProgress] = useState(0)
+   605→  const [previewOpen, setPreviewOpen] = useState(false)
+   606→  const [previewReport, setPreviewReport] = useState<HistoryItem | null>(null)
+   607→  const [scheduledReports, setScheduledReports] = useState<ScheduledReport[]>(SCHEDULED_REPORTS)
+   608→  const [history, setHistory] = useState<HistoryItem[]>(HISTORY)
+   609→
+   610→  // New schedule dialog
+   611→  const [newScheduleOpen, setNewScheduleOpen] = useState(false)
+   612→  const [newScheduleName, setNewScheduleName] = useState('')
+   613→  const [newScheduleTemplate, setNewScheduleTemplate] = useState<string>(TEMPLATES[0].id)
+   614→  const [newScheduleCadence, setNewScheduleCadence] = useState<ReportSchedule>('daily')
+   615→  const [newScheduleRecipients, setNewScheduleRecipients] = useState<string[]>([])
+   616→  const [newScheduleFormat, setNewScheduleFormat] = useState<ReportFormat>('pdf')
+   617→
+   618→  // Generate report simulation
+   619→  const handleGenerate = useCallback(() => {
+   620→    if (generating) return
+   621→    setGenerating(true)
+   622→    setProgress(0)
+   623→
+   624→    let pct = 0
+   625→    const interval = setInterval(() => {
+   626→      pct += Math.random() * 12 + 6
+   627→      if (pct >= 100) {
+   628→        pct = 100
+   629→        clearInterval(interval)
+   630→
+   631→        const newReport: HistoryItem = {
+   632→          id: `rpt-${Date.now()}`,
+   633→          title: `${REPORT_TYPES[selectedType].label} — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+   634→          type: selectedType,
+   635→          format,
+   636→          size: `${(Math.random() * 5 + 1).toFixed(1)} MB`,
+   637→          generatedAt: new Date().toISOString(),
+   638→          generatedBy: 'j.smith',
+   639→          status: 'completed',
+   640→          duration: Math.floor(Math.random() * 20 + 5),
+   641→          sections: selectedSections,
+   642→        }
+   643→
+   644→        setHistory((prev) => [newReport, ...prev])
+   645→        setGenerating(false)
+   646→        setProgress(0)
+   647→        toast.success('Report generated successfully', {
+   648→          description: `${newReport.title} • ${FORMAT_OPTIONS[format].label} • ${newReport.size}`,
+   649→          duration: 5000,
+   650→        })
+   651→      }
+   652→      setProgress(Math.min(pct, 100))
+   653→    }, 220)
+   654→  }, [generating, selectedType, format, selectedSections])
+   655→
+   656→  const toggleSection = useCallback((section: ReportSection) => {
+   657→    setSelectedSections((prev) =>
+   658→      prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]
+   659→    )
+   660→  }, [])
+   661→
+   662→  const toggleScheduled = useCallback((id: string) => {
+   663→    setScheduledReports((prev) =>
+   664→      prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r))
+   665→    )
+   666→    const r = scheduledReports.find((x) => x.id === id)
+   667→    if (r) {
+   668→      toast.success(`Schedule ${r.enabled ? 'paused' : 'resumed'}`, {
+   669→        description: r.name,
+   670→      })
+   671→    }
+   672→  }, [scheduledReports])
+   673→
+   674→  const deleteHistory = useCallback((id: string) => {
+   675→    setHistory((prev) => prev.filter((h) => h.id !== id))
+   676→    toast.success('Report deleted', { description: 'The report has been removed from history.' })
+   677→  }, [])
+   678→
+   679→  const downloadReport = useCallback((report: HistoryItem) => {
+   680→    const config = FORMAT_OPTIONS[report.format]
+   681→    toast.success(`Downloading ${config.label} report`, {
+   682→      description: `${report.title}${config.ext} • ${report.size}`,
+   683→      duration: 4000,
+   684→    })
+   685→  }, [])
+   686→
+   687→  const addRecipient = useCallback((email: string) => {
+   688→    if (!email || newScheduleRecipients.includes(email)) return
+   689→    setNewScheduleRecipients((prev) => [...prev, email])
+   690→  }, [newScheduleRecipients])
+   691→
+   692→  const removeRecipient = useCallback((email: string) => {
+   693→    setNewScheduleRecipients((prev) => prev.filter((e) => e !== email))
+   694→  }, [])
+   695→
+   696→  const handleCreateSchedule = useCallback(() => {
+   697→    if (!newScheduleName.trim()) {
+   698→      toast.error('Schedule name required')
+   699→      return
+   700→    }
+   701→    if (newScheduleRecipients.length === 0) {
+   702→      toast.error('At least one recipient required')
+   703→      return
+   704→    }
+   705→    const template = TEMPLATES.find((t) => t.id === newScheduleTemplate)
+   706→    if (!template) return
+   707→
+   708→    const nextRunDate = new Date()
+   709→    if (newScheduleCadence === 'daily') nextRunDate.setDate(nextRunDate.getDate() + 1)
+   710→    else if (newScheduleCadence === 'weekly') nextRunDate.setDate(nextRunDate.getDate() + 7)
+   711→    else if (newScheduleCadence === 'monthly') nextRunDate.setMonth(nextRunDate.getMonth() + 1)
+   712→    else if (newScheduleCadence === 'quarterly') nextRunDate.setMonth(nextRunDate.getMonth() + 3)
+   713→    nextRunDate.setHours(8, 0, 0, 0)
+   714→
+   715→    const newSchedule: ScheduledReport = {
+   716→      id: `sch-${Date.now()}`,
+   717→      templateId: newScheduleTemplate,
+   718→      name: newScheduleName.trim(),
+   719→      schedule: newScheduleCadence,
+   720→      nextRun: nextRunDate.toISOString(),
+   721→      recipients: newScheduleRecipients,
+   722→      format: newScheduleFormat,
+   723→      enabled: true,
+   724→      lastRun: null,
+   725→      lastStatus: null,
+   726→    }
+   727→    setScheduledReports((prev) => [...prev, newSchedule])
+   728→    toast.success('Schedule created', {
+   729→      description: `${newSchedule.name} will run ${newScheduleCadence} starting ${formatDate(nextRunDate.toISOString())}`,
+   730→    })
+   731→    setNewScheduleOpen(false)
+   732→    setNewScheduleName('')
+   733→    setNewScheduleRecipients([])
+   734→    setNewScheduleFormat('pdf')
+   735→    setNewScheduleCadence('daily')
+   736→  }, [newScheduleName, newScheduleRecipients, newScheduleTemplate, newScheduleCadence, newScheduleFormat])
+   737→
+   738→  // Stats
+   739→  const stats = useMemo(() => {
+   740→    const total = history.length
+   741→    const completed = history.filter((h) => h.status === 'completed').length
+   742→    const failed = history.filter((h) => h.status === 'failed').length
+   743→    const activeSchedules = scheduledReports.filter((s) => s.enabled).length
+   744→    const totalRecipients = new Set(scheduledReports.flatMap((s) => s.recipients)).size
+   745→    return {
+   746→      total,
+   747→      completed,
+   748→      failed,
+   749→      successRate: total > 0 ? Math.round((completed / total) * 100) : 0,
+   750→      activeSchedules,
+   751→      totalRecipients,
+   752→      avgDuration: Math.round(history.reduce((sum, h) => sum + h.duration, 0) / Math.max(history.length, 1)),
+   753→    }
+   754→  }, [history, scheduledReports])
+   755→
+   756→  // Filtered history
+   757→  const filteredHistory = useMemo(() => {
+   758→    return history.filter((h) => {
+   759→      if (reports.filterFormat !== 'all' && h.format !== reports.filterFormat) return false
+   760→      if (reports.filterStatus !== 'all' && h.status !== reports.filterStatus) return false
+   761→      return true
+   762→    })
+   763→  }, [history, reports.filterFormat, reports.filterStatus])
+   764→
+   765→  return (
+   766→    <motion.div variants={container} initial="hidden" animate="show" className="space-y-4 p-4">
+   767→      {/* Header */}
+   768→      <motion.div variants={item} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   769→        <div>
+   770→          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Reports &amp; Exports</h1>
+   771→          <p className="mt-1 text-sm text-zinc-500">
+   772→            Generate, schedule, and manage security reports for stakeholders and auditors
+   773→          </p>
+   774→        </div>
+   775→        <div className="flex items-center gap-2">
+   776→          <Button
+   777→            variant="outline"
+   778→            size="sm"
+   779→            className="gap-1.5 border-zinc-700 bg-zinc-900/50 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+   780→            onClick={() => setNewScheduleOpen(true)}
+   781→          >
+   782→            <Plus className="size-3.5" />
+   783→            New Schedule
+   784→          </Button>
+   785→          <Button
+   786→            size="sm"
+   787→            className="gap-1.5 bg-emerald-500 text-xs font-semibold text-emerald-950 hover:bg-emerald-400"
+   788→            onClick={() => setReports({ activeTab: 'generator' })}
+   789→          >
+   790→            <Wand2 className="size-3.5" />
+   791→            Generate Report
+   792→          </Button>
+   793→        </div>
+   794→      </motion.div>
+   795→
+   796→      {/* Stats Row */}
+   797→      <motion.div variants={item} className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+   798→        <StatCard label="Total Reports" value={stats.total} icon={FileText} accent="zinc" />
+   799→        <StatCard label="Success Rate" value={`${stats.successRate}%`} icon={CheckCircle2} accent="emerald" trend={{ value: '+2%', direction: 'up' }} />
+   800→        <StatCard label="Active Schedules" value={stats.activeSchedules} icon={Repeat} accent="cyan" />
+   801→        <StatCard label="Recipients" value={stats.totalRecipients} icon={Users} accent="orange" />
+   802→        <StatCard label="Avg Duration" value={`${stats.avgDuration}s`} icon={Clock} accent="emerald" />
+   803→        <StatCard label="Failed" value={stats.failed} icon={XCircle} accent="red" />
+   804→      </motion.div>
+   805→
+   806→      {/* Tabs */}
+   807→      <motion.div variants={item}>
+   808→        <Tabs value={reports.activeTab} onValueChange={(v) => setReports({ activeTab: v as ReportsState['activeTab'] })}>
+   809→          <TabsList className="bg-zinc-900/50">
+   810→            <TabsTrigger value="generator" className="data-[state=active]:siem-tab-active">
+   811→              <Wand2 className="mr-1.5 size-3.5" />
+   812→              Generator
+   813→            </TabsTrigger>
+   814→            <TabsTrigger value="templates" className="data-[state=active]:siem-tab-active">
+   815→              <FileBarChart className="mr-1.5 size-3.5" />
+   816→              Templates
+   817→              <Badge variant="secondary" className="ml-1.5 bg-zinc-800 text-[10px]">{TEMPLATES.length}</Badge>
+   818→            </TabsTrigger>
+   819→            <TabsTrigger value="scheduled" className="data-[state=active]:siem-tab-active">
+   820→              <Repeat className="mr-1.5 size-3.5" />
+   821→              Scheduled
+   822→              <Badge variant="secondary" className="ml-1.5 bg-zinc-800 text-[10px]">{scheduledReports.length}</Badge>
+   823→            </TabsTrigger>
+   824→            <TabsTrigger value="history" className="data-[state=active]:siem-tab-active">
+   825→              <History className="mr-1.5 size-3.5" />
+   826→              History
+   827→              <Badge variant="secondary" className="ml-1.5 bg-zinc-800 text-[10px]">{history.length}</Badge>
+   828→            </TabsTrigger>
+   829→          </TabsList>
+   830→
+   831→          {/* ============ Generator Tab ============ */}
+   832→          <TabsContent value="generator" className="mt-4 space-y-4">
+   833→            <div className="grid gap-4 lg:grid-cols-3">
+   834→              {/* Left: Config */}
+   835→              <Card className="lg:col-span-2 border-zinc-800 bg-zinc-900/50">
+   836→                <CardHeader className="pb-3">
+   837→                  <CardTitle className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
+   838→                    <Sparkles className="size-4 text-emerald-400" />
+   839→                    Report Configuration
+   840→                  </CardTitle>
+   841→                </CardHeader>
+   842→                <CardContent className="space-y-4">
+   843→                  {/* Report Type */}
+   844→                  <div className="space-y-2">
+   845→                    <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+   846→                      Report Type
+   847→                    </label>
+   848→                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+   849→                      {(Object.keys(REPORT_TYPES) as ReportType[]).map((type) => {
+   850→                        const config = REPORT_TYPES[type]
+   851→                        const isSelected = selectedType === type
+   852→                        return (
+   853→                          <button
+   854→                            key={type}
+   855→                            onClick={() => setSelectedType(type)}
+   856→                            className={cn(
+   857→                              'group flex items-start gap-2.5 rounded-lg border p-3 text-left transition-all',
+   858→                              isSelected
+   859→                                ? 'siem-type-card-selected border-emerald-500/40 bg-emerald-500/5'
+   860→                                : 'border-zinc-800 bg-zinc-950/50 hover:border-zinc-700 hover:bg-zinc-900'
+   861→                            )}
+   862→                          >
+   863→                            <span className="text-lg">{config.icon}</span>
+   864→                            <div className="min-w-0 flex-1">
+   865→                              <p className={cn('text-sm font-medium', isSelected ? 'text-emerald-300' : 'text-zinc-200')}>
+   866→                                {config.label}
+   867→                              </p>
+   868→                              <p className="mt-0.5 line-clamp-2 text-[11px] text-zinc-500">{config.description}</p>
+   869→                            </div>
+   870→                            {isSelected && <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />}
+   871→                          </button>
+   872→                        )
+   873→                      })}
+   874→                    </div>
+   875→                  </div>
+   876→
+   877→                  {/* Date Range + Format */}
+   878→                  <div className="grid gap-3 sm:grid-cols-2">
+   879→                    <div className="space-y-1.5">
+   880→                      <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+   881→                        Date Range
+   882→                      </label>
+   883→                      <Select value={dateRange} onValueChange={setDateRange}>
+   884→                        <SelectTrigger className="border-zinc-800 bg-zinc-950 text-sm text-zinc-200">
+   885→                          <SelectValue />
+   886→                        </SelectTrigger>
+   887→                        <SelectContent>
+   888→                          {DATE_RANGES.map((r) => (
+   889→                            <SelectItem key={r.value} value={r.value}>
+   890→                              {r.label}
+   891→                            </SelectItem>
+   892→                          ))}
+   893→                        </SelectContent>
+   894→                      </Select>
+   895→                    </div>
+   896→                    <div className="space-y-1.5">
+   897→                      <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+   898→                        Output Format
+   899→                      </label>
+   900→                      <div className="flex gap-1.5">
+   901→                        {(Object.keys(FORMAT_OPTIONS) as ReportFormat[]).map((f) => {
+   902→                          const config = FORMAT_OPTIONS[f]
+   903→                          const Icon = config.icon
+   904→                          const isSelected = format === f
+   905→                          return (
+   906→                            <button
+   907→                              key={f}
+   908→                              onClick={() => setFormat(f)}
+   909→                              className={cn(
+   910→                                'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition-all',
+   911→                                isSelected
+   912→                                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+   913→                                  : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:bg-zinc-900'
+   914→                              )}
+   915→                            >
+   916→                              <Icon className={cn('size-3.5', isSelected ? 'text-emerald-400' : config.color)} />
+   917→                              {config.label}
+   918→                            </button>
+   919→                          )
+   920→                        })}
+   921→                      </div>
+   922→                    </div>
+   923→                  </div>
+   924→
+   925→                  {/* Sections */}
+   926→                  <div className="space-y-2">
+   927→                    <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+   928→                      Report Sections ({selectedSections.length} selected)
+   929→                    </label>
+   930→                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+   931→                      {(Object.keys(SECTION_OPTIONS) as ReportSection[]).map((section) => {
+   932→                        const config = SECTION_OPTIONS[section]
+   933→                        const Icon = config.icon
+   934→                        const isSelected = selectedSections.includes(section)
+   935→                        return (
+   936→                          <div
+   937→                            key={section}
+   938→                            onClick={() => toggleSection(section)}
+   939→                            role="checkbox"
+   940→                            aria-checked={isSelected}
+   941→                            tabIndex={0}
+   942→                            onKeyDown={(e) => {
+   943→                              if (e.key === 'Enter' || e.key === ' ') {
+   944→                                e.preventDefault()
+   945→                                toggleSection(section)
+   946→                              }
+   947→                            }}
+   948→                            className={cn(
+   949→                              'group flex cursor-pointer items-start gap-2.5 rounded-md border p-2.5 text-left transition-all',
+   950→                              isSelected
+   951→                                ? 'border-emerald-500/30 bg-emerald-500/5'
+   952→                                : 'border-zinc-800 bg-zinc-950/50 hover:bg-zinc-900'
+   953→                            )}
+   954→                          >
+   955→                            <span
+   956→                              className={cn(
+   957→                                'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border transition-colors',
+   958→                                isSelected
+   959→                                  ? 'border-emerald-500 bg-emerald-500'
+   960→                                  : 'border-zinc-600 bg-transparent'
+   961→                              )}
+   962→                            >
+   963→                              {isSelected && <CheckCircle2 className="size-3 text-emerald-950" />}
+   964→                            </span>
+   965→                            <Icon className={cn('mt-0.5 size-3.5', isSelected ? 'text-emerald-400' : 'text-zinc-500')} />
+   966→                            <div className="min-w-0 flex-1">
+   967→                              <p className={cn('text-xs font-medium', isSelected ? 'text-zinc-200' : 'text-zinc-400')}>
+   968→                                {config.label}
+   969→                              </p>
+   970→                              <p className="mt-0.5 text-[10px] text-zinc-500">{config.description}</p>
+   971→                            </div>
+   972→                          </div>
+   973→                        )
+   974→                      })}
+   975→                    </div>
+   976→                  </div>
+   977→
+   978→                  {/* Generate */}
+   979→                  <div className="space-y-2 pt-2">
+   980→                    {generating && (
+   981→                      <div className="space-y-1.5">
+   982→                        <div className="flex items-center justify-between text-xs">
+   983→                          <span className="flex items-center gap-1.5 text-emerald-400">
+   984→                            <Loader2 className="size-3 animate-spin" />
+   985→                            Generating report...
+   986→                          </span>
+   987→                          <span className="font-mono font-semibold text-zinc-300">{Math.round(progress)}%</span>
+   988→                        </div>
+   989→                        <Progress value={progress} className="siem-progress-shimmer h-1.5 bg-zinc-800 [&>div]:bg-gradient-to-r [&>div]:from-emerald-500 [&>div]:to-emerald-300" />
+   990→                      </div>
+   991→                    )}
+   992→                    <Button
+   993→                      onClick={handleGenerate}
+   994→                      disabled={generating || selectedSections.length === 0}
+   995→                      className="w-full gap-2 bg-emerald-500 font-semibold text-emerald-950 hover:bg-emerald-400 disabled:opacity-50"
+   996→                    >
+   997→                      {generating ? (
+   998→                        <>
+   999→                          <Loader2 className="size-4 animate-spin" />
+  1000→                          Generating...
+  1001→                        </>
+  1002→                      ) : (
+  1003→                        <>
+  1004→                          <Wand2 className="size-4" />
+  1005→                          Generate {REPORT_TYPES[selectedType].label}
+  1006→                        </>
+  1007→                      )}
+  1008→                    </Button>
+  1009→                    {selectedSections.length === 0 && (
+  1010→                      <p className="text-center text-[11px] text-amber-400">
+  1011→                        Select at least one section to generate a report
+  1012→                      </p>
+  1013→                    )}
+  1014→                  </div>
+  1015→                </CardContent>
+  1016→              </Card>
+  1017→
+  1018→              {/* Right: Preview & Tips */}
+  1019→              <Card className="border-zinc-800 bg-zinc-900/50">
+  1020→                <CardHeader className="pb-3">
+  1021→                  <CardTitle className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
+  1022→                    <Eye className="size-4 text-emerald-400" />
+  1023→                    Live Preview
+  1024→                  </CardTitle>
+  1025→                </CardHeader>
+  1026→                <CardContent className="space-y-3">
+  1027→                  <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+  1028→                    <div className="mb-2 flex items-center justify-between">
+  1029→                      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+  1030→                        {REPORT_TYPES[selectedType].icon} {REPORT_TYPES[selectedType].label}
+  1031→                      </span>
+  1032→                      <FormatBadge format={format} />
+  1033→                    </div>
+  1034→                    <p className="text-[11px] leading-relaxed text-zinc-400">
+  1035→                      {REPORT_TYPES[selectedType].description}
+  1036→                    </p>
+  1037→                  </div>
+  1038→
+  1039→                  <div className="space-y-1.5">
+  1040→                    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+  1041→                      Included Sections
+  1042→                    </p>
+  1043→                    {selectedSections.length === 0 ? (
+  1044→                      <p className="text-xs italic text-zinc-600">No sections selected</p>
+  1045→                    ) : (
+  1046→                      <div className="space-y-1">
+  1047→                        {selectedSections.map((section) => {
+  1048→                          const config = SECTION_OPTIONS[section]
+  1049→                          const Icon = config.icon
+  1050→                          return (
+  1051→                            <div
+  1052→                              key={section}
+  1053→                              className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-950/50 px-2 py-1.5"
+  1054→                            >
+  1055→                              <Icon className="size-3 text-emerald-400" />
+  1056→                              <span className="text-xs text-zinc-300">{config.label}</span>
+  1057→                              <ChevronRight className="ml-auto size-3 text-zinc-600" />
+  1058→                            </div>
+  1059→                          )
+  1060→                        })}
+  1061→                      </div>
+  1062→                    )}
+  1063→                  </div>
+  1064→
+  1065→                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2.5">
+  1066→                    <p className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-300">
+  1067→                      <Zap className="size-3" />
+  1068→                      Pro Tip
+  1069→                    </p>
+  1070→                    <p className="mt-1 text-[10px] leading-relaxed text-zinc-400">
+  1071→                      Schedule recurring reports to automate delivery to stakeholders. Use the Templates tab to start from a pre-configured baseline.
+  1072→                    </p>
+  1073→                  </div>
+  1074→                </CardContent>
+  1075→              </Card>
+  1076→            </div>
+  1077→          </TabsContent>
+  1078→
+  1079→          {/* ============ Templates Tab ============ */}
+  1080→          <TabsContent value="templates" className="mt-4 space-y-4">
+  1081→            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+  1082→              {TEMPLATES.map((tpl) => {
+  1083→                const typeConfig = REPORT_TYPES[tpl.type]
+  1084→                return (
+  1085→                  <motion.div key={tpl.id} variants={item}>
+  1086→                    <Card className="siem-template-card group relative overflow-hidden border-zinc-800 bg-zinc-900/50 transition-all hover:border-emerald-500/30 hover:shadow-[0_0_24px_-8px_rgba(16,185,129,0.4)]">
+  1087→                      <CardContent className="p-4">
+  1088→                        <div className="mb-2 flex items-start justify-between">
+  1089→                          <span className="text-2xl">{typeConfig.icon}</span>
+  1090→                          <ScheduleBadge schedule={tpl.defaultSchedule} />
+  1091→                        </div>
+  1092→                        <h3 className="text-sm font-semibold text-zinc-100">{tpl.name}</h3>
+  1093→                        <p className="mt-1 line-clamp-2 text-xs text-zinc-500">{tpl.description}</p>
+  1094→
+  1095→                        <div className="mt-3 flex flex-wrap gap-1">
+  1096→                          {tpl.sections.map((s) => (
+  1097→                            <Badge
+  1098→                              key={s}
+  1099→                              variant="outline"
+  1100→                              className="border-zinc-700 bg-zinc-950/50 text-[10px] text-zinc-400"
+  1101→                            >
+  1102→                              {SECTION_OPTIONS[s as ReportSection]?.label || s}
+  1103→                            </Badge>
+  1104→                          ))}
+  1105→                        </div>
+  1106→
+  1107→                        <div className="mt-3 flex items-center justify-between border-t border-zinc-800 pt-3">
+  1108→                          <div className="text-[10px] text-zinc-500">
+  1109→                            <span className="font-medium text-zinc-300">{tpl.totalGenerated}</span> generated
+  1110→                            {tpl.lastGenerated && (
+  1111→                              <span className="ml-1">• Last: {timeAgo(tpl.lastGenerated)}</span>
+  1112→                            )}
+  1113→                          </div>
+  1114→                          <div className="flex items-center gap-1">
+  1115→                            <Button
+  1116→                              variant="ghost"
+  1117→                              size="sm"
+  1118→                              className="h-7 gap-1 px-2 text-[11px] text-zinc-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+  1119→                              onClick={() => {
+  1120→                                setSelectedType(tpl.type)
+  1121→                                setSelectedSections(tpl.sections)
+  1122→                                setFormat(tpl.defaultFormat)
+  1123→                                setReports({ activeTab: 'generator' })
+  1124→                                toast.info('Template loaded', { description: `${tpl.name} configuration applied` })
+  1125→                              }}
+  1126→                            >
+  1127→                              <Wand2 className="size-3" />
+  1128→                              Use
+  1129→                            </Button>
+  1130→                          </div>
+  1131→                        </div>
+  1132→                      </CardContent>
+  1133→                    </Card>
+  1134→                  </motion.div>
+  1135→                )
+  1136→              })}
+  1137→            </div>
+  1138→          </TabsContent>
+  1139→
+  1140→          {/* ============ Scheduled Tab ============ */}
+  1141→          <TabsContent value="scheduled" className="mt-4 space-y-4">
+  1142→            <Card className="border-zinc-800 bg-zinc-900/50">
+  1143→              <CardHeader className="pb-3">
+  1144→                <div className="flex items-center justify-between">
+  1145→                  <CardTitle className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
+  1146→                    <Repeat className="size-4 text-emerald-400" />
+  1147→                    Scheduled Reports ({scheduledReports.length})
+  1148→                  </CardTitle>
+  1149→                  <Button
+  1150→                    variant="outline"
+  1151→                    size="sm"
+  1152→                    className="gap-1.5 border-zinc-700 text-xs"
+  1153→                    onClick={() => setNewScheduleOpen(true)}
+  1154→                  >
+  1155→                    <Plus className="size-3.5" />
+  1156→                    Add Schedule
+  1157→                  </Button>
+  1158→                </div>
+  1159→              </CardHeader>
+  1160→              <CardContent className="p-0">
+  1161→                <div className="divide-y divide-zinc-800">
+  1162→                  {scheduledReports.map((schedule) => {
+  1163→                    const template = TEMPLATES.find((t) => t.id === schedule.templateId)
+  1164→                    const typeConfig = template ? REPORT_TYPES[template.type] : null
+  1165→                    return (
+  1166→                      <div
+  1167→                        key={schedule.id}
+  1168→                        className={cn(
+  1169→                          'flex flex-col gap-3 p-3 transition-colors hover:bg-zinc-950/30 sm:flex-row sm:items-center sm:justify-between',
+  1170→                          !schedule.enabled && 'opacity-50'
+  1171→                        )}
+  1172→                      >
+  1173→                        <div className="flex items-start gap-3">
+  1174→                          <span className="text-xl">{typeConfig?.icon}</span>
+  1175→                          <div className="min-w-0 flex-1">
+  1176→                            <div className="flex items-center gap-2">
+  1177→                              <h4 className="text-sm font-medium text-zinc-100">{schedule.name}</h4>
+  1178→                              <ScheduleBadge schedule={schedule.schedule} />
+  1179→                              <FormatBadge format={schedule.format} />
+  1180→                            </div>
+  1181→                            <p className="mt-0.5 text-xs text-zinc-500">
+  1182→                              {template?.name || 'Custom template'}
+  1183→                            </p>
+  1184→                            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-zinc-500">
+  1185→                              <span className="flex items-center gap-1">
+  1186→                                <Clock className="size-2.5" />
+  1187→                                Next: <span className="font-medium text-emerald-400">{timeUntil(schedule.nextRun)}</span>
+  1188→                              </span>
+  1189→                              <span>•</span>
+  1190→                              <span className="flex items-center gap-1">
+  1191→                                <Mail className="size-2.5" />
+  1192→                                {schedule.recipients.length} recipient{schedule.recipients.length !== 1 ? 's' : ''}
+  1193→                              </span>
+  1194→                              {schedule.lastRun && (
+  1195→                                <>
+  1196→                                  <span>•</span>
+  1197→                                  <span>
+  1198→                                    Last run: {timeAgo(schedule.lastRun)}
+  1199→                                    {schedule.lastStatus === 'completed' && (
+  1200→                                      <CheckCircle2 className="ml-1 inline size-2.5 text-emerald-400" />
+  1201→                                    )}
+  1202→                                    {schedule.lastStatus === 'failed' && (
+  1203→                                      <XCircle className="ml-1 inline size-2.5 text-red-400" />
+  1204→                                    )}
+  1205→                                  </span>
+  1206→                                </>
+  1207→                              )}
+  1208→                            </div>
+  1209→                            {schedule.lastRun && schedule.enabled && (
+  1210→                              <div className="siem-schedule-bar mt-2 max-w-xs">
+  1211→                                <span
+  1212→                                  style={{
+  1213→                                    width: `${Math.max(8, Math.min(100, ((Date.now() - new Date(schedule.lastRun).getTime()) / (new Date(schedule.nextRun).getTime() - new Date(schedule.lastRun).getTime())) * 100))}%`,
+  1214→                                  }}
+  1215→                                />
+  1216→                              </div>
+  1217→                            )}
+  1218→                          </div>
+  1219→                        </div>
+  1220→                        <div className="flex items-center gap-1">
+  1221→                          <Button
+  1222→                            variant="ghost"
+  1223→                            size="sm"
+  1224→                            className="h-7 gap-1 px-2 text-[11px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+  1225→                            onClick={() => {
+  1226→                              toast.info('Run triggered', { description: `${schedule.name} will run momentarily` })
+  1227→                            }}
+  1228→                          >
+  1229→                            <RefreshCw className="size-3" />
+  1230→                            Run Now
+  1231→                          </Button>
+  1232→                          <DropdownMenu>
+  1233→                            <DropdownMenuTrigger asChild>
+  1234→                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-zinc-400 hover:bg-zinc-800">
+  1235→                                <Filter className="size-3" />
+  1236→                              </Button>
+  1237→                            </DropdownMenuTrigger>
+  1238→                            <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900">
+  1239→                              <DropdownMenuLabel className="text-[11px] text-zinc-500">Recipients</DropdownMenuLabel>
+  1240→                              {schedule.recipients.map((r) => (
+  1241→                                <DropdownMenuItem key={r} className="text-xs text-zinc-300">
+  1242→                                  <Mail className="mr-2 size-3 text-zinc-500" />
+  1243→                                  {r}
+  1244→                                </DropdownMenuItem>
+  1245→                              ))}
+  1246→                              <DropdownMenuSeparator className="bg-zinc-800" />
+  1247→                              <DropdownMenuItem
+  1248→                                className="text-xs text-zinc-300"
+  1249→                                onClick={() => toggleScheduled(schedule.id)}
+  1250→                              >
+  1251→                                {schedule.enabled ? (
+  1252→                                  <>
+  1253→                                    <XCircle className="mr-2 size-3 text-amber-400" />
+  1254→                                    Pause schedule
+  1255→                                  </>
+  1256→                                ) : (
+  1257→                                  <>
+  1258→                                    <CheckCircle2 className="mr-2 size-3 text-emerald-400" />
+  1259→                                    Resume schedule
+  1260→                                  </>
+  1261→                                )}
+  1262→                              </DropdownMenuItem>
+  1263→                            </DropdownMenuContent>
+  1264→                          </DropdownMenu>
+  1265→                          <Button
+  1266→                            variant="ghost"
+  1267→                            size="sm"
+  1268→                            className="h-7 w-7 p-0 text-zinc-400 hover:bg-red-500/10 hover:text-red-400"
+  1269→                            onClick={() => {
+  1270→                              setScheduledReports((prev) => prev.filter((s) => s.id !== schedule.id))
+  1271→                              toast.success('Schedule deleted', { description: schedule.name })
+  1272→                            }}
+  1273→                          >
+  1274→                            <Trash2 className="size-3" />
+  1275→                          </Button>
+  1276→                        </div>
+  1277→                      </div>
+  1278→                    )
+  1279→                  })}
+  1280→                </div>
+  1281→              </CardContent>
+  1282→            </Card>
+  1283→          </TabsContent>
+  1284→
+  1285→          {/* ============ History Tab ============ */}
+  1286→          <TabsContent value="history" className="mt-4 space-y-4">
+  1287→            {/* Filters */}
+  1288→            <div className="flex flex-wrap items-center gap-2">
+  1289→              <span className="flex items-center gap-1 text-xs font-medium text-zinc-500">
+  1290→                <Filter className="size-3.5" />
+  1291→                Filters:
+  1292→              </span>
+  1293→              <Select value={reports.filterFormat} onValueChange={(v) => setReports({ filterFormat: v as ReportFormat | 'all' })}>
+  1294→                <SelectTrigger className="h-8 w-32 border-zinc-800 bg-zinc-900 text-xs text-zinc-300">
+  1295→                  <SelectValue placeholder="Format" />
+  1296→                </SelectTrigger>
+  1297→                <SelectContent>
+  1298→                  <SelectItem value="all">All Formats</SelectItem>
+  1299→                  {(Object.keys(FORMAT_OPTIONS) as ReportFormat[]).map((f) => (
+  1300→                    <SelectItem key={f} value={f}>{FORMAT_OPTIONS[f].label}</SelectItem>
+  1301→                  ))}
+  1302→                </SelectContent>
+  1303→              </Select>
+  1304→              <Select value={reports.filterStatus} onValueChange={(v) => setReports({ filterStatus: v })}>
+  1305→                <SelectTrigger className="h-8 w-32 border-zinc-800 bg-zinc-900 text-xs text-zinc-300">
+  1306→                  <SelectValue placeholder="Status" />
+  1307→                </SelectTrigger>
+  1308→                <SelectContent>
+  1309→                  <SelectItem value="all">All Status</SelectItem>
+  1310→                  <SelectItem value="completed">Completed</SelectItem>
+  1311→                  <SelectItem value="failed">Failed</SelectItem>
+  1312→                  <SelectItem value="generating">Generating</SelectItem>
+  1313→                </SelectContent>
+  1314→              </Select>
+  1315→              <span className="ml-auto text-xs text-zinc-500">
+  1316→                Showing <span className="font-semibold text-zinc-300">{filteredHistory.length}</span> of {history.length} reports
+  1317→              </span>
+  1318→            </div>
+  1319→
+  1320→            {/* History Table */}
+  1321→            <Card className="border-zinc-800 bg-zinc-900/50">
+  1322→              <CardContent className="p-0">
+  1323→                <div className="max-h-[600px] overflow-y-auto">
+  1324→                  <table className="w-full text-sm">
+  1325→                    <thead className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur">
+  1326→                      <tr className="border-b border-zinc-800 text-[10px] uppercase tracking-wider text-zinc-500">
+  1327→                        <th className="px-3 py-2 text-left font-semibold">Report</th>
+  1328→                        <th className="px-3 py-2 text-left font-semibold">Type</th>
+  1329→                        <th className="px-3 py-2 text-left font-semibold">Format</th>
+  1330→                        <th className="px-3 py-2 text-left font-semibold">Generated</th>
+  1331→                        <th className="px-3 py-2 text-left font-semibold">By</th>
+  1332→                        <th className="px-3 py-2 text-left font-semibold">Status</th>
+  1333→                        <th className="px-3 py-2 text-left font-semibold">Size</th>
+  1334→                        <th className="px-3 py-2 text-right font-semibold">Actions</th>
+  1335→                      </tr>
+  1336→                    </thead>
+  1337→                    <tbody className="divide-y divide-zinc-800/60">
+  1338→                      {filteredHistory.length === 0 ? (
+  1339→                        <tr>
+  1340→                          <td colSpan={8} className="py-12 text-center">
+  1341→                            <Archive className="mx-auto mb-2 size-8 text-zinc-700" />
+  1342→                            <p className="text-sm text-zinc-500">No reports match your filters</p>
+  1343→                          </td>
+  1344→                        </tr>
+  1345→                      ) : (
+  1346→                        filteredHistory.map((report) => {
+  1347→                          const typeConfig = REPORT_TYPES[report.type]
+  1348→                          return (
+  1349→                            <tr
+  1350→                              key={report.id}
+  1351→                              className="siem-history-row group transition-colors hover:bg-zinc-950/40"
+  1352→                            >
+  1353→                              <td className="px-3 py-2.5">
+  1354→                                <div className="flex items-center gap-2">
+  1355→                                  <span className="text-base">{typeConfig.icon}</span>
+  1356→                                  <div className="min-w-0">
+  1357→                                    <p className="truncate text-xs font-medium text-zinc-200">{report.title}</p>
+  1358→                                    <p className="text-[10px] text-zinc-500">{report.sections.length} sections • {report.duration}s</p>
+  1359→                                  </div>
+  1360→                                </div>
+  1361→                              </td>
+  1362→                              <td className="px-3 py-2.5 text-xs text-zinc-400">
+  1363→                                {typeConfig.label.split(' ')[0]}
+  1364→                              </td>
+  1365→                              <td className="px-3 py-2.5">
+  1366→                                <FormatBadge format={report.format} />
+  1367→                              </td>
+  1368→                              <td className="px-3 py-2.5 text-xs text-zinc-400">
+  1369→                                <div>
+  1370→                                  <div>{formatDate(report.generatedAt)}</div>
+  1371→                                  <div className="text-[10px] text-zinc-600">{timeAgo(report.generatedAt)}</div>
+  1372→                                </div>
+  1373→                              </td>
+  1374→                              <td className="px-3 py-2.5 text-xs">
+  1375→                                <Badge variant="outline" className="border-zinc-700 bg-zinc-800/50 font-mono text-[10px] text-zinc-300">
+  1376→                                  {report.generatedBy}
+  1377→                                </Badge>
+  1378→                              </td>
+  1379→                              <td className="px-3 py-2.5">
+  1380→                                <StatusBadge status={report.status} />
+  1381→                              </td>
+  1382→                              <td className="px-3 py-2.5 text-xs font-mono text-zinc-400 siem-tabular-nums">
+  1383→                                {report.size}
+  1384→                              </td>
+  1385→                              <td className="px-3 py-2.5">
+  1386→                                <div className="flex items-center justify-end gap-1">
+  1387→                                  <Button
+  1388→                                    variant="ghost"
+  1389→                                    size="sm"
+  1390→                                    className="h-7 w-7 p-0 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+  1391→                                    onClick={() => {
+  1392→                                      setPreviewReport(report)
+  1393→                                      setPreviewOpen(true)
+  1394→                                    }}
+  1395→                                  >
+  1396→                                    <Eye className="size-3" />
+  1397→                                  </Button>
+  1398→                                  <Button
+  1399→                                    variant="ghost"
+  1400→                                    size="sm"
+  1401→                                    className="h-7 w-7 p-0 text-zinc-400 hover:bg-emerald-500/10 hover:text-emerald-400"
+  1402→                                    onClick={() => downloadReport(report)}
+  1403→                                    disabled={report.status !== 'completed'}
+  1404→                                  >
+  1405→                                    <Download className="size-3" />
+  1406→                                  </Button>
+  1407→                                  <DropdownMenu>
+  1408→                                    <DropdownMenuTrigger asChild>
+  1409→                                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-zinc-400 hover:bg-zinc-800">
+  1410→                                        <ChevronRight className="size-3" />
+  1411→                                      </Button>
+  1412→                                    </DropdownMenuTrigger>
+  1413→                                    <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900">
+  1414→                                      <DropdownMenuItem className="text-xs text-zinc-300" onClick={() => downloadReport(report)}>
+  1415→                                        <Download className="mr-2 size-3" />
+  1416→                                        Download
+  1417→                                      </DropdownMenuItem>
+  1418→                                      <DropdownMenuItem
+  1419→                                        className="text-xs text-zinc-300"
+  1420→                                        onClick={() => {
+  1421→                                          navigator.clipboard?.writeText(report.id)
+  1422→                                          toast.success('Report ID copied', { description: report.id })
+  1423→                                        }}
+  1424→                                      >
+  1425→                                        <Copy className="mr-2 size-3" />
+  1426→                                        Copy ID
+  1427→                                      </DropdownMenuItem>
+  1428→                                      <DropdownMenuItem
+  1429→                                        className="text-xs text-zinc-300"
+  1430→                                        onClick={() => {
+  1431→                                          toast.info('Sent to printer queue')
+  1432→                                        }}
+  1433→                                      >
+  1434→                                        <Printer className="mr-2 size-3" />
+  1435→                                        Print
+  1436→                                      </DropdownMenuItem>
+  1437→                                      <DropdownMenuItem
+  1438→                                        className="text-xs text-zinc-300"
+  1439→                                        onClick={() => {
+  1440→                                          toast.success('Forwarded', { description: 'Report link shared with SOC team' })
+  1441→                                        }}
+  1442→                                      >
+  1443→                                        <Send className="mr-2 size-3" />
+  1444→                                        Forward
+  1445→                                      </DropdownMenuItem>
+  1446→                                      <DropdownMenuSeparator className="bg-zinc-800" />
+  1447→                                      <DropdownMenuItem
+  1448→                                        className="text-xs text-red-400 focus:text-red-400"
+  1449→                                        onClick={() => deleteHistory(report.id)}
+  1450→                                      >
+  1451→                                        <Trash2 className="mr-2 size-3" />
+  1452→                                        Delete
+  1453→                                      </DropdownMenuItem>
+  1454→                                    </DropdownMenuContent>
+  1455→                                  </DropdownMenu>
+  1456→                                </div>
+  1457→                              </td>
+  1458→                            </tr>
+  1459→                          )
+  1460→                        })
+  1461→                      )}
+  1462→                    </tbody>
+  1463→                  </table>
+  1464→                </div>
+  1465→              </CardContent>
+  1466→            </Card>
+  1467→
+  1468→            {/* 7-day Generation Trend — Lightweight SVG bar chart (no recharts) */}
+  1469→            <Card className="border-zinc-800 bg-zinc-900/50">
+  1470→              <CardHeader className="pb-3">
+  1471→                <CardTitle className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
+  1472→                  <BarChart3 className="size-4 text-emerald-400" />
+  1473→                  Report Generation — Last 7 Days
+  1474→                </CardTitle>
+  1475→              </CardHeader>
+  1476→              <CardContent>
+  1477→                <div className="flex h-44 items-end justify-between gap-3 px-2 pt-2">
+  1478→                  {RECENT_TREND.map((d) => {
+  1479→                    const max = Math.max(...RECENT_TREND.map((x) => Math.max(x.reports, x.scheduled)), 1)
+  1480→                    const reportsH = (d.reports / max) * 100
+  1481→                    const scheduledH = (d.scheduled / max) * 100
+  1482→                    return (
+  1483→                      <div key={d.date} className="group flex flex-1 flex-col items-center gap-1.5">
+  1484→                        <div className="flex w-full max-w-[40px] items-end justify-center gap-0.5" style={{ height: '120px' }}>
+  1485→                          <div
+  1486→                            className="w-2.5 rounded-t bg-gradient-to-t from-emerald-600 to-emerald-400 transition-all group-hover:from-emerald-500 group-hover:to-emerald-300"
+  1487→                            style={{ height: `${reportsH}%` }}
+  1488→                            title={`${d.reports} reports`}
+  1489→                          />
+  1490→                          <div
+  1491→                            className="w-2.5 rounded-t bg-gradient-to-t from-cyan-600 to-cyan-400 transition-all group-hover:from-cyan-500 group-hover:to-cyan-300"
+  1492→                            style={{ height: `${scheduledH}%` }}
+  1493→                            title={`${d.scheduled} scheduled`}
+  1494→                          />
+  1495→                        </div>
+  1496→                        <span className="text-[10px] text-zinc-500">{d.date}</span>
+  1497→                      </div>
+  1498→                    )
+  1499→                  })}
+  1500→                </div>
+  1501→                <div className="mt-3 flex items-center justify-center gap-4 text-[10px]">
+  1502→                  <span className="flex items-center gap-1.5 text-zinc-400">
+  1503→                    <span className="size-2 rounded-sm bg-emerald-500" />
+  1504→                    Total Reports
+  1505→                  </span>
+  1506→                  <span className="flex items-center gap-1.5 text-zinc-400">
+  1507→                    <span className="size-2 rounded-sm bg-cyan-500" />
+  1508→                    Scheduled
+  1509→                  </span>
+  1510→                </div>
+  1511→              </CardContent>
+  1512→            </Card>
+  1513→          </TabsContent>
+  1514→        </Tabs>
+  1515→      </motion.div>
+  1516→
+  1517→      {/* Preview Dialog */}
+  1518→      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+  1519→        <DialogContent className="max-w-2xl border-zinc-800 bg-zinc-950">
+  1520→          <DialogHeader>
+  1521→            <DialogTitle className="flex items-center gap-2 text-zinc-100">
+  1522→              {previewReport && REPORT_TYPES[previewReport.type].icon}
+  1523→              {previewReport?.title || 'Report Preview'}
+  1524→            </DialogTitle>
+  1525→            <DialogDescription className="text-zinc-500">
+  1526→              Generated on {previewReport && formatDate(previewReport.generatedAt)} by {previewReport?.generatedBy}
+  1527→            </DialogDescription>
+  1528→          </DialogHeader>
+  1529→          {previewReport && (
+  1530→            <div className="space-y-3">
+  1531→              <div className="flex flex-wrap items-center gap-2">
+  1532→                <FormatBadge format={previewReport.format} />
+  1533→                <StatusBadge status={previewReport.status} />
+  1534→                <Badge variant="outline" className="border-zinc-700 bg-zinc-800/50 font-mono text-[10px] text-zinc-400">
+  1535→                  {previewReport.id}
+  1536→                </Badge>
+  1537→                <span className="ml-auto text-xs text-zinc-500">{previewReport.size} • {previewReport.duration}s</span>
+  1538→              </div>
+  1539→
+  1540→              <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+  1541→                <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+  1542→                  Executive Summary
+  1543→                </p>
+  1544→                <p className="text-xs leading-relaxed text-zinc-300">
+  1545→                  {REPORT_TYPES[previewReport.type].description} covering the period specified. This report includes
+  1546→                  {' '}{previewReport.sections.length} sections: {previewReport.sections.map((s) => SECTION_OPTIONS[s as ReportSection]?.label).join(', ')}.
+  1547→                  The report captures critical security metrics, identifies trends, and provides actionable recommendations
+  1548→                  for improving the organization&apos;s security posture.
+  1549→                </p>
+  1550→              </div>
+  1551→
+  1552→              <div className="grid grid-cols-2 gap-3">
+  1553→                {previewReport.sections.map((section) => {
+  1554→                  const config = SECTION_OPTIONS[section as ReportSection]
+  1555→                  if (!config) return null
+  1556→                  const Icon = config.icon
+  1557→                  return (
+  1558→                    <div key={section} className="rounded-md border border-zinc-800 bg-zinc-900/30 p-2.5">
+  1559→                      <div className="flex items-center gap-2">
+  1560→                        <Icon className="size-3.5 text-emerald-400" />
+  1561→                        <p className="text-xs font-medium text-zinc-200">{config.label}</p>
+  1562→                      </div>
+  1563→                      <p className="mt-1 text-[10px] text-zinc-500">{config.description}</p>
+  1564→                    </div>
+  1565→                  )
+  1566→                })}
+  1567→              </div>
+  1568→            </div>
+  1569→          )}
+  1570→          <DialogFooter>
+  1571→            <Button
+  1572→              variant="outline"
+  1573→              size="sm"
+  1574→              className="border-zinc-700 text-xs"
+  1575→              onClick={() => setPreviewOpen(false)}
+  1576→            >
+  1577→              Close
+  1578→            </Button>
+  1579→            <Button
+  1580→              size="sm"
+  1581→              className="gap-1.5 bg-emerald-500 text-xs font-semibold text-emerald-950 hover:bg-emerald-400"
+  1582→              onClick={() => {
+  1583→                if (previewReport) downloadReport(previewReport)
+  1584→                setPreviewOpen(false)
+  1585→              }}
+  1586→            >
+  1587→              <Download className="size-3.5" />
+  1588→              Download
+  1589→            </Button>
+  1590→          </DialogFooter>
+  1591→        </DialogContent>
+  1592→      </Dialog>
+  1593→
+  1594→      {/* New Schedule Dialog */}
+  1595→      <Dialog open={newScheduleOpen} onOpenChange={setNewScheduleOpen}>
+  1596→        <DialogContent className="max-w-lg border-zinc-800 bg-zinc-950">
+  1597→          <DialogHeader>
+  1598→            <DialogTitle className="flex items-center gap-2 text-zinc-100">
+  1599→              <Repeat className="size-4 text-emerald-400" />
+  1600→              Create Scheduled Report
+  1601→            </DialogTitle>
+  1602→            <DialogDescription className="text-zinc-500">
+  1603→              Configure a recurring report to be generated and delivered automatically.
+  1604→            </DialogDescription>
+  1605→          </DialogHeader>
+  1606→          <div className="space-y-3">
+  1607→            <div className="space-y-1.5">
+  1608→              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+  1609→                Schedule Name
+  1610→              </label>
+  1611→              <input
+  1612→                type="text"
+  1613→                value={newScheduleName}
+  1614→                onChange={(e) => setNewScheduleName(e.target.value)}
+  1615→                placeholder="e.g., Weekly Board Brief"
+  1616→                className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-emerald-500/40 focus:outline-none"
+  1617→              />
+  1618→            </div>
+  1619→            <div className="grid grid-cols-2 gap-3">
+  1620→              <div className="space-y-1.5">
+  1621→                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+  1622→                  Template
+  1623→                </label>
+  1624→                <Select value={newScheduleTemplate} onValueChange={setNewScheduleTemplate}>
+  1625→                  <SelectTrigger className="border-zinc-800 bg-zinc-950 text-xs text-zinc-200">
+  1626→                    <SelectValue />
+  1627→                  </SelectTrigger>
+  1628→                  <SelectContent>
+  1629→                    {TEMPLATES.map((t) => (
+  1630→                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+  1631→                    ))}
+  1632→                  </SelectContent>
+  1633→                </Select>
+  1634→              </div>
+  1635→              <div className="space-y-1.5">
+  1636→                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+  1637→                  Cadence
+  1638→                </label>
+  1639→                <Select value={newScheduleCadence} onValueChange={(v) => setNewScheduleCadence(v as ReportSchedule)}>
+  1640→                  <SelectTrigger className="border-zinc-800 bg-zinc-950 text-xs text-zinc-200">
+  1641→                    <SelectValue />
+  1642→                  </SelectTrigger>
+  1643→                  <SelectContent>
+  1644→                    <SelectItem value="daily">Daily</SelectItem>
+  1645→                    <SelectItem value="weekly">Weekly</SelectItem>
+  1646→                    <SelectItem value="monthly">Monthly</SelectItem>
+  1647→                    <SelectItem value="quarterly">Quarterly</SelectItem>
+  1648→                  </SelectContent>
+  1649→                </Select>
+  1650→              </div>
+  1651→            </div>
+  1652→            <div className="space-y-1.5">
+  1653→              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+  1654→                Format
+  1655→              </label>
+  1656→              <div className="flex gap-1.5">
+  1657→                {(Object.keys(FORMAT_OPTIONS) as ReportFormat[]).map((f) => {
+  1658→                  const config = FORMAT_OPTIONS[f]
+  1659→                  const Icon = config.icon
+  1660→                  const isSelected = newScheduleFormat === f
+  1661→                  return (
+  1662→                    <button
+  1663→                      key={f}
+  1664→                      onClick={() => setNewScheduleFormat(f)}
+  1665→                      className={cn(
+  1666→                        'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-all',
+  1667→                        isSelected
+  1668→                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+  1669→                          : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:bg-zinc-900'
+  1670→                      )}
+  1671→                    >
+  1672→                      <Icon className={cn('size-3', config.color)} />
+  1673→                      {config.label}
+  1674→                    </button>
+  1675→                  )
+  1676→                })}
+  1677→              </div>
+  1678→            </div>
+  1679→            <div className="space-y-1.5">
+  1680→              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+  1681→                Recipients ({newScheduleRecipients.length})
+  1682→              </label>
+  1683→              <div className="flex flex-wrap gap-1.5 rounded-md border border-zinc-800 bg-zinc-950 p-2 min-h-[40px]">
+  1684→                {newScheduleRecipients.length === 0 ? (
+  1685→                  <span className="text-xs italic text-zinc-600">No recipients added yet — pick from suggestions below</span>
+  1686→                ) : (
+  1687→                  newScheduleRecipients.map((email) => (
+  1688→                    <Badge
+  1689→                      key={email}
+  1690→                      variant="outline"
+  1691→                      className="gap-1 border-emerald-500/30 bg-emerald-500/5 text-[11px] text-emerald-300"
+  1692→                    >
+  1693→                      <Mail className="size-2.5" />
+  1694→                      {email}
+  1695→                      <button
+  1696→                        onClick={() => removeRecipient(email)}
+  1697→                        className="ml-1 text-emerald-400/60 hover:text-red-400"
+  1698→                      >
+  1699→                        <XCircle className="size-3" />
+  1700→                      </button>
+  1701→                    </Badge>
+  1702→                  ))
+  1703→                )}
+  1704→              </div>
+  1705→              <div className="flex flex-wrap gap-1">
+  1706→                {RECIPIENT_SUGGESTIONS.filter((r) => !newScheduleRecipients.includes(r)).map((email) => (
+  1707→                  <button
+  1708→                    key={email}
+  1709→                    onClick={() => addRecipient(email)}
+  1710→                    className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-[10px] text-zinc-400 hover:border-emerald-500/30 hover:bg-emerald-500/5 hover:text-emerald-300"
+  1711→                  >
+  1712→                    + {email}
+  1713→                  </button>
+  1714→                ))}
+  1715→              </div>
+  1716→            </div>
+  1717→          </div>
+  1718→          <DialogFooter>
+  1719→            <Button
+  1720→              variant="outline"
+  1721→              size="sm"
+  1722→              className="border-zinc-700 text-xs"
+  1723→              onClick={() => setNewScheduleOpen(false)}
+  1724→            >
+  1725→              Cancel
+  1726→            </Button>
+  1727→            <Button
+  1728→              size="sm"
+  1729→              className="gap-1.5 bg-emerald-500 text-xs font-semibold text-emerald-950 hover:bg-emerald-400"
+  1730→              onClick={handleCreateSchedule}
+  1731→            >
+  1732→              <Plus className="size-3.5" />
+  1733→              Create Schedule
+  1734→            </Button>
+  1735→          </DialogFooter>
+  1736→        </DialogContent>
+  1737→      </Dialog>
+  1738→    </motion.div>
+  1739→  )
+  1740→}
+  1741→

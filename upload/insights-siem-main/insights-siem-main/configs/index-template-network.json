@@ -1,0 +1,33 @@
+{
+  "index_patterns": ["insights-network-logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "refresh_interval": "10s"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "event_type": { "type": "keyword" },
+        "src_ip": { "type": "ip" },
+        "dest_ip": { "type": "ip" },
+        "src_port": { "type": "long" },
+        "dest_port": { "type": "long" },
+        "proto": { "type": "keyword" },
+        "alert": {
+          "properties": {
+            "signature": { "type": "text" },
+            "severity": { "type": "long" },
+            "category": { "type": "keyword" }
+          }
+        },
+        "dns": { "type": "object", "enabled": true },
+        "http": { "type": "object", "enabled": true },
+        "siem": { "type": "keyword" },
+        "sensor": { "type": "keyword" }
+      }
+    }
+  },
+  "priority": 110
+}

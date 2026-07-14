@@ -1,0 +1,1282 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback, useMemo } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import {
+     6→  Plus,
+     7→  RefreshCw,
+     8→  ChevronDown,
+     9→  ChevronRight,
+    10→  Pencil,
+    11→  Trash2,
+    12→  Server,
+    13→  Monitor,
+    14→  Router,
+    15→  Box,
+    16→  Cloud,
+    17→  Cpu,
+    18→  Search,
+    19→  AlertTriangle,
+    20→  Heart,
+    21→  Activity,
+    22→  ShieldAlert,
+    23→  X,
+    24→  Save,
+    25→  FileJson,
+    26→  Network,
+    27→} from 'lucide-react'
+    28→import { Card, CardContent } from '@/components/ui/card'
+    29→import { Button } from '@/components/ui/button'
+    30→import { Input } from '@/components/ui/input'
+    31→import { Textarea } from '@/components/ui/textarea'
+    32→import { Label } from '@/components/ui/label'
+    33→import { Badge } from '@/components/ui/badge'
+    34→import {
+    35→  Select,
+    36→  SelectContent,
+    37→  SelectItem,
+    38→  SelectTrigger,
+    39→  SelectValue,
+    40→} from '@/components/ui/select'
+    41→import {
+    42→  Dialog,
+    43→  DialogContent,
+    44→  DialogHeader,
+    45→  DialogTitle,
+    46→  DialogDescription,
+    47→  DialogFooter,
+    48→} from '@/components/ui/dialog'
+    49→import {
+    50→  AlertDialog,
+    51→  AlertDialogAction,
+    52→  AlertDialogCancel,
+    53→  AlertDialogContent,
+    54→  AlertDialogDescription,
+    55→  AlertDialogFooter,
+    56→  AlertDialogHeader,
+    57→  AlertDialogTitle,
+    58→} from '@/components/ui/alert-dialog'
+    59→import {
+    60→  Tooltip,
+    61→  TooltipContent,
+    62→  TooltipProvider,
+    63→  TooltipTrigger,
+    64→} from '@/components/ui/tooltip'
+    65→import { Skeleton } from '@/components/ui/skeleton'
+    66→import { Separator } from '@/components/ui/separator'
+    67→import { useSIEMStore } from '@/lib/store'
+    68→import type { Asset, AssetType, AssetStatus, AssetCriticality } from '@/lib/types'
+    69→import { CriticalityBadge } from '@/components/siem/status-badge'
+    70→import { ExportButton } from '@/components/siem/export-button'
+    71→import { cn } from '@/lib/utils'
+    72→import { toast } from 'sonner'
+    73→import { formatDistanceToNow, format } from 'date-fns'
+    74→
+    75→// ===== Type Configuration =====
+    76→
+    77→const TYPE_CONFIG: Record<string, { icon: React.ElementType; label: string; color: string }> = {
+    78→  server: { icon: Server, label: 'Server', color: 'text-blue-400' },
+    79→  workstation: { icon: Monitor, label: 'Workstation', color: 'text-violet-400' },
+    80→  network_device: { icon: Router, label: 'Network Device', color: 'text-cyan-400' },
+    81→  container: { icon: Box, label: 'Container', color: 'text-amber-400' },
+    82→  cloud_instance: { icon: Cloud, label: 'Cloud Instance', color: 'text-sky-400' },
+    83→  iot: { icon: Cpu, label: 'IoT', color: 'text-orange-400' },
+    84→}
+    85→
+    86→const STATUS_CONFIG: Record<string, { bg: string; text: string; label: string; dot: string }> = {
+    87→  active: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', label: 'Active', dot: 'bg-emerald-400' },
+    88→  inactive: { bg: 'bg-zinc-500/15', text: 'text-zinc-400', label: 'Inactive', dot: 'bg-zinc-400' },
+    89→  decommissioned: { bg: 'bg-red-500/15', text: 'text-red-400', label: 'Decommissioned', dot: 'bg-red-400' },
+    90→  maintenance: { bg: 'bg-yellow-500/15', text: 'text-yellow-400', label: 'Maintenance', dot: 'bg-yellow-400' },
+    91→}
+    92→
+    93→const CRITICALITY_COLORS: Record<string, string> = {
+    94→  critical: 'text-red-400',
+    95→  high: 'text-amber-400',
+    96→  medium: 'text-yellow-400',
+    97→  low: 'text-zinc-400',
+    98→}
+    99→
+   100→const FILTER_TYPES: { value: AssetType; label: string }[] = [
+   101→  { value: 'server', label: 'Server' },
+   102→  { value: 'workstation', label: 'Workstation' },
+   103→  { value: 'network_device', label: 'Network Device' },
+   104→  { value: 'container', label: 'Container' },
+   105→  { value: 'cloud_instance', label: 'Cloud Instance' },
+   106→  { value: 'iot', label: 'IoT' },
+   107→]
+   108→
+   109→const FILTER_STATUSES: { value: AssetStatus; label: string }[] = [
+   110→  { value: 'active', label: 'Active' },
+   111→  { value: 'inactive', label: 'Inactive' },
+   112→  { value: 'decommissioned', label: 'Decommissioned' },
+   113→  { value: 'maintenance', label: 'Maintenance' },
+   114→]
+   115→
+   116→const FILTER_CRITICALITIES: { value: AssetCriticality; label: string }[] = [
+   117→  { value: 'critical', label: 'Critical' },
+   118→  { value: 'high', label: 'High' },
+   119→  { value: 'medium', label: 'Medium' },
+   120→  { value: 'low', label: 'Low' },
+   121→]
+   122→
+   123→// ===== Asset Form Type =====
+   124→
+   125→interface AssetFormData {
+   126→  name: string
+   127→  type: AssetType
+   128→  ipAddress: string
+   129→  macAddress: string
+   130→  os: string
+   131→  osVersion: string
+   132→  status: AssetStatus
+   133→  criticality: AssetCriticality
+   134→  owner: string
+   135→  department: string
+   136→  location: string
+   137→  tags: string
+   138→  metadata: string
+   139→}
+   140→
+   141→const emptyAssetForm: AssetFormData = {
+   142→  name: '',
+   143→  type: 'server',
+   144→  ipAddress: '',
+   145→  macAddress: '',
+   146→  os: '',
+   147→  osVersion: '',
+   148→  status: 'active',
+   149→  criticality: 'medium',
+   150→  owner: '',
+   151→  department: '',
+   152→  location: '',
+   153→  tags: '',
+   154→  metadata: '',
+   155→}
+   156→
+   157→// ===== Stats Cards =====
+   158→
+   159→function AssetStatsCards({ assets, atRiskCount }: { assets: Asset[]; atRiskCount: number }) {
+   160→  const stats = useMemo(() => {
+   161→    const total = assets.length
+   162→    const active = assets.filter((a) => a.status === 'active').length
+   163→    const critical = assets.filter((a) => a.criticality === 'critical').length
+   164→    return { total, active, critical, atRisk: atRiskCount }
+   165→  }, [assets, atRiskCount])
+   166→
+   167→  const cards = [
+   168→    {
+   169→      label: 'Total Assets',
+   170→      value: stats.total,
+   171→      icon: Network,
+   172→      color: 'text-zinc-200',
+   173→      bg: 'bg-zinc-800/50',
+   174→      border: 'border-zinc-700',
+   175→    },
+   176→    {
+   177→      label: 'Active',
+   178→      value: stats.active,
+   179→      icon: Activity,
+   180→      color: 'text-emerald-400',
+   181→      bg: 'bg-emerald-500/5',
+   182→      border: 'border-emerald-500/20',
+   183→    },
+   184→    {
+   185→      label: 'Critical',
+   186→      value: stats.critical,
+   187→      icon: AlertTriangle,
+   188→      color: 'text-red-400',
+   189→      bg: 'bg-red-500/5',
+   190→      border: 'border-red-500/20',
+   191→    },
+   192→    {
+   193→      label: 'At Risk',
+   194→      value: stats.atRisk,
+   195→      icon: ShieldAlert,
+   196→      color: 'text-amber-400',
+   197→      bg: 'bg-amber-500/5',
+   198→      border: 'border-amber-500/20',
+   199→    },
+   200→  ]
+   201→
+   202→  return (
+   203→    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   204→      {cards.map((card) => (
+   205→        <Card
+   206→          key={card.label}
+   207→          className={cn('rounded-xl border p-4 transition-colors hover:border-opacity-60', card.bg, card.border)}
+   208→        >
+   209→          <div className="flex items-center justify-between">
+   210→            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+   211→              {card.label}
+   212→            </span>
+   213→            <card.icon className={cn('h-4 w-4', card.color)} />
+   214→          </div>
+   215→          <div className={cn('mt-1 text-2xl font-bold tabular-nums', card.color)}>
+   216→            {card.value.toLocaleString()}
+   217→          </div>
+   218→        </Card>
+   219→      ))}
+   220→    </div>
+   221→  )
+   222→}
+   223→
+   224→// ===== Filter Toggle Button =====
+   225→
+   226→function FilterToggle({
+   227→  label,
+   228→  options,
+   229→  selected,
+   230→  onToggle,
+   231→}: {
+   232→  label: string
+   233→  options: { value: string; label: string }[]
+   234→  selected: string[]
+   235→  onToggle: (value: string) => void
+   236→}) {
+   237→  return (
+   238→    <div className="flex flex-wrap items-center gap-1">
+   239→      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1">
+   240→        {label}:
+   241→      </span>
+   242→      {options.map((opt) => {
+   243→        const isActive = selected.includes(opt.value)
+   244→        return (
+   245→          <Button
+   246→            key={opt.value}
+   247→            variant="ghost"
+   248→            size="sm"
+   249→            className={cn(
+   250→              'h-6 px-2 text-[10px] rounded-full border transition-colors',
+   251→              isActive
+   252→                ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30'
+   253→                : 'text-zinc-500 border-zinc-700 hover:text-zinc-300 hover:border-zinc-600'
+   254→            )}
+   255→            onClick={() => onToggle(opt.value)}
+   256→          >
+   257→            {opt.label}
+   258→          </Button>
+   259→        )
+   260→      })}
+   261→    </div>
+   262→  )
+   263→}
+   264→
+   265→// ===== Asset Row Component =====
+   266→
+   267→function AssetRow({
+   268→  asset,
+   269→  isExpanded,
+   270→  onToggle,
+   271→  onEdit,
+   272→  onDelete,
+   273→  alertCount,
+   274→}: {
+   275→  asset: Asset
+   276→  isExpanded: boolean
+   277→  onToggle: () => void
+   278→  onEdit: (e: React.MouseEvent) => void
+   279→  onDelete: (e: React.MouseEvent) => void
+   280→  alertCount: number
+   281→}) {
+   282→  const typeConfig = TYPE_CONFIG[asset.type] || TYPE_CONFIG.server
+   283→  const statusConfig = STATUS_CONFIG[asset.status] || STATUS_CONFIG.inactive
+   284→  const TypeIcon = typeConfig.icon
+   285→
+   286→  return (
+   287→    <>
+   288→      <div
+   289→        className={cn(
+   290→          'siem-asset-row flex items-center gap-3 border-b border-zinc-800/50 px-4 py-3 text-sm transition-colors cursor-pointer hover:bg-zinc-800/30',
+   291→          `siem-criticality-border-${asset.criticality}`,
+   292→          isExpanded && 'bg-zinc-800/20',
+   293→        )}
+   294→        onClick={onToggle}
+   295→      >
+   296→        {/* Expand Chevron */}
+   297→        <button className="shrink-0" onClick={(e) => { e.stopPropagation(); onToggle() }}>
+   298→          {isExpanded ? (
+   299→            <ChevronDown className="h-3.5 w-3.5 text-zinc-500" />
+   300→          ) : (
+   301→            <ChevronRight className="h-3.5 w-3.5 text-zinc-500" />
+   302→          )}
+   303→        </button>
+   304→
+   305→        {/* Type Icon */}
+   306→        <TooltipProvider delayDuration={200}>
+   307→          <Tooltip>
+   308→            <TooltipTrigger asChild>
+   309→              <div className={cn('shrink-0 flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-800', typeConfig.color)}>
+   310→                <TypeIcon className="h-4 w-4" />
+   311→              </div>
+   312→            </TooltipTrigger>
+   313→            <TooltipContent className="bg-zinc-900 border-zinc-700 text-xs">
+   314→              {typeConfig.label}
+   315→            </TooltipContent>
+   316→          </Tooltip>
+   317→        </TooltipProvider>
+   318→
+   319→        {/* Name + IP */}
+   320→        <div className="flex-1 min-w-0">
+   321→          <div className="flex items-center gap-2">
+   322→            <span className="font-semibold text-zinc-100 truncate">{asset.name}</span>
+   323→            {alertCount > 0 && (
+   324→              <Badge className="bg-red-500/15 text-red-400 border-red-500/30 text-[9px] gap-0.5 px-1.5">
+   325→                <AlertTriangle className="h-2.5 w-2.5" />
+   326→                {alertCount}
+   327→              </Badge>
+   328→            )}
+   329→          </div>
+   330→          <span className="text-[11px] text-zinc-500 font-mono">{asset.ipAddress || 'No IP'}</span>
+   331→        </div>
+   332→
+   333→        {/* OS */}
+   334→        <span className="hidden w-28 truncate text-xs text-zinc-400 lg:block">
+   335→          {asset.os || '—'}
+   336→        </span>
+   337→
+   338→        {/* Status Badge + Health Dot */}
+   339→        <span className="w-28 shrink-0 flex items-center gap-1.5">
+   340→          {/* Health indicator dot (pulsing for active, solid for others) */}
+   341→          <TooltipProvider delayDuration={200}>
+   342→            <Tooltip>
+   343→              <TooltipTrigger asChild>
+   344→                <span className="relative flex h-2 w-2 shrink-0">
+   345→                  {asset.status === 'active' && (
+   346→                    <span
+   347→                      className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"
+   348→                      style={{ animation: 'ping 1.8s cubic-bezier(0,0,0.2,1) infinite' }}
+   349→                    />
+   350→                  )}
+   351→                  <span
+   352→                    className={cn(
+   353→                      'relative inline-flex h-2 w-2 rounded-full',
+   354→                      asset.status === 'active'
+   355→                        ? 'bg-emerald-400'
+   356→                        : asset.status === 'maintenance'
+   357→                          ? 'bg-amber-400'
+   358→                          : 'bg-red-400'
+   359→                    )}
+   360→                  />
+   361→                </span>
+   362→              </TooltipTrigger>
+   363→              <TooltipContent className="bg-zinc-900 border-zinc-700 text-xs">
+   364→                Health: {asset.status === 'active' ? 'Healthy' : asset.status === 'maintenance' ? 'Warning' : 'Offline'}
+   365→              </TooltipContent>
+   366→            </Tooltip>
+   367→          </TooltipProvider>
+   368→          <Badge
+   369→            className={cn('text-[10px] gap-1 px-1.5', statusConfig.bg, statusConfig.text, 'border-0')}
+   370→          >
+   371→            <span className={cn('h-1.5 w-1.5 rounded-full', statusConfig.dot)} />
+   372→            {statusConfig.label}
+   373→          </Badge>
+   374→        </span>
+   375→
+   376→        {/* Criticality Badge */}
+   377→        <span className="hidden w-20 sm:block">
+   378→          <CriticalityBadge criticality={asset.criticality as AssetCriticality} />
+   379→        </span>
+   380→
+   381→        {/* Owner */}
+   382→        <span className="hidden w-24 truncate text-xs text-zinc-400 md:block">
+   383→          {asset.owner || '—'}
+   384→        </span>
+   385→
+   386→        {/* Department */}
+   387→        <span className="hidden w-24 truncate text-xs text-zinc-400 xl:block">
+   388→          {asset.department || '—'}
+   389→        </span>
+   390→
+   391→        {/* Last Seen */}
+   392→        <span className="hidden w-24 text-[10px] text-zinc-500 lg:block">
+   393→          {asset.lastSeenAt
+   394→            ? formatDistanceToNow(new Date(asset.lastSeenAt), { addSuffix: true })
+   395→            : 'Never'}
+   396→        </span>
+   397→
+   398→        {/* Actions */}
+   399→        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+   400→          <Button
+   401→            variant="ghost"
+   402→            size="icon"
+   403→            className="h-6 w-6 text-zinc-500 hover:text-zinc-200"
+   404→            onClick={onEdit}
+   405→          >
+   406→            <Pencil className="h-3 w-3" />
+   407→          </Button>
+   408→          <Button
+   409→            variant="ghost"
+   410→            size="icon"
+   411→            className="h-6 w-6 text-zinc-500 hover:text-red-400"
+   412→            onClick={onDelete}
+   413→          >
+   414→            <Trash2 className="h-3 w-3" />
+   415→          </Button>
+   416→        </div>
+   417→      </div>
+   418→
+   419→      {/* Expanded Detail */}
+   420→      <AnimatePresence>
+   421→        {isExpanded && (
+   422→          <motion.div
+   423→            initial={{ opacity: 0, height: 0 }}
+   424→            animate={{ opacity: 1, height: 'auto' }}
+   425→            exit={{ opacity: 0, height: 0 }}
+   426→            transition={{ duration: 0.15 }}
+   427→            className="border-b border-zinc-800 bg-zinc-950/80 overflow-hidden"
+   428→          >
+   429→            <div className="p-4 space-y-4">
+   430→              {/* Full Info Grid */}
+   431→              <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-3 lg:grid-cols-4">
+   432→                <DetailField label="Name" value={asset.name} />
+   433→                <DetailField label="Type" value={typeConfig.label} />
+   434→                <DetailField label="IP Address" value={asset.ipAddress} monospace />
+   435→                <DetailField label="MAC Address" value={asset.macAddress} monospace />
+   436→                <DetailField label="OS" value={asset.os ? `${asset.os} ${asset.osVersion || ''}`.trim() : undefined} />
+   437→                <DetailField
+   438→                  label="Status"
+   439→                  value={
+   440→                    <Badge className={cn('text-[10px] gap-1', statusConfig.bg, statusConfig.text, 'border-0')}>
+   441→                      <span className={cn('h-1.5 w-1.5 rounded-full', statusConfig.dot)} />
+   442→                      {statusConfig.label}
+   443→                    </Badge>
+   444→                  }
+   445→                />
+   446→                <DetailField
+   447→                  label="Criticality"
+   448→                  value={<CriticalityBadge criticality={asset.criticality as AssetCriticality} />}
+   449→                />
+   450→                <DetailField label="Owner" value={asset.owner} />
+   451→                <DetailField label="Department" value={asset.department} />
+   452→                <DetailField label="Location" value={asset.location} />
+   453→                <DetailField
+   454→                  label="Last Seen"
+   455→                  value={asset.lastSeenAt ? format(new Date(asset.lastSeenAt), 'yyyy-MM-dd HH:mm:ss') : undefined}
+   456→                />
+   457→                <DetailField
+   458→                  label="Created"
+   459→                  value={format(new Date(asset.createdAt), 'yyyy-MM-dd HH:mm:ss')}
+   460→                />
+   461→              </div>
+   462→
+   463→              {/* Tags */}
+   464→              {asset.tags && (
+   465→                <div>
+   466→                  <span className="text-[10px] uppercase font-semibold tracking-wider text-zinc-500">Tags</span>
+   467→                  <div className="mt-1 flex flex-wrap gap-1">
+   468→                    {asset.tags.split(',').map((tag) => (
+   469→                      <Badge
+   470→                        key={tag.trim()}
+   471→                        variant="outline"
+   472→                        className="text-[10px] border-zinc-700 text-zinc-400"
+   473→                      >
+   474→                        {tag.trim()}
+   475→                      </Badge>
+   476→                    ))}
+   477→                  </div>
+   478→                </div>
+   479→              )}
+   480→
+   481→              {/* Alerts & Health Row */}
+   482→              <div className="flex flex-wrap gap-4">
+   483→                {/* Associated Alerts */}
+   484→                <div className="flex items-center gap-2 rounded-lg bg-zinc-800/50 border border-zinc-700/50 px-3 py-2">
+   485→                  <AlertTriangle className={cn('h-4 w-4', alertCount > 0 ? 'text-red-400' : 'text-zinc-500')} />
+   486→                  <div>
+   487→                    <span className="text-[10px] text-zinc-500">Associated Alerts</span>
+   488→                    <div className={cn('text-sm font-bold', alertCount > 0 ? 'text-red-400' : 'text-zinc-400')}>
+   489→                      {alertCount}
+   490→                    </div>
+   491→                  </div>
+   492→                </div>
+   493→
+   494→                {/* Health Status */}
+   495→                <div className="flex items-center gap-2 rounded-lg bg-zinc-800/50 border border-zinc-700/50 px-3 py-2">
+   496→                  <Heart className={cn('h-4 w-4', asset.status === 'active' ? 'text-emerald-400' : asset.status === 'maintenance' ? 'text-yellow-400' : 'text-zinc-500')} />
+   497→                  <div>
+   498→                    <span className="text-[10px] text-zinc-500">Health</span>
+   499→                    <div className={cn(
+   500→                      'text-sm font-bold',
+   501→                      asset.status === 'active' ? 'text-emerald-400' : asset.status === 'maintenance' ? 'text-yellow-400' : 'text-zinc-400'
+   502→                    )}>
+   503→                      {asset.status === 'active' ? 'Healthy' : asset.status === 'maintenance' ? 'Under Maintenance' : asset.status === 'inactive' ? 'Offline' : 'Decommissioned'}
+   504→                    </div>
+   505→                  </div>
+   506→                </div>
+   507→              </div>
+   508→
+   509→              {/* Metadata JSON */}
+   510→              {asset.metadata && (
+   511→                <div>
+   512→                  <div className="flex items-center gap-1.5 mb-1">
+   513→                    <FileJson className="h-3 w-3 text-zinc-500" />
+   514→                    <span className="text-[10px] uppercase font-semibold tracking-wider text-zinc-500">Metadata</span>
+   515→                  </div>
+   516→                  <pre className="max-h-40 overflow-auto rounded-md bg-zinc-900 border border-zinc-800 p-3 text-[11px] text-zinc-400 font-mono leading-relaxed custom-scrollbar">
+   517→                    {(() => {
+   518→                      try {
+   519→                        return JSON.stringify(JSON.parse(asset.metadata), null, 2)
+   520→                      } catch {
+   521→                        return asset.metadata
+   522→                      }
+   523→                    })()}
+   524→                  </pre>
+   525→                </div>
+   526→              )}
+   527→
+   528→              {/* Action Buttons */}
+   529→              <div className="flex items-center gap-2 pt-1 border-t border-zinc-800">
+   530→                <Button
+   531→                  variant="outline"
+   532→                  size="sm"
+   533→                  className="h-7 gap-1 text-xs border-zinc-700 text-zinc-300 hover:text-zinc-100"
+   534→                  onClick={(e) => onEdit(e)}
+   535→                >
+   536→                  <Pencil className="h-3 w-3" />
+   537→                  Edit
+   538→                </Button>
+   539→                <Button
+   540→                  variant="outline"
+   541→                  size="sm"
+   542→                  className="h-7 gap-1 text-xs border-zinc-700 text-red-400 hover:text-red-300 hover:border-red-500/30"
+   543→                  onClick={(e) => onDelete(e)}
+   544→                >
+   545→                  <Trash2 className="h-3 w-3" />
+   546→                  Delete
+   547→                </Button>
+   548→              </div>
+   549→            </div>
+   550→          </motion.div>
+   551→        )}
+   552→      </AnimatePresence>
+   553→    </>
+   554→  )
+   555→}
+   556→
+   557→// ===== Detail Field Helper =====
+   558→
+   559→function DetailField({ label, value, monospace }: { label: string; value?: React.ReactNode; monospace?: boolean }) {
+   560→  return (
+   561→    <div>
+   562→      <span className="text-[10px] uppercase font-semibold tracking-wider text-zinc-500">{label}</span>
+   563→      <div className={cn('text-zinc-300', monospace && 'font-mono')}>
+   564→        {value ?? <span className="text-zinc-600">—</span>}
+   565→      </div>
+   566→    </div>
+   567→  )
+   568→}
+   569→
+   570→// ===== Main AssetsView Component =====
+   571→
+   572→export function AssetsView() {
+   573→  const { assetFilters, setAssetFilters, resetAssetFilters } = useSIEMStore()
+   574→  const [assets, setAssets] = useState<Asset[]>([])
+   575→  const [total, setTotal] = useState(0)
+   576→  const [loading, setLoading] = useState(true)
+   577→  const [error, setError] = useState<string | null>(null)
+   578→  const [expandedAsset, setExpandedAsset] = useState<string | null>(null)
+   579→  const [dialogOpen, setDialogOpen] = useState(false)
+   580→  const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
+   581→  const [form, setForm] = useState<AssetFormData>(emptyAssetForm)
+   582→  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+   583→  const [deleteTarget, setDeleteTarget] = useState<Asset | null>(null)
+   584→  const [alertCounts, setAlertCounts] = useState<Record<string, number>>({})
+   585→  const [saving, setSaving] = useState(false)
+   586→
+   587→  const totalPages = Math.ceil(total / assetFilters.pageSize)
+   588→
+   589→  // Fetch assets
+   590→  const fetchAssets = useCallback(async () => {
+   591→    setLoading(true)
+   592→    setError(null)
+   593→    try {
+   594→      const params = new URLSearchParams()
+   595→      params.set('page', String(assetFilters.page))
+   596→      params.set('pageSize', String(assetFilters.pageSize))
+   597→      if (assetFilters.search) params.set('search', assetFilters.search)
+   598→      if (assetFilters.type.length) params.set('type', assetFilters.type.join(','))
+   599→      if (assetFilters.status.length) params.set('status', assetFilters.status.join(','))
+   600→      if (assetFilters.criticality.length) params.set('criticality', assetFilters.criticality.join(','))
+   601→
+   602→      const res = await fetch(`/api/assets?${params}`)
+   603→      if (res.ok) {
+   604→        const json = await res.json()
+   605→        setAssets(json.data || [])
+   606→        setTotal(json.pagination?.total || 0)
+   607→
+   608→        // Fetch alert counts for each asset IP
+   609→        const counts: Record<string, number> = {}
+   610→        const assetList: Asset[] = json.data || []
+   611→        await Promise.all(
+   612→          assetList
+   613→            .filter((a: Asset) => a.ipAddress)
+   614→            .map(async (a: Asset) => {
+   615→              try {
+   616→                const alertRes = await fetch(`/api/alerts?search=${encodeURIComponent(a.ipAddress!)}&pageSize=1`)
+   617→                if (alertRes.ok) {
+   618→                  const alertJson = await alertRes.json()
+   619→                  counts[a.id] = alertJson.pagination?.total || 0
+   620→                }
+   621→              } catch {
+   622→                counts[a.id] = 0
+   623→              }
+   624→            })
+   625→        )
+   626→        setAlertCounts(counts)
+   627→      } else {
+   628→        setError('Failed to load assets')
+   629→      }
+   630→    } catch {
+   631→      setError('Network error')
+   632→    } finally {
+   633→      setLoading(false)
+   634→    }
+   635→  }, [assetFilters])
+   636→
+   637→  useEffect(() => {
+   638→    fetchAssets()
+   639→  }, [fetchAssets])
+   640→
+   641→  // Compute at-risk count
+   642→  const atRiskCount = useMemo(() => {
+   643→    return Object.values(alertCounts).filter((c) => c > 0).length
+   644→  }, [alertCounts])
+   645→
+   646→  // Handle type filter toggle
+   647→  const toggleTypeFilter = useCallback((value: string) => {
+   648→    const current = assetFilters.type
+   649→    const next = current.includes(value)
+   650→      ? current.filter((t) => t !== value)
+   651→      : [...current, value]
+   652→    setAssetFilters({ type: next, page: 1 })
+   653→  }, [assetFilters.type, setAssetFilters])
+   654→
+   655→  // Handle status filter toggle
+   656→  const toggleStatusFilter = useCallback((value: string) => {
+   657→    const current = assetFilters.status
+   658→    const next = current.includes(value)
+   659→      ? current.includes(value) ? current.filter((s) => s !== value) : [...current, value]
+   660→      : [...current, value]
+   661→    setAssetFilters({ status: next, page: 1 })
+   662→  }, [assetFilters.status, setAssetFilters])
+   663→
+   664→  // Handle criticality filter toggle
+   665→  const toggleCriticalityFilter = useCallback((value: string) => {
+   666→    const current = assetFilters.criticality
+   667→    const next = current.includes(value)
+   668→      ? current.filter((c) => c !== value)
+   669→      : [...current, value]
+   670→    setAssetFilters({ criticality: next, page: 1 })
+   671→  }, [assetFilters.criticality, setAssetFilters])
+   672→
+   673→  // Open create dialog
+   674→  const handleCreateOpen = useCallback(() => {
+   675→    setEditingAsset(null)
+   676→    setForm(emptyAssetForm)
+   677→    setDialogOpen(true)
+   678→  }, [])
+   679→
+   680→  // Open edit dialog
+   681→  const handleEditOpen = useCallback((asset: Asset) => {
+   682→    setEditingAsset(asset)
+   683→    setForm({
+   684→      name: asset.name,
+   685→      type: asset.type,
+   686→      ipAddress: asset.ipAddress || '',
+   687→      macAddress: asset.macAddress || '',
+   688→      os: asset.os || '',
+   689→      osVersion: asset.osVersion || '',
+   690→      status: asset.status,
+   691→      criticality: asset.criticality,
+   692→      owner: asset.owner || '',
+   693→      department: asset.department || '',
+   694→      location: asset.location || '',
+   695→      tags: asset.tags || '',
+   696→      metadata: (() => {
+   697→        try {
+   698→          return asset.metadata ? JSON.stringify(JSON.parse(asset.metadata), null, 2) : ''
+   699→        } catch {
+   700→          return asset.metadata || ''
+   701→        }
+   702→      })(),
+   703→    })
+   704→    setDialogOpen(true)
+   705→  }, [])
+   706→
+   707→  // Save asset (create or update)
+   708→  const handleSave = useCallback(async () => {
+   709→    if (!form.name.trim()) {
+   710→      toast.error('Name is required')
+   711→      return
+   712→    }
+   713→
+   714→    setSaving(true)
+   715→    try {
+   716→      const body: Record<string, unknown> = {
+   717→        name: form.name,
+   718→        type: form.type,
+   719→        ipAddress: form.ipAddress || null,
+   720→        macAddress: form.macAddress || null,
+   721→        os: form.os || null,
+   722→        osVersion: form.osVersion || null,
+   723→        status: form.status,
+   724→        criticality: form.criticality,
+   725→        owner: form.owner || null,
+   726→        department: form.department || null,
+   727→        location: form.location || null,
+   728→        tags: form.tags || null,
+   729→      }
+   730→
+   731→      // Parse metadata JSON
+   732→      if (form.metadata.trim()) {
+   733→        try {
+   734→          body.metadata = JSON.parse(form.metadata)
+   735→        } catch {
+   736→          toast.error('Invalid JSON in metadata field')
+   737→          setSaving(false)
+   738→          return
+   739→        }
+   740→      }
+   741→
+   742→      if (editingAsset) {
+   743→        // Update
+   744→        const res = await fetch(`/api/assets/${editingAsset.id}`, {
+   745→          method: 'PATCH',
+   746→          headers: { 'Content-Type': 'application/json' },
+   747→          body: JSON.stringify(body),
+   748→        })
+   749→        if (res.ok) {
+   750→          toast.success('Asset updated successfully')
+   751→          setDialogOpen(false)
+   752→          fetchAssets()
+   753→        } else {
+   754→          const err = await res.json()
+   755→          toast.error(err.error || 'Failed to update asset')
+   756→        }
+   757→      } else {
+   758→        // Create
+   759→        const res = await fetch('/api/assets', {
+   760→          method: 'POST',
+   761→          headers: { 'Content-Type': 'application/json' },
+   762→          body: JSON.stringify(body),
+   763→        })
+   764→        if (res.ok) {
+   765→          toast.success('Asset created successfully')
+   766→          setDialogOpen(false)
+   767→          fetchAssets()
+   768→        } else {
+   769→          const err = await res.json()
+   770→          toast.error(err.error || 'Failed to create asset')
+   771→        }
+   772→      }
+   773→    } catch {
+   774→      toast.error('Network error')
+   775→    } finally {
+   776→      setSaving(false)
+   777→    }
+   778→  }, [form, editingAsset, fetchAssets])
+   779→
+   780→  // Delete asset
+   781→  const handleDelete = useCallback(async () => {
+   782→    if (!deleteTarget) return
+   783→    try {
+   784→      const res = await fetch(`/api/assets/${deleteTarget.id}`, { method: 'DELETE' })
+   785→      if (res.ok) {
+   786→        toast.success('Asset deleted')
+   787→        setDeleteDialogOpen(false)
+   788→        setDeleteTarget(null)
+   789→        fetchAssets()
+   790→      } else {
+   791→        toast.error('Failed to delete asset')
+   792→      }
+   793→    } catch {
+   794→      toast.error('Network error')
+   795→    }
+   796→  }, [deleteTarget, fetchAssets])
+   797→
+   798→  // Active filter count
+   799→  const activeFilterCount = useMemo(() => {
+   800→    let count = 0
+   801→    if (assetFilters.type.length) count++
+   802→    if (assetFilters.status.length) count++
+   803→    if (assetFilters.criticality.length) count++
+   804→    if (assetFilters.search) count++
+   805→    return count
+   806→  }, [assetFilters])
+   807→
+   808→  return (
+   809→    <motion.div
+   810→      initial={{ opacity: 0, y: 8 }}
+   811→      animate={{ opacity: 1, y: 0 }}
+   812→      transition={{ duration: 0.3 }}
+   813→      className="space-y-4 p-4"
+   814→    >
+   815→      {/* Stats Cards */}
+   816→      <AssetStatsCards assets={assets} atRiskCount={atRiskCount} />
+   817→
+   818→      {/* Filter Bar */}
+   819→      <Card className="rounded-xl border-zinc-800 bg-zinc-900/50">
+   820→        <CardContent className="p-3 space-y-3">
+   821→          {/* Row 1: Search + Actions */}
+   822→          <div className="flex flex-wrap items-center gap-2">
+   823→            <div className="relative flex-1 min-w-[200px] max-w-[360px]">
+   824→              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+   825→              <Input
+   826→                placeholder="Search assets by name, IP, owner..."
+   827→                value={assetFilters.search}
+   828→                onChange={(e) => setAssetFilters({ search: e.target.value, page: 1 })}
+   829→                className="h-8 pl-8 text-xs border-zinc-700 bg-zinc-800/50"
+   830→              />
+   831→            </div>
+   832→
+   833→            <div className="flex-1" />
+   834→
+   835→            {activeFilterCount > 0 && (
+   836→              <Button
+   837→                variant="ghost"
+   838→                size="sm"
+   839→                className="h-7 gap-1 text-xs text-zinc-400 hover:text-zinc-200"
+   840→                onClick={resetAssetFilters}
+   841→              >
+   842→                <X className="h-3 w-3" />
+   843→                Clear filters ({activeFilterCount})
+   844→              </Button>
+   845→            )}
+   846→
+   847→            <Button
+   848→              variant="ghost"
+   849→              size="sm"
+   850→              className="h-8 w-8 p-0 text-zinc-400 hover:text-zinc-200"
+   851→              onClick={fetchAssets}
+   852→              disabled={loading}
+   853→            >
+   854→              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+   855→            </Button>
+   856→
+   857→            <ExportButton
+   858→              filename="siem-assets"
+   859→              fetchData={async () => {
+   860→                const params = new URLSearchParams()
+   861→                params.set('page', '1')
+   862→                params.set('pageSize', '10000')
+   863→                if (assetFilters.search) params.set('search', assetFilters.search)
+   864→                if (assetFilters.type.length)
+   865→                  params.set('type', assetFilters.type.join(','))
+   866→                if (assetFilters.status.length)
+   867→                  params.set('status', assetFilters.status.join(','))
+   868→                if (assetFilters.criticality.length)
+   869→                  params.set('criticality', assetFilters.criticality.join(','))
+   870→                const res = await fetch(`/api/assets?${params.toString()}`)
+   871→                if (!res.ok) throw new Error('Failed to fetch assets for export')
+   872→                const json = await res.json()
+   873→                const rows = (json.data ?? json.assets ?? []) as Record<string, unknown>[]
+   874→                return rows.map((r) => ({
+   875→                  id: r.id,
+   876→                  name: r.name,
+   877→                  type: r.type,
+   878→                  status: r.status,
+   879→                  criticality: r.criticality,
+   880→                  ipAddress: r.ipAddress,
+   881→                  macAddress: r.macAddress,
+   882→                  os: r.os,
+   883→                  owner: r.owner,
+   884→                  department: r.department,
+   885→                  location: r.location,
+   886→                  createdAt: r.createdAt,
+   887→                  updatedAt: r.updatedAt,
+   888→                }))
+   889→              }}
+   890→            />
+   891→
+   892→            <Button
+   893→              size="sm"
+   894→              className="h-8 gap-1 bg-emerald-600 hover:bg-emerald-700 text-xs"
+   895→              onClick={handleCreateOpen}
+   896→            >
+   897→              <Plus className="h-3.5 w-3.5" />
+   898→              Add Asset
+   899→            </Button>
+   900→          </div>
+   901→
+   902→          {/* Row 2: Filter Toggles */}
+   903→          <div className="flex flex-wrap gap-4">
+   904→            <FilterToggle
+   905→              label="Type"
+   906→              options={FILTER_TYPES}
+   907→              selected={assetFilters.type}
+   908→              onToggle={toggleTypeFilter}
+   909→            />
+   910→            <Separator orientation="vertical" className="h-5 self-center" />
+   911→            <FilterToggle
+   912→              label="Status"
+   913→              options={FILTER_STATUSES}
+   914→              selected={assetFilters.status}
+   915→              onToggle={toggleStatusFilter}
+   916→            />
+   917→            <Separator orientation="vertical" className="h-5 self-center" />
+   918→            <FilterToggle
+   919→              label="Criticality"
+   920→              options={FILTER_CRITICALITIES}
+   921→              selected={assetFilters.criticality}
+   922→              onToggle={toggleCriticalityFilter}
+   923→            />
+   924→          </div>
+   925→        </CardContent>
+   926→      </Card>
+   927→
+   928→      {/* Assets Table */}
+   929→      <Card className="rounded-xl border-zinc-800 bg-zinc-900/50">
+   930→        <CardContent className="p-0">
+   931→          {/* Table Header */}
+   932→          <div className="flex items-center gap-3 border-b border-zinc-800 bg-zinc-900/80 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 sticky top-0 z-10">
+   933→            <span className="w-5" />
+   934→            <span className="w-8" />
+   935→            <span className="flex-1 min-w-0">Name</span>
+   936→            <span className="hidden w-28 lg:block">OS</span>
+   937→            <span className="w-28">Status</span>
+   938→            <span className="hidden w-20 sm:block">Criticality</span>
+   939→            <span className="hidden w-24 md:block">Owner</span>
+   940→            <span className="hidden w-24 xl:block">Department</span>
+   941→            <span className="hidden w-24 lg:block">Last Seen</span>
+   942→            <span className="w-14" />
+   943→          </div>
+   944→
+   945→          {/* Rows / Loading / Empty */}
+   946→          {error ? (
+   947→            <div className="flex flex-col items-center justify-center py-16 gap-3">
+   948→              <AlertTriangle className="h-8 w-8 text-red-400" />
+   949→              <span className="text-sm text-red-400">{error}</span>
+   950→              <Button variant="outline" size="sm" className="text-xs" onClick={fetchAssets}>
+   951→                <RefreshCw className="h-3 w-3 mr-1" /> Retry
+   952→              </Button>
+   953→            </div>
+   954→          ) : loading ? (
+   955→            <div className="space-y-1 p-2">
+   956→              {Array.from({ length: 6 }).map((_, i) => (
+   957→                <div key={i} className="flex items-center gap-3 py-3 px-4">
+   958→                  <Skeleton className="h-3 w-5 rounded" />
+   959→                  <Skeleton className="h-8 w-8 rounded-lg" />
+   960→                  <div className="flex-1 space-y-1">
+   961→                    <Skeleton className="h-3 w-32 rounded" />
+   962→                    <Skeleton className="h-2 w-20 rounded" />
+   963→                  </div>
+   964→                  <Skeleton className="h-5 w-16 rounded" />
+   965→                  <Skeleton className="h-5 w-14 rounded" />
+   966→                </div>
+   967→              ))}
+   968→            </div>
+   969→          ) : assets.length === 0 ? (
+   970→            <div className="flex flex-col items-center justify-center py-16 gap-3">
+   971→              <div className="h-12 w-12 rounded-full bg-zinc-800 flex items-center justify-center">
+   972→                <Network className="h-5 w-5 text-zinc-600" />
+   973→              </div>
+   974→              <span className="text-sm text-zinc-400">No assets found</span>
+   975→              <div className="text-xs text-zinc-600 space-y-1 text-center">
+   976→                <p>Try adjusting your filters or search term</p>
+   977→                <p>Click <strong>"Add Asset"</strong> to register a new asset</p>
+   978→              </div>
+   979→              <Button
+   980→                variant="outline"
+   981→                size="sm"
+   982→                className="text-xs"
+   983→                onClick={handleCreateOpen}
+   984→              >
+   985→                <Plus className="h-3 w-3 mr-1" /> Add Asset
+   986→              </Button>
+   987→            </div>
+   988→          ) : (
+   989→            <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
+   990→              {assets.map((asset) => (
+   991→                <AssetRow
+   992→                  key={asset.id}
+   993→                  asset={asset}
+   994→                  isExpanded={expandedAsset === asset.id}
+   995→                  onToggle={() => setExpandedAsset(expandedAsset === asset.id ? null : asset.id)}
+   996→                  onEdit={(e) => {
+   997→                    e.stopPropagation()
+   998→                    handleEditOpen(asset)
+   999→                  }}
+  1000→                  onDelete={(e) => {
+  1001→                    e.stopPropagation()
+  1002→                    setDeleteTarget(asset)
+  1003→                    setDeleteDialogOpen(true)
+  1004→                  }}
+  1005→                  alertCount={alertCounts[asset.id] || 0}
+  1006→                />
+  1007→              ))}
+  1008→            </div>
+  1009→          )}
+  1010→        </CardContent>
+  1011→      </Card>
+  1012→
+  1013→      {/* Pagination */}
+  1014→      <div className="flex items-center justify-between">
+  1015→        <span className="text-xs text-zinc-500">
+  1016→          Showing {((assetFilters.page - 1) * assetFilters.pageSize) + 1}–
+  1017→          {Math.min(assetFilters.page * assetFilters.pageSize, total)} of {total.toLocaleString()} assets
+  1018→        </span>
+  1019→        <div className="flex items-center gap-2">
+  1020→          <Select
+  1021→            value={String(assetFilters.pageSize)}
+  1022→            onValueChange={(v) => setAssetFilters({ pageSize: Number(v), page: 1 })}
+  1023→          >
+  1024→            <SelectTrigger className="h-7 w-20 text-xs border-zinc-700 bg-zinc-800/50">
+  1025→              <SelectValue />
+  1026→            </SelectTrigger>
+  1027→            <SelectContent className="bg-zinc-900 border-zinc-700">
+  1028→              <SelectItem value="10" className="text-xs">10 / page</SelectItem>
+  1029→              <SelectItem value="20" className="text-xs">20 / page</SelectItem>
+  1030→              <SelectItem value="50" className="text-xs">50 / page</SelectItem>
+  1031→              <SelectItem value="100" className="text-xs">100 / page</SelectItem>
+  1032→            </SelectContent>
+  1033→          </Select>
+  1034→          <Button
+  1035→            variant="outline"
+  1036→            size="sm"
+  1037→            className="h-7 text-xs border-zinc-700"
+  1038→            disabled={assetFilters.page <= 1}
+  1039→            onClick={() => setAssetFilters({ page: assetFilters.page - 1 })}
+  1040→          >
+  1041→            Previous
+  1042→          </Button>
+  1043→          <span className="px-2 text-xs text-zinc-500 tabular-nums">
+  1044→            Page {assetFilters.page} of {Math.max(totalPages, 1)}
+  1045→          </span>
+  1046→          <Button
+  1047→            variant="outline"
+  1048→            size="sm"
+  1049→            className="h-7 text-xs border-zinc-700"
+  1050→            disabled={assetFilters.page >= totalPages}
+  1051→            onClick={() => setAssetFilters({ page: assetFilters.page + 1 })}
+  1052→          >
+  1053→            Next
+  1054→          </Button>
+  1055→        </div>
+  1056→      </div>
+  1057→
+  1058→      {/* Create/Edit Dialog */}
+  1059→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+  1060→        <DialogContent className="bg-zinc-900 border-zinc-700 max-h-[85vh] overflow-y-auto custom-scrollbar sm:max-w-lg">
+  1061→          <DialogHeader>
+  1062→            <DialogTitle className="text-zinc-200">
+  1063→              {editingAsset ? 'Edit Asset' : 'Add Asset'}
+  1064→            </DialogTitle>
+  1065→            <DialogDescription className="text-zinc-400">
+  1066→              {editingAsset
+  1067→                ? 'Update the asset details, owner, and criticality information.'
+  1068→                : 'Register a new asset in the inventory with details, owner, and criticality.'}
+  1069→            </DialogDescription>
+  1070→          </DialogHeader>
+  1071→
+  1072→          <div className="space-y-4 py-2">
+  1073→            {/* Name */}
+  1074→            <div className="space-y-1">
+  1075→              <Label className="text-xs text-zinc-400">Name *</Label>
+  1076→              <Input
+  1077→                value={form.name}
+  1078→                onChange={(e) => setForm({ ...form, name: e.target.value })}
+  1079→                placeholder="e.g., prod-web-01"
+  1080→                className="h-8 text-xs border-zinc-700 bg-zinc-800/50"
+  1081→              />
+  1082→            </div>
+  1083→
+  1084→            {/* Type + Status */}
+  1085→            <div className="grid grid-cols-2 gap-3">
+  1086→              <div className="space-y-1">
+  1087→                <Label className="text-xs text-zinc-400">Type</Label>
+  1088→                <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v as AssetType })}>
+  1089→                  <SelectTrigger className="h-8 text-xs border-zinc-700 bg-zinc-800/50">
+  1090→                    <SelectValue />
+  1091→                  </SelectTrigger>
+  1092→                  <SelectContent className="bg-zinc-900 border-zinc-700">
+  1093→                    {FILTER_TYPES.map((t) => (
+  1094→                      <SelectItem key={t.value} value={t.value} className="text-xs">{t.label}</SelectItem>
+  1095→                    ))}
+  1096→                  </SelectContent>
+  1097→                </Select>
+  1098→              </div>
+  1099→              <div className="space-y-1">
+  1100→                <Label className="text-xs text-zinc-400">Status</Label>
+  1101→                <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as AssetStatus })}>
+  1102→                  <SelectTrigger className="h-8 text-xs border-zinc-700 bg-zinc-800/50">
+  1103→                    <SelectValue />
+  1104→                  </SelectTrigger>
+  1105→                  <SelectContent className="bg-zinc-900 border-zinc-700">
+  1106→                    {FILTER_STATUSES.map((s) => (
+  1107→                      <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
+  1108→                    ))}
+  1109→                  </SelectContent>
+  1110→                </Select>
+  1111→              </div>
+  1112→            </div>
+  1113→
+  1114→            {/* IP + MAC */}
+  1115→            <div className="grid grid-cols-2 gap-3">
+  1116→              <div className="space-y-1">
+  1117→                <Label className="text-xs text-zinc-400">IP Address</Label>
+  1118→                <Input
+  1119→                  value={form.ipAddress}
+  1120→                  onChange={(e) => setForm({ ...form, ipAddress: e.target.value })}
+  1121→                  placeholder="e.g., 10.0.0.52"
+  1122→                  className="h-8 text-xs font-mono border-zinc-700 bg-zinc-800/50"
+  1123→                />
+  1124→              </div>
+  1125→              <div className="space-y-1">
+  1126→                <Label className="text-xs text-zinc-400">MAC Address</Label>
+  1127→                <Input
+  1128→                  value={form.macAddress}
+  1129→                  onChange={(e) => setForm({ ...form, macAddress: e.target.value })}
+  1130→                  placeholder="e.g., AA:BB:CC:DD:EE:FF"
+  1131→                  className="h-8 text-xs font-mono border-zinc-700 bg-zinc-800/50"
+  1132→                />
+  1133→              </div>
+  1134→            </div>
+  1135→
+  1136→            {/* OS + OS Version */}
+  1137→            <div className="grid grid-cols-2 gap-3">
+  1138→              <div className="space-y-1">
+  1139→                <Label className="text-xs text-zinc-400">Operating System</Label>
+  1140→                <Input
+  1141→                  value={form.os}
+  1142→                  onChange={(e) => setForm({ ...form, os: e.target.value })}
+  1143→                  placeholder="e.g., Ubuntu"
+  1144→                  className="h-8 text-xs border-zinc-700 bg-zinc-800/50"
+  1145→                />
+  1146→              </div>
+  1147→              <div className="space-y-1">
+  1148→                <Label className="text-xs text-zinc-400">OS Version</Label>
+  1149→                <Input
+  1150→                  value={form.osVersion}
+  1151→                  onChange={(e) => setForm({ ...form, osVersion: e.target.value })}
+  1152→                  placeholder="e.g., 22.04 LTS"
+  1153→                  className="h-8 text-xs border-zinc-700 bg-zinc-800/50"
+  1154→                />
+  1155→              </div>
+  1156→            </div>
+  1157→
+  1158→            {/* Criticality + Owner */}
+  1159→            <div className="grid grid-cols-2 gap-3">
+  1160→              <div className="space-y-1">
+  1161→                <Label className="text-xs text-zinc-400">Criticality</Label>
+  1162→                <Select value={form.criticality} onValueChange={(v) => setForm({ ...form, criticality: v as AssetCriticality })}>
+  1163→                  <SelectTrigger className="h-8 text-xs border-zinc-700 bg-zinc-800/50">
+  1164→                    <SelectValue />
+  1165→                  </SelectTrigger>
+  1166→                  <SelectContent className="bg-zinc-900 border-zinc-700">
+  1167→                    {FILTER_CRITICALITIES.map((c) => (
+  1168→                      <SelectItem key={c.value} value={c.value} className="text-xs">{c.label}</SelectItem>
+  1169→                    ))}
+  1170→                  </SelectContent>
+  1171→                </Select>
+  1172→              </div>
+  1173→              <div className="space-y-1">
+  1174→                <Label className="text-xs text-zinc-400">Owner</Label>
+  1175→                <Input
+  1176→                  value={form.owner}
+  1177→                  onChange={(e) => setForm({ ...form, owner: e.target.value })}
+  1178→                  placeholder="e.g., j.smith"
+  1179→                  className="h-8 text-xs border-zinc-700 bg-zinc-800/50"
+  1180→                />
+  1181→              </div>
+  1182→            </div>
+  1183→
+  1184→            {/* Department + Location */}
+  1185→            <div className="grid grid-cols-2 gap-3">
+  1186→              <div className="space-y-1">
+  1187→                <Label className="text-xs text-zinc-400">Department</Label>
+  1188→                <Input
+  1189→                  value={form.department}
+  1190→                  onChange={(e) => setForm({ ...form, department: e.target.value })}
+  1191→                  placeholder="e.g., Engineering"
+  1192→                  className="h-8 text-xs border-zinc-700 bg-zinc-800/50"
+  1193→                />
+  1194→              </div>
+  1195→              <div className="space-y-1">
+  1196→                <Label className="text-xs text-zinc-400">Location</Label>
+  1197→                <Input
+  1198→                  value={form.location}
+  1199→                  onChange={(e) => setForm({ ...form, location: e.target.value })}
+  1200→                  placeholder="e.g., DC-East-Rack-12"
+  1201→                  className="h-8 text-xs border-zinc-700 bg-zinc-800/50"
+  1202→                />
+  1203→              </div>
+  1204→            </div>
+  1205→
+  1206→            {/* Tags */}
+  1207→            <div className="space-y-1">
+  1208→              <Label className="text-xs text-zinc-400">Tags (comma-separated)</Label>
+  1209→              <Input
+  1210→                value={form.tags}
+  1211→                onChange={(e) => setForm({ ...form, tags: e.target.value })}
+  1212→                placeholder="e.g., production, web-tier, monitored"
+  1213→                className="h-8 text-xs border-zinc-700 bg-zinc-800/50"
+  1214→              />
+  1215→            </div>
+  1216→
+  1217→            {/* Metadata JSON */}
+  1218→            <div className="space-y-1">
+  1219→              <Label className="text-xs text-zinc-400 flex items-center gap-1">
+  1220→                <FileJson className="h-3 w-3" />
+  1221→                Metadata (JSON)
+  1222→              </Label>
+  1223→              <Textarea
+  1224→                value={form.metadata}
+  1225→                onChange={(e) => setForm({ ...form, metadata: e.target.value })}
+  1226→                placeholder='{"ram_gb": 64, "cpu_cores": 8, "zone": "us-east-1a"}'
+  1227→                className="min-h-[100px] text-xs font-mono border-zinc-700 bg-zinc-800/50 custom-scrollbar"
+  1228→              />
+  1229→            </div>
+  1230→          </div>
+  1231→
+  1232→          <DialogFooter>
+  1233→            <Button
+  1234→              variant="outline"
+  1235→              size="sm"
+  1236→              className="text-xs border-zinc-700"
+  1237→              onClick={() => setDialogOpen(false)}
+  1238→            >
+  1239→              Cancel
+  1240→            </Button>
+  1241→            <Button
+  1242→              size="sm"
+  1243→              className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-xs"
+  1244→              onClick={handleSave}
+  1245→              disabled={saving || !form.name.trim()}
+  1246→            >
+  1247→              {saving ? (
+  1248→                <RefreshCw className="h-3 w-3 animate-spin" />
+  1249→              ) : (
+  1250→                <Save className="h-3 w-3" />
+  1251→              )}
+  1252→              {editingAsset ? 'Update Asset' : 'Create Asset'}
+  1253→            </Button>
+  1254→          </DialogFooter>
+  1255→        </DialogContent>
+  1256→      </Dialog>
+  1257→
+  1258→      {/* Delete Confirmation Dialog */}
+  1259→      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+  1260→        <AlertDialogContent className="bg-zinc-900 border-zinc-700">
+  1261→          <AlertDialogHeader>
+  1262→            <AlertDialogTitle className="text-zinc-200">Delete Asset</AlertDialogTitle>
+  1263→            <AlertDialogDescription className="text-zinc-400">
+  1264→              Are you sure you want to delete <span className="text-zinc-200 font-medium">{deleteTarget?.name}</span>?
+  1265→              This action cannot be undone. All associated data will be permanently removed.
+  1266→            </AlertDialogDescription>
+  1267→          </AlertDialogHeader>
+  1268→          <AlertDialogFooter>
+  1269→            <AlertDialogCancel className="text-xs border-zinc-700">Cancel</AlertDialogCancel>
+  1270→            <AlertDialogAction
+  1271→              className="text-xs bg-red-600 hover:bg-red-700"
+  1272→              onClick={handleDelete}
+  1273→            >
+  1274→              Delete
+  1275→            </AlertDialogAction>
+  1276→          </AlertDialogFooter>
+  1277→        </AlertDialogContent>
+  1278→      </AlertDialog>
+  1279→    </motion.div>
+  1280→  )
+  1281→}
+  1282→
